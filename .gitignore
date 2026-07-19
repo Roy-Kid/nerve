@@ -1,0 +1,23 @@
+# Xcode / local build
+Nerve/build/
+**/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+**/*.moved-aside
+**/*.hmap
+**/*.ipa
+**/*.dSYM.zip
+**/*.dSYM
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Editor / agent
+.idea/
+*.swp
+*~

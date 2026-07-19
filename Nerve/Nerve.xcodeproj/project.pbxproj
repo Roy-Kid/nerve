@@ -1,0 +1,101 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+/* Begin PBXBuildFile section */
+	0188B8B3D39D4BAFA17F93D9 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB18F8A19ACF4021890F7A3C /* AppModel.swift */; };
+	2C45C2996AB94DD4B12314BC /* NerveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 361B3C476EF049E3807FA12B /* NerveApp.swift */; };
+	B410EE77B92644989B4344F3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6A04DFA5894F578B004BA2 /* SettingsView.swift */; };
+	FA5376410A054A8E8C8688BA /* IngestServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34C965B09FA246DBA277C0AB /* IngestServer.swift */; };
+	2BB3B10CCACC4ED1AC3EED84 /* CoreTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */; };
+	325F63134FE547BAB20C7BEB /* Event.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CCD95FA1514B12B0725353 /* Event.swift */; };
+	1762374C51B54AB2A110E1AA /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8A447C6505E4DC9B3F67A0D /* History.swift */; };
+	63D6C93FAAE249EE976322AA /* PendingAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED745B89E56A4725BB143D1E /* PendingAction.swift */; };
+	2B1C39688BF748CCA8953619 /* Subject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39005B163F3E4B1A831536E5 /* Subject.swift */; };
+	7A61A92323994DC1ADC5E935 /* ActionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFB236FB167455FB9234E15 /* ActionService.swift */; };
+	7FDC880D429846289B794C97 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD9115464179487F870BCAC1 /* NotificationService.swift */; };
+	884B296D1AE942C8AFE38177 /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B651ED4A2442F39D4996D3 /* Persistence.swift */; };
+	D13B5C218DB14409A524116E /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4E40ADFDC2436DB701F369 /* SettingsStore.swift */; };
+	9A46C1E41D9D4A3D815F149D /* SubjectStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276F866A183146938AD6F8D4 /* SubjectStore.swift */; };
+	191D6BD21F6947FFAFC6029F /* MenuBarRibbonController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8349EE108154C03850CD8FE /* MenuBarRibbonController.swift */; };
+	3FF5A412AD9545EE8851045B /* FirstRunCoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09F86AAAE0CA48F3BC44A02F /* FirstRunCoachView.swift */; };
+	7293CF7034A3444CB15D9D0E /* StatusPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA6D9CF66CAE46269DE73077 /* StatusPanelView.swift */; };
+	D74F4B575135492E990CB794 /* RibbonPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = F334A7FB09894523AF1A013D /* RibbonPalette.swift */; };
+	E399A560D4654C2CA8A2018A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D258DDE807343888F390B3D /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+	094171F377D248F8AD106EE5 /* Nerve.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nerve.app; sourceTree = BUILT_PRODUCTS_DIR; };
+	AB18F8A19ACF4021890F7A3C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/AppModel.swift"; sourceTree = "<group>"; };
+	361B3C476EF049E3807FA12B /* NerveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/NerveApp.swift"; sourceTree = "<group>"; };
+	3F6A04DFA5894F578B004BA2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/SettingsView.swift"; sourceTree = "<group>"; };
+	34C965B09FA246DBA277C0AB /* IngestServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Ingest/IngestServer.swift"; sourceTree = "<group>"; };
+	4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/CoreTypes.swift"; sourceTree = "<group>"; };
+	46CCD95FA1514B12B0725353 /* Event.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/Event.swift"; sourceTree = "<group>"; };
+	F8A447C6505E4DC9B3F67A0D /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/History.swift"; sourceTree = "<group>"; };
+	ED745B89E56A4725BB143D1E /* PendingAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/PendingAction.swift"; sourceTree = "<group>"; };
+	39005B163F3E4B1A831536E5 /* Subject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/Subject.swift"; sourceTree = "<group>"; };
+	7DFB236FB167455FB9234E15 /* ActionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/ActionService.swift"; sourceTree = "<group>"; };
+	BD9115464179487F870BCAC1 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/NotificationService.swift"; sourceTree = "<group>"; };
+	A9B651ED4A2442F39D4996D3 /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Store/Persistence.swift"; sourceTree = "<group>"; };
+	EC4E40ADFDC2436DB701F369 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Store/SettingsStore.swift"; sourceTree = "<group>"; };
+	276F866A183146938AD6F8D4 /* SubjectStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Store/SubjectStore.swift"; sourceTree = "<group>"; };
+	F8349EE108154C03850CD8FE /* MenuBarRibbonController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UI/MenuBar/MenuBarRibbonController.swift"; sourceTree = "<group>"; };
+	09F86AAAE0CA48F3BC44A02F /* FirstRunCoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UI/Onboarding/FirstRunCoachView.swift"; sourceTree = "<group>"; };
+	BA6D9CF66CAE46269DE73077 /* StatusPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UI/Panel/StatusPanelView.swift"; sourceTree = "<group>"; };
+	F334A7FB09894523AF1A013D /* RibbonPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UI/Ribbon/RibbonPalette.swift"; sourceTree = "<group>"; };
+	2D258DDE807343888F390B3D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
+	3B9BF170E5754244B7565846 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+	8472397C99D54DF2B5A0ECDF /* Nerve.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nerve.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+	3F41DC48F46D436E84B99BC9 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+	D4DB295989DA469A96AE2224 = {isa = PBXGroup; children = (9851157C62C8491A8E6F7113 /* Nerve */, C8CA9ACBF47645D0A6309B1E /* Products */,); sourceTree = "<group>"; };
+	C8CA9ACBF47645D0A6309B1E /* Products */ = {isa = PBXGroup; children = (094171F377D248F8AD106EE5 /* Nerve.app */,); name = Products; sourceTree = "<group>"; };
+	9851157C62C8491A8E6F7113 /* Nerve */ = {isa = PBXGroup; children = (
+		AB18F8A19ACF4021890F7A3C /* AppModel.swift */,
+		361B3C476EF049E3807FA12B /* NerveApp.swift */,
+		3F6A04DFA5894F578B004BA2 /* SettingsView.swift */,
+		34C965B09FA246DBA277C0AB /* IngestServer.swift */,
+		4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */,
+		46CCD95FA1514B12B0725353 /* Event.swift */,
+		F8A447C6505E4DC9B3F67A0D /* History.swift */,
+		ED745B89E56A4725BB143D1E /* PendingAction.swift */,
+		39005B163F3E4B1A831536E5 /* Subject.swift */,
+		7DFB236FB167455FB9234E15 /* ActionService.swift */,
+		BD9115464179487F870BCAC1 /* NotificationService.swift */,
+		A9B651ED4A2442F39D4996D3 /* Persistence.swift */,
+		EC4E40ADFDC2436DB701F369 /* SettingsStore.swift */,
+		276F866A183146938AD6F8D4 /* SubjectStore.swift */,
+		F8349EE108154C03850CD8FE /* MenuBarRibbonController.swift */,
+		09F86AAAE0CA48F3BC44A02F /* FirstRunCoachView.swift */,
+		BA6D9CF66CAE46269DE73077 /* StatusPanelView.swift */,
+		F334A7FB09894523AF1A013D /* RibbonPalette.swift */,
+		2D258DDE807343888F390B3D /* Assets.xcassets */, 3B9BF170E5754244B7565846 /* Info.plist */, 8472397C99D54DF2B5A0ECDF /* Nerve.entitlements */,
+	); path = Nerve; sourceTree = "<group>"; };
+	6C609D7AA669498B8C5863E4 /* Nerve */ = {isa = PBXNativeTarget; buildConfigurationList = 3B8B6090EF044E1DBEBCC3E5; buildPhases = (5DFB5E4FC7F941BEAD5F1D00 /* Sources */, 3F41DC48F46D436E84B99BC9 /* Frameworks */, 74F82CB4FB874BFFBBE97E39 /* Resources */,); buildRules = (); dependencies = (); name = Nerve; productName = Nerve; productReference = 094171F377D248F8AD106EE5; productType = "com.apple.product-type.application"; };
+	BCE4CD7AFEFC47FE92BDF7E2 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; }; buildConfigurationList = 02446D4223CA41EF97A2C1AA; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = D4DB295989DA469A96AE2224; productRefGroup = C8CA9ACBF47645D0A6309B1E; projectDirPath = ""; projectRoot = ""; targets = (6C609D7AA669498B8C5863E4 /* Nerve */,); };
+	74F82CB4FB874BFFBBE97E39 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (E399A560D4654C2CA8A2018A /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+	5DFB5E4FC7F941BEAD5F1D00 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+		0188B8B3D39D4BAFA17F93D9 /* AppModel.swift in Sources */,
+		2C45C2996AB94DD4B12314BC /* NerveApp.swift in Sources */,
+		B410EE77B92644989B4344F3 /* SettingsView.swift in Sources */,
+		FA5376410A054A8E8C8688BA /* IngestServer.swift in Sources */,
+		2BB3B10CCACC4ED1AC3EED84 /* CoreTypes.swift in Sources */,
+		325F63134FE547BAB20C7BEB /* Event.swift in Sources */,
+		1762374C51B54AB2A110E1AA /* History.swift in Sources */,
+		63D6C93FAAE249EE976322AA /* PendingAction.swift in Sources */,
+		2B1C39688BF748CCA8953619 /* Subject.swift in Sources */,
+		7A61A92323994DC1ADC5E935 /* ActionService.swift in Sources */,
+		7FDC880D429846289B794C97 /* NotificationService.swift in Sources */,
+		884B296D1AE942C8AFE38177 /* Persistence.swift in Sources */,
+		D13B5C218DB14409A524116E /* SettingsStore.swift in Sources */,
+		9A46C1E41D9D4A3D815F149D /* SubjectStore.swift in Sources */,
+		191D6BD21F6947FFAFC6029F /* MenuBarRibbonController.swift in Sources */,
+		3FF5A412AD9545EE8851045B /* FirstRunCoachView.swift in Sources */,
+		7293CF7034A3444CB15D9D0E /* StatusPanelView.swift in Sources */,
+		D74F4B575135492E990CB794 /* RibbonPalette.swift in Sources */,
+	); runOnlyForDeploymentPostprocessing = 0; };
+	D05E934662CA48BAA3415109 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; MACOSX_DEPLOYMENT_TARGET = 14.0; ONLY_ACTIVE_ARCH = YES; SDKROOT = macosx; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug; };
+	44129D42F80D4D0D8CC987E2 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_COMPILATION_MODE = wholemodule;}; name = Release; };
+	4E431FE3676749C283B947DA /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = Nerve/Nerve.entitlements; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Nerve/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",); MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = app.nerve.Nerve; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0;}; name = Debug; };
+	929AA0FE311A479C83EF28E1 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = Nerve/Nerve.entitlements; CODE_SIGN_IDENTITY = "-"; CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = NO; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Nerve/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks",); MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = app.nerve.Nerve; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0;}; name = Release; };
+	02446D4223CA41EF97A2C1AA = {isa = XCConfigurationList; buildConfigurations = (D05E934662CA48BAA3415109 /* Debug */, 44129D42F80D4D0D8CC987E2 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+	3B8B6090EF044E1DBEBCC3E5 = {isa = XCConfigurationList; buildConfigurations = (4E431FE3676749C283B947DA /* Debug */, 929AA0FE311A479C83EF28E1 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+}; rootObject = BCE4CD7AFEFC47FE92BDF7E2 /* Project object */; }
