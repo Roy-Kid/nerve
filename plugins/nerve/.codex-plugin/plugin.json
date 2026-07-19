@@ -1,6 +1,6 @@
 {
   "name": "nerve",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Push Codex / Claude-compatible agent lifecycle into the Nerve menu-bar status hub over local HTTP ingest.",
   "author": {
     "name": "Nerve",
@@ -8,5 +8,11 @@
   },
   "homepage": "https://github.com/Roy-Kid/nerve/tree/main/plugins/nerve",
   "repository": "https://github.com/Roy-Kid/nerve",
-  "keywords": ["nerve", "status", "hooks", "menu-bar", "observability"]
+  "keywords": [
+    "nerve",
+    "status",
+    "hooks",
+    "menu-bar",
+    "observability"
+  ]
 }

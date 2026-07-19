@@ -1,11 +1,19 @@
 {
   "name": "nerve",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Push Claude Code / Codex / Grok agent lifecycle into the Nerve menu-bar status hub over local HTTP ingest.",
   "author": {
     "name": "Nerve",
     "email": "lijichen365@gmail.com"
   },
   "homepage": "https://github.com/Roy-Kid/nerve/tree/main/plugins/nerve",
-  "keywords": ["nerve", "status", "hooks", "menu-bar", "observability", "codex", "claude"]
+  "keywords": [
+    "nerve",
+    "status",
+    "hooks",
+    "menu-bar",
+    "observability",
+    "codex",
+    "claude"
+  ]
 }

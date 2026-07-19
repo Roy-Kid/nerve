@@ -1,12 +1,12 @@
 {
-  "description": "Nerve — Claude Code / Codex / Grok lifecycle → local ingest (http://127.0.0.1:17890)",
+  "description": "Nerve \u2014 Claude Code / Codex / Grok lifecycle \u2192 local ingest (http://127.0.0.1:17890)",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5,
             "statusMessage": "Nerve"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -95,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -106,7 +106,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -117,7 +117,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
@@ -128,7 +128,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/hooks/nerve_hook.py\"",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
             "timeout": 5
           }
         ]
