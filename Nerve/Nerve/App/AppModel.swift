@@ -41,6 +41,10 @@ final class AppModel {
         store.ribbonInvalidationSink = { [weak menuBar] in
             menuBar?.refresh(force: true)
         }
+        // Group mode / ribbon size / colors — independent of whether the panel is open
+        settings.ribbonAppearanceSink = { [weak menuBar] in
+            menuBar?.refresh(force: true)
+        }
         menuBar.start()
 
         let server = IngestServer(port: settings.ingestPort, store: store)

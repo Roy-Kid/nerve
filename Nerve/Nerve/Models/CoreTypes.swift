@@ -297,7 +297,7 @@ enum RibbonStatus: String, Sendable, Hashable, CaseIterable, Comparable {
 /// How the status panel buckets subjects into sections.
 /// This is **grouping** (section headers), not sort order — within a section
 /// subjects still follow the default priority sort (attention → health → …).
-enum PanelGroupMode: String, Codable, CaseIterable, Identifiable, Sendable {
+enum PanelGroupMode: String, Codable, CaseIterable, Identifiable, Sendable, Hashable {
     /// Default: Attention / Active / Recent (SPEC §25).
     case priority
     /// Bucket by ribbon status (urgent, failure, active, …).

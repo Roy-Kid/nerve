@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Continuous ribbon lives in the system menu bar (status item), not as a floating window.
-/// Left-click → status popover. Right-click → minimal menu (Preferences / Quit).
+/// Left-click → status popover. Right-click → minimal menu (Settings / Quit).
 ///
 /// Rendering uses an `NSImage` on the status button (not a subview). Subviews on
 /// `NSStatusBarButton` often fail to redraw when state changes.
@@ -32,12 +32,13 @@ final class MenuBarRibbonController: NSObject {
         guard let button = item.button else { return }
         button.title = ""
         button.imagePosition = .imageOnly
-        button.toolTip = "Nerve — left-click status, right-click for Preferences"
+        button.toolTip = "Nerve — left-click for status, right-click for Settings"
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.target = self
         button.action = #selector(statusItemClicked(_:))
         button.wantsLayer = true
         button.isBordered = false
+        button.appearance = nil
 
         self.statusItem = item
         rebuildContextMenu()
@@ -64,11 +65,16 @@ final class MenuBarRibbonController: NSObject {
         statusItem = nil
     }
 
-    /// Rebuild ribbon image/length when subject state changes.
+    /// Rebuild ribbon image/length when subject state or ribbon settings change.
     func refresh(force: Bool = false) {
         guard let item = statusItem, let button = item.button else { return }
 
-        let signature = store.ribbonSignature()
+        let appearanceSignature = button.effectiveAppearance
+            .bestMatch(from: [.darkAqua, .aqua])?
+            .rawValue ?? "system"
+        let sizeSignature =
+            "len=\(settings.ribbonLengthScale)|th=\(settings.ribbonThickness)|hide=\(settings.hideWhenIdle)"
+        let signature = "\(store.ribbonSignature(mode: settings.panelGroupMode))|\(appearanceSignature)|\(sizeSignature)"
         let width = RibbonRenderer.preferredWidth(store: store, settings: settings)
         if !force, signature == lastSignature, abs(width - displayedWidth) < 0.5 {
             return
@@ -127,7 +133,8 @@ final class MenuBarRibbonController: NSObject {
         if popover == nil {
             let pop = NSPopover()
             pop.behavior = .transient
-            pop.animates = true
+            pop.animates = settings.effectiveAnimationsEnabled
+            pop.appearance = nil
             pop.delegate = self
             self.popover = pop
         }
@@ -173,7 +180,7 @@ final class MenuBarRibbonController: NSObject {
         let menu = NSMenu()
 
         let prefs = NSMenuItem(
-            title: "Preferences…",
+            title: "Settings…",
             action: #selector(openPreferences(_:)),
             keyEquivalent: ","
         )
@@ -229,13 +236,18 @@ enum RibbonRenderer {
     static func preferredWidth(store: SubjectStore, settings: SettingsStore) -> CGFloat {
         let n = store.activeCount
         if n == 0 {
-            return settings.hideWhenIdle ? 0 : 26
+            // Idle pill still respects length scale so size settings stay visible.
+            let idle: CGFloat = (22 * settings.ribbonLengthScale).rounded()
+            return settings.hideWhenIdle ? 0 : max(14, idle)
         }
         let factor = store.ribbonLengthFactor()
-        // Menu-bar band: clearer steps from ~34pt (1 task) to ~120pt (many)
-        let minW: CGFloat = 34
-        let maxW: CGFloat = 120
-        return (minW + (maxW - minW) * factor).rounded()
+        // Keep the signal compact enough to sit naturally beside system status items.
+        let minW: CGFloat = 28
+        let maxW: CGFloat = 100
+        let base = minW + (maxW - minW) * factor
+        let scaled = base * CGFloat(settings.ribbonLengthScale)
+        // Hard caps so extreme scales still fit the menu bar.
+        return min(220, max(16, scaled)).rounded()
     }
 
     static func image(
@@ -268,7 +280,8 @@ enum RibbonRenderer {
         in bounds: NSRect,
         isDark: Bool
     ) {
-        let barHeight: CGFloat = 8
+        // Thickness is user-adjustable; leave a little vertical padding inside the 22pt slot.
+        let barHeight = min(bounds.height - 4, max(2, CGFloat(settings.ribbonThickness)))
         let barRect = NSRect(
             x: bounds.minX + 2,
             y: (bounds.height - barHeight) / 2,
@@ -277,14 +290,13 @@ enum RibbonRenderer {
         )
         let radius = barHeight / 2
         let path = NSBezierPath(roundedRect: barRect, xRadius: radius, yRadius: radius)
-        let segments = store.ribbonSegments()
+        let segments = store.ribbonSegments(mode: settings.panelGroupMode)
         let map = settings.statusColors
 
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
 
-        // Continuous horizontal gradient with short, soft blends between status colors
-        // (not hard blocks, not long muddy mixes).
+        // A flat continuous band; the system menu bar supplies the surrounding depth.
         if let body = smoothStatusGradient(segments: segments, isDark: isDark, map: map) {
             body.draw(in: barRect, angle: 0)
         } else {
@@ -293,29 +305,9 @@ enum RibbonRenderer {
             barRect.fill()
         }
 
-        // Internal luminosity (inside bar only)
-        if let core = NSGradient(colorsAndLocations:
-            (NSColor.white.withAlphaComponent(0.0), 0.0),
-            (NSColor.white.withAlphaComponent(0.20), 0.30),
-            (NSColor.white.withAlphaComponent(0.55), 0.50),
-            (NSColor.white.withAlphaComponent(0.20), 0.70),
-            (NSColor.white.withAlphaComponent(0.0), 1.0)
-        ) {
-            core.draw(in: barRect, angle: 90)
-        }
-
-        let spine = NSRect(
-            x: barRect.minX + 2,
-            y: barRect.midY - 0.65,
-            width: max(2, barRect.width - 4),
-            height: 1.3
-        )
-        NSColor.white.withAlphaComponent(isDark ? 0.50 : 0.40).setFill()
-        NSBezierPath(roundedRect: spine, xRadius: 0.65, yRadius: 0.65).fill()
-
         NSGraphicsContext.restoreGraphicsState()
 
-        NSColor.white.withAlphaComponent(isDark ? 0.18 : 0.28).setStroke()
+        NSColor.separatorColor.withAlphaComponent(isDark ? 0.45 : 0.30).setStroke()
         path.lineWidth = 0.5
         path.stroke()
     }
@@ -328,15 +320,14 @@ enum RibbonRenderer {
     ) -> NSGradient? {
         guard !segments.isEmpty else { return nil }
 
-        func lit(_ status: RibbonStatus) -> NSColor {
+        func resolved(_ status: RibbonStatus) -> NSColor {
             let base = RibbonPalette.nsColor(for: status, dark: isDark, map: map)
-            return base.blended(withFraction: isDark ? 0.16 : 0.08, of: .white) ?? base
+            return base.blended(withFraction: isDark ? 0.04 : 0, of: .white) ?? base
         }
 
         if segments.count == 1 {
-            let c = lit(segments[0].status)
-            let hi = c.blended(withFraction: 0.22, of: .white) ?? c
-            return NSGradient(colorsAndLocations: (c, 0.0), (hi, 0.5), (c, 1.0))
+            let color = resolved(segments[0].status)
+            return NSGradient(colors: [color, color])
         }
 
         // Transition width as fraction of full bar — quick but not a hard edge.
@@ -347,7 +338,7 @@ enum RibbonRenderer {
         var cursor: CGFloat = 0
 
         for (index, seg) in segments.enumerated() {
-            let color = lit(seg.status)
+            let color = resolved(seg.status)
             let start = cursor
             let end = cursor + max(0.0001, seg.weight)
 
@@ -380,7 +371,7 @@ enum RibbonRenderer {
 
             // Quick ramp into next status color (half of blend zone owned by each side)
             if index < segments.count - 1 {
-                let nextColor = lit(segments[index + 1].status)
+                let nextColor = resolved(segments[index + 1].status)
                 let mid = end
                 // end of this color just before midpoint, start of next just after
                 stops.append((color, max(pureEnd, mid - nextBlend * 0.5)))
@@ -403,7 +394,7 @@ enum RibbonRenderer {
             }
         }
         if cleaned.count < 2 {
-            let c = cleaned.first?.0 ?? lit(.inactive)
+            let c = cleaned.first?.0 ?? resolved(.inactive)
             return NSGradient(colors: [c, c])
         }
 

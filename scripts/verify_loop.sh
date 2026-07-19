@@ -40,8 +40,9 @@ COUNT=$(curl -sf "$BASE/v1/subjects" | python3 -c "import sys,json; print(len(js
 test "$COUNT" = "5"
 
 python3 - <<'PY'
-import json, urllib.request
-data = json.load(urllib.request.urlopen("http://127.0.0.1:17890/v1/subjects"))
+import json, os, urllib.request
+port = os.environ.get("NERVE_PORT", "17890")
+data = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/subjects"))
 by_id = {s["id"]: s for s in data}
 assert by_id["a1"]["attention"]["level"] == "urgent"
 assert by_id["a2"]["type"] == "custom.foo"
@@ -89,9 +90,9 @@ echo "action_queue_ok"
 echo "All automated loop checks passed."
 echo
 echo "Manual visual checks:"
-echo "  1. Menu-bar ribbon: self-lit gradient (no outer halo)"
+echo "  1. Menu-bar ribbon: compact system-color gradient (no outer halo)"
 echo "  2. Left-click → Status only; ↑/↓ select, Enter expand"
 echo "  3. Expand row → Copy local; Approve queues to source"
-echo "  4. Right-click → DND, mute source/project, notifications"
+echo "  4. Right-click → Settings… / Quit Nerve"
 echo "  5. No History UI; no footer status toast"
 echo "  6. Source: GET /v1/actions/pending?sourceId=… then POST /v1/actions/result"

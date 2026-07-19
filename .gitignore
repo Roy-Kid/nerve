@@ -21,3 +21,10 @@ Nerve/build/
 .idea/
 *.swp
 *~
+
+# Python (agent hooks)
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+

@@ -1,6 +1,5 @@
 # Nerve for macOS — Implementation Status
 
-**Source of truth:** `SPEC.md`  
 Last updated: 2026-07-19
 
 ---
@@ -8,17 +7,20 @@ Last updated: 2026-07-19
 ## Scope decisions
 
 - **Multi-display independent ribbons:** out of scope (menu-bar status item is OS-managed).
-- **No subject disk storage:** subjects, timelines, and pending actions are **memory-only**. Preferences only (UserDefaults).
+- **No subject disk storage:** subjects, timelines, and pending actions are **memory-only**. Settings only (UserDefaults).
 - **No Privacy / Data preference panes:** storage toggles removed; demo/clear via ingest HTTP only.
-- Custom **status → color** map is in Preferences (P0 for usability; SPEC listed as P1 originally — implemented early).
+- Custom **status → color** map is in Settings (P0 for usability).
 
 ---
 
 ## Done
 
 ### Core
+
 - [x] Resident menu-bar app (no Dock / no floating ribbon)
-- [x] Continuous self-luminous multi-color ribbon (length ∝ active count)
+- [x] Continuous multi-color ribbon (length ∝ active count)
+- [x] Ribbon **order follows panel grouping** (Priority / Status / Source — same list order, adjacent same-status merged)
+- [x] Ribbon **length scale + thickness** adjustable in Settings → Appearance
 - [x] Six display statuses with **user-editable color map** + reset defaults
 - [x] Subject / Facets / Current / Event / Action model (open types + extensions)
 - [x] Loopback HTTP ingest: snapshot, events, demo, clear
@@ -26,16 +28,18 @@ Last updated: 2026-07-19
 - [x] **Memory-only** runtime state (legacy Application Support wiped on launch)
 
 ### UI
+
 - [x] Left-click → Status panel only (no History product surface)
 - [x] Single-line rows; expand detail + live timeline
 - [x] Status panel **grouping modes**: Priority / Status / Source
-- [x] Right-click → **Preferences…** / **Quit** only
-- [x] Preferences tabs: General · Customize · Notifications · About
+- [x] Right-click → **Settings…** / **Quit** only
+- [x] Settings tabs: General · Appearance · Notifications · About
 - [x] First-run coach (skippable); “Show Welcome Tips…” under About
 - [x] Keyboard: ↑/↓ focus, Enter/Space expand
 - [x] Accessibility labels / values / focus ring; respects Reduce Motion
 
 ### Notifications
+
 - [x] Required / Urgent / Failure / Unresponsive / long success
 - [x] Dedupe, sound toggle, pause all
 - [x] DND schedule (start/end, overnight wrap)
@@ -43,17 +47,32 @@ Last updated: 2026-07-19
 - [x] Click notification → open subject
 
 ### Privacy
+
 - [x] No subject/timeline/pending persistence
 - [x] No “save names/summaries” toggles (nothing to save)
-- [x] Preferences-only UserDefaults
+- [x] Settings-only UserDefaults
 
 ### Actions
+
 - [x] Local: open, copy summary, open logs (when declared)
 - [x] Remote queue: approve/reject/cancel/… → owning source only
 - [x] `GET /v1/actions/pending?sourceId=`
 - [x] `POST /v1/actions/result?sourceId=`
 - [x] `POST /v1/actions/invoke`
 - [x] Destructive actions require confirmation
+
+### Agent plugins (batch 1)
+
+- [x] Shared hook: `plugins/nerve/hooks/nerve_hook.py` → `POST /v1/snapshot`
+- [x] **Repo-root GitHub marketplace** (`.claude-plugin/marketplace.json`)
+  - Claude Code: `/plugin marketplace add Roy-Kid/nerve` → `/plugin install nerve@nerve`
+  - Codex: `codex plugin marketplace add Roy-Kid/nerve` → `codex plugin add nerve@nerve`
+- [x] Dual plugin metadata: `.claude-plugin/plugin.json` + `.codex-plugin/plugin.json`
+- [x] Auto source detect: `PLUGIN_ROOT` → codex, Claude plugin env → claude, Grok env → grok
+- [x] Events: SessionStart/End, UserPromptSubmit, Pre/PostToolUse, PermissionRequest, Notification, Stop/StopFailure, SubagentStart/Stop
+- [x] Fail-open hooks (exit 0; never block the agent)
+- [x] Offline unit tests: `sources/agents/tests/test_nerve_hook.py`
+- [x] No nested marketplace path; no shell install scripts
 
 ---
 
@@ -63,6 +82,7 @@ Last updated: 2026-07-19
 - Disk-backed history / restart recovery of subjects
 - Cloud sync, team features, full log viewer, in-app agent chat
 - Remote Action *execution* inside foreign processes (sources poll themselves)
+- Cursor-native marketplace packaging (Grok/Cursor can still use Claude-compatible hooks)
 
 ---
 
@@ -72,6 +92,7 @@ Last updated: 2026-07-19
 ./scripts/run.sh
 ./scripts/verify_loop.sh
 ./scripts/inject_demo.sh
+python3 sources/agents/tests/test_nerve_hook.py
 ```
 
 ### Action protocol (sources)
@@ -83,14 +104,38 @@ curl -s -X POST 'http://127.0.0.1:17890/v1/actions/result?sourceId=my-source' \
   -d '{"id":"<pending-id>","state":"succeeded","message":"ok"}'
 ```
 
+### Plugin install (after GitHub push)
+
+```text
+# Claude Code
+/plugin marketplace add Roy-Kid/nerve
+/plugin install nerve@nerve
+
+# Codex
+codex plugin marketplace add Roy-Kid/nerve
+codex plugin add nerve@nerve
+```
+
 ---
 
 ## Layout
 
 ```
+.claude-plugin/marketplace.json   # marketplace name: nerve
+plugins/nerve/
+  .claude-plugin/plugin.json
+  .codex-plugin/plugin.json
+  hooks/hooks.json
+  hooks/nerve_hook.py
+sources/agents/
+  nerve_hook.py                   # symlink → plugins/nerve/hooks/nerve_hook.py
+  tests/test_nerve_hook.py
+  README.md
+  codex/hooks.json                # legacy manual template (prefer marketplace)
+
 Nerve/Nerve/
-  App/          NerveApp, AppModel, Preferences (SettingsView)
-  Models/       Subject, Event, History types, Actions, CoreTypes
+  App/          NerveApp, AppModel, Settings
+  Models/       Subject, Event, History, Actions, CoreTypes
   Store/        SubjectStore (memory), SettingsStore, Persistence (legacy wipe)
   Services/     Notifications, ActionService
   Ingest/       HTTP loopback server

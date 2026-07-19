@@ -35,7 +35,7 @@ struct RGBColor: Codable, Equatable, Sendable, Hashable {
     }
 }
 
-/// User-customizable mapping from ribbon status → color. Defaults match product palette.
+/// User-customizable mapping from ribbon status → color. Defaults follow macOS system colors.
 struct StatusColorMap: Codable, Equatable, Sendable {
     var problem: RGBColor
     var attention: RGBColor
@@ -45,6 +45,16 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     var inactive: RGBColor
 
     static let `default` = StatusColorMap(
+        problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),
+        attention: RGBColor(r: 1.000, g: 0.584, b: 0.000),
+        waiting: RGBColor(r: 0.686, g: 0.321, b: 0.871),
+        running: RGBColor(r: 0.000, g: 0.478, b: 1.000),
+        success: RGBColor(r: 0.204, g: 0.780, b: 0.349),
+        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+    )
+
+    /// The first-release palette, retained only to migrate untouched defaults.
+    static let legacyDefault = StatusColorMap(
         problem: RGBColor(r: 0.95, g: 0.14, b: 0.18),
         attention: RGBColor(r: 1.00, g: 0.52, b: 0.10),
         waiting: RGBColor(r: 0.55, g: 0.28, b: 0.92),
@@ -82,13 +92,28 @@ struct StatusColorMap: Codable, Equatable, Sendable {
 
 @Observable
 final class SettingsStore {
-    var hideWhenIdle: Bool { didSet { persist() } }
+    /// Fired after any preference that affects the menu-bar ribbon image/length.
+    /// Set by AppModel so grouping / size / color changes redraw immediately
+    /// without depending on a particular SwiftUI view still being alive.
+    var ribbonAppearanceSink: (() -> Void)?
+
+    var hideWhenIdle: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
     var reduceMotion: Bool { didSet { persist() } }
     var animationsEnabled: Bool { didSet { persist() } }
     var ingestPort: UInt16 { didSet { persist() } }
 
     /// Per-status ribbon / panel colors.
-    var statusColors: StatusColorMap { didSet { persist() } }
+    var statusColors: StatusColorMap {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
 
     var notificationsPaused: Bool { didSet { persist() } }
     var notifyRequired: Bool { didSet { persist() } }
@@ -109,11 +134,66 @@ final class SettingsStore {
     var hasCompletedFirstRun: Bool { didSet { persist() } }
     var hasSeenCoachMarks: Bool { didSet { persist() } }
     /// Status panel section grouping (priority / status / source).
-    var panelGroupMode: PanelGroupMode { didSet { persist() } }
+    /// Also drives how the menu-bar ribbon is segmented and ordered.
+    var panelGroupMode: PanelGroupMode {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+
+    /// Horizontal length scale for the menu-bar ribbon (0.5…2.0, default 1.0).
+    var ribbonLengthScale: Double {
+        didSet {
+            let clamped = Self.clampRibbonLengthScale(ribbonLengthScale)
+            if ribbonLengthScale != clamped {
+                ribbonLengthScale = clamped
+                return
+            }
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    /// Vertical thickness of the ribbon bar in points (3…12, default 6).
+    var ribbonThickness: Double {
+        didSet {
+            let clamped = Self.clampRibbonThickness(ribbonThickness)
+            if ribbonThickness != clamped {
+                ribbonThickness = clamped
+                return
+            }
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
 
     private let defaults = UserDefaults.standard
     private let key = "nerve.settings.v4"
     private var isLoading = true
+
+    private func notifyRibbonAppearance() {
+        guard !isLoading else { return }
+        if Thread.isMainThread {
+            ribbonAppearanceSink?()
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.ribbonAppearanceSink?()
+            }
+        }
+    }
+
+    static let defaultRibbonLengthScale: Double = 1.0
+    static let defaultRibbonThickness: Double = 6.0
+    static let ribbonLengthScaleRange: ClosedRange<Double> = 0.5...2.0
+    static let ribbonThicknessRange: ClosedRange<Double> = 3...12
+
+    static func clampRibbonLengthScale(_ v: Double) -> Double {
+        min(ribbonLengthScaleRange.upperBound, max(ribbonLengthScaleRange.lowerBound, v))
+    }
+
+    static func clampRibbonThickness(_ v: Double) -> Double {
+        min(ribbonThicknessRange.upperBound, max(ribbonThicknessRange.lowerBound, v))
+    }
 
     init() {
         hideWhenIdle = false
@@ -137,6 +217,8 @@ final class SettingsStore {
         hasCompletedFirstRun = false
         hasSeenCoachMarks = false
         panelGroupMode = .priority
+        ribbonLengthScale = Self.defaultRibbonLengthScale
+        ribbonThickness = Self.defaultRibbonThickness
 
         if let data = UserDefaults.standard.data(forKey: key),
            let p = try? JSONDecoder().decode(Persisted.self, from: data) {
@@ -159,7 +241,8 @@ final class SettingsStore {
         reduceMotion = p.reduceMotion
         animationsEnabled = p.animationsEnabled
         ingestPort = p.ingestPort
-        statusColors = p.statusColors ?? .default
+        let savedColors = p.statusColors ?? .default
+        statusColors = savedColors == .legacyDefault ? .default : savedColors
         notificationsPaused = p.notificationsPaused
         notifyRequired = p.notifyRequired
         notifyUrgent = p.notifyUrgent
@@ -176,6 +259,8 @@ final class SettingsStore {
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
         panelGroupMode = p.panelGroupMode ?? .priority
+        ribbonLengthScale = Self.clampRibbonLengthScale(p.ribbonLengthScale ?? Self.defaultRibbonLengthScale)
+        ribbonThickness = Self.clampRibbonThickness(p.ribbonThickness ?? Self.defaultRibbonThickness)
     }
 
     private func applyV3(_ p: PersistedV3) {
@@ -199,6 +284,8 @@ final class SettingsStore {
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
         panelGroupMode = p.panelGroupMode ?? .priority
+        ribbonLengthScale = Self.defaultRibbonLengthScale
+        ribbonThickness = Self.defaultRibbonThickness
         // Privacy/storage flags intentionally dropped — subjects are memory-only.
     }
 
@@ -290,7 +377,9 @@ final class SettingsStore {
             dndEndMinutes: dndEndMinutes,
             hasCompletedFirstRun: hasCompletedFirstRun,
             hasSeenCoachMarks: hasSeenCoachMarks,
-            panelGroupMode: panelGroupMode
+            panelGroupMode: panelGroupMode,
+            ribbonLengthScale: ribbonLengthScale,
+            ribbonThickness: ribbonThickness
         )
         if let data = try? JSONEncoder().encode(value) {
             defaults.set(data, forKey: key)
@@ -319,6 +408,8 @@ final class SettingsStore {
         var hasCompletedFirstRun: Bool
         var hasSeenCoachMarks: Bool
         var panelGroupMode: PanelGroupMode?
+        var ribbonLengthScale: Double?
+        var ribbonThickness: Double?
     }
 
     /// Subset of v3 prefs we still care about (storage/privacy fields ignored).

@@ -4,7 +4,6 @@ Lightweight **menu-bar** status hub for long-running work: agents, builds, tests
 
 Nerve does **not** run your agents. It aggregates status they push over a local HTTP ingest API into one continuous ribbon.
 
-Product requirements: [`SPEC.md`](./SPEC.md)  
 Implementation status: [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md)
 
 ## Quick start
@@ -18,13 +17,34 @@ A continuous **ribbon** appears in the macOS menu bar (no Dock icon, no floating
 | Gesture | Action |
 |---------|--------|
 | **Left-click** ribbon | Status panel (↑/↓, Enter expand; detail + timeline + actions) |
-| **Right-click** ribbon | **Preferences…** or **Quit Nerve** |
+| **Right-click** ribbon | **Settings…** or **Quit Nerve** |
 
-Preferences tabs: **General** · **Customize** (status → color map) · **Notifications** · **About**
+Settings tabs: **General** · **Appearance** (ribbon size + status → color map) · **Notifications** · **About**
+
+The status panel **Group by** control (Priority / Status / Source) reorders the menu-bar ribbon to match the panel list.
 
 ```bash
 ./scripts/inject_demo.sh   # or: curl -X POST http://127.0.0.1:17890/v1/demo
 ./scripts/verify_loop.sh
+```
+
+## Agent plugins (Claude Code · Codex · Grok)
+
+Push live agent sessions into the ribbon from **one GitHub marketplace**. No install scripts; no nested marketplace path.
+
+| Harness | Install |
+|---------|---------|
+| **Claude Code** | `/plugin marketplace add Roy-Kid/nerve` then `/plugin install nerve@nerve` |
+| **Codex** | `codex plugin marketplace add Roy-Kid/nerve` then `codex plugin add nerve@nerve` |
+| **Grok** | Same Claude-compatible marketplace / plugin |
+
+Then start Nerve and open a session — the ribbon shows e.g. **Claude Code — &lt;project&gt;** or **Codex — &lt;project&gt;**.
+
+Full plugin docs: [`plugins/nerve/README.md`](./plugins/nerve/README.md)
+
+```bash
+# Offline hook unit tests
+python3 sources/agents/tests/test_nerve_hook.py
 ```
 
 ## Privacy (by design)
@@ -50,7 +70,7 @@ Loopback: `http://127.0.0.1:17890`
 | POST | `/v1/actions/result?sourceId=` | Report action completion |
 | POST | `/v1/actions/invoke` | Invoke as from UI |
 
-Wire format: `fixtures/demo_snapshot.json`.
+Wire format: [`fixtures/demo_snapshot.json`](./fixtures/demo_snapshot.json).
 
 ## Ribbon statuses (default colors)
 
@@ -63,24 +83,35 @@ Wire format: `fixtures/demo_snapshot.json`.
 | Success | Green | Recently completed OK |
 | Inactive | Gray | Paused, idle, or unknown |
 
-Edit under **Preferences → Customize** (reset to defaults anytime).
+Edit under **Settings → Appearance** (reset to defaults anytime).
 
 ## Requirements
 
 - macOS 14+
 - Xcode 15+ (tested with Xcode 26)
+- Python 3 (agent hook plugin only)
 
 ## Layout
 
 ```
+.claude-plugin/          GitHub marketplace (Claude + Codex discover this)
+plugins/nerve/           Agent status plugin (hooks → local ingest)
+sources/agents/          Hook tests + symlink to plugin script
 Nerve/Nerve/
-  App/           NerveApp, AppModel, Preferences
-  Models/        Subject, Event, History types, Actions, CoreTypes
-  Store/         SubjectStore (memory), SettingsStore (UserDefaults)
-  Services/      Notifications, ActionService
-  Ingest/        Loopback HTTP
-  UI/MenuBar     Status-item ribbon + minimal context menu
-  UI/Panel       Status popover
-  UI/Onboarding  First-run coach
-  UI/Ribbon      Palette helpers
+  App/                   NerveApp, AppModel, Settings
+  Models/                Subject, Event, History, Actions, CoreTypes
+  Store/                 SubjectStore (memory), SettingsStore
+  Services/              Notifications, ActionService
+  Ingest/                Loopback HTTP
+  UI/MenuBar             Status-item ribbon + context menu
+  UI/Panel               Status popover
+  UI/Onboarding          First-run coach
+  UI/Ribbon              Palette helpers
+fixtures/                Demo snapshot JSON
+scripts/                 run / inject_demo / verify_loop
+docs/                    Implementation status
 ```
+
+## License
+
+See repository license (if present). Private use / distribution as you prefer until a license file is added.

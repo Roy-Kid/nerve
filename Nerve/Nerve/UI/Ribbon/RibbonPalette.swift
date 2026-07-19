@@ -9,8 +9,8 @@ enum RibbonPalette {
 
     static func nsColor(for status: RibbonStatus, dark: Bool, map: StatusColorMap = .default) -> NSColor {
         let base = map.color(for: status).nsColor
-        // Slight lift on dark menu bars so custom colors still read as “lit glass”.
+        // A small lift keeps custom colors legible against dark menu bars.
         guard dark else { return base }
-        return base.blended(withFraction: 0.08, of: .white) ?? base
+        return base.blended(withFraction: 0.04, of: .white) ?? base
     }
 }

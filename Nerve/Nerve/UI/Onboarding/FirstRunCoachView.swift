@@ -1,99 +1,183 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// Short first-run coach. Can be skipped. Demo is optional at the end.
 struct FirstRunCoachView: View {
     var onFinish: (_ loadDemo: Bool) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var page = 0
 
-    private let pages: [(title: String, body: String)] = [
+    private let pages: [(title: String, body: String, symbol: String)] = [
         (
             "All running signals, one place",
-            "Nerve does not run your agents. It gathers status from tools that send events to it."
+            "Nerve does not run your agents. It gathers status from tools that send events to it.",
+            "waveform.path.ecg"
         ),
         (
             "The ribbon is the pulse",
-            "Length follows how many subjects are active. Colors show attention, failure, and healthy work together."
+            "Its length follows active work, while color reveals attention, failures, and healthy progress at a glance.",
+            "capsule.fill"
         ),
         (
-            "Left click for status",
-            "Open Attention, Active, and Recent. Click a row to expand detail and actions."
+            "Status is one click away",
+            "Open Attention, Active, and Recent work from the menu bar. Select any row for details, activity, and actions.",
+            "list.bullet.rectangle.portrait.fill"
         ),
         (
-            "Right click for Preferences",
-            "Customize status colors, notifications, quiet hours — then Quit. Nothing about subjects is written to disk."
+            "Settings stay close by",
+            "Right-click the ribbon to adjust status colors, notifications, and quiet hours, or to quit Nerve.",
+            "gearshape.2.fill"
         ),
         (
-            "Connect a source",
-            "POST snapshots and events to http://127.0.0.1:17890 — or POST /v1/demo to explore. State is memory-only."
+            "Connect a local source",
+            "Send snapshots or events to 127.0.0.1:17890. Runtime state stays in memory and disappears when Nerve quits.",
+            "point.3.connected.trianglepath.dotted"
         ),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Nerve")
-                .font(.system(size: 15, weight: .semibold))
-                .accessibilityAddTraits(.isHeader)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg")
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color.accentColor)
 
-            Text(pages[page].title)
-                .font(.system(size: 18, weight: .semibold))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+                Text("Nerve")
+                    .font(.headline)
 
-            Text(pages[page].body)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 6) {
-                ForEach(0..<pages.count, id: \.self) { i in
-                    Circle()
-                        .fill(i == page ? Color.primary : Color.primary.opacity(0.2))
-                        .frame(width: 6, height: 6)
-                        .accessibilityHidden(true)
-                }
                 Spacer()
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Step \(page + 1) of \(pages.count)")
 
-            HStack {
+                Text("Welcome")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+
+            ZStack {
+                coachPage
+                    .id(page)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .trailing)),
+                                removal: .opacity.combined(with: .move(edge: .leading))
+                            )
+                    )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+
+            pageIndicator
+                .padding(.bottom, 18)
+
+            Divider()
+
+            controls
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(.ultraThinMaterial)
+        }
+        .frame(width: 480, height: 410)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var coachPage: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.11))
+                    .frame(width: 92, height: 92)
+
+                Circle()
+                    .strokeBorder(Color.accentColor.opacity(0.14), lineWidth: 0.5)
+                    .frame(width: 92, height: 92)
+
+                Image(systemName: pages[page].symbol)
+                    .font(.system(size: 39, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(spacing: 8) {
+                Text(pages[page].title)
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text(pages[page].body)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 360)
+            }
+        }
+        .padding(.horizontal, 28)
+    }
+
+    private var pageIndicator: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<pages.count, id: \.self) { index in
+                Capsule(style: .continuous)
+                    .fill(index == page ? Color.accentColor : Color.secondary.opacity(0.22))
+                    .frame(width: index == page ? 16 : 6, height: 6)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: page)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(page + 1) of \(pages.count)")
+    }
+
+    private var controls: some View {
+        HStack(spacing: 10) {
+            if page == 0 {
                 Button("Skip") {
                     onFinish(false)
                 }
                 .keyboardShortcut(.cancelAction)
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-
-                Spacer()
-
-                if page < pages.count - 1 {
-                    Button("Next") {
-                        withAnimation(.easeInOut(duration: 0.15)) { page += 1 }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                } else {
-                    Button("Start empty") {
-                        onFinish(false)
-                    }
-                    .buttonStyle(.bordered)
-                    Button("Load demo") {
-                        onFinish(true)
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderless)
+            } else {
+                Button("Back") {
+                    changePage(to: page - 1)
                 }
+                .buttonStyle(.borderless)
+            }
+
+            Spacer()
+
+            if page < pages.count - 1 {
+                Button("Continue") {
+                    changePage(to: page + 1)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Start Empty") {
+                    onFinish(false)
+                }
+                .buttonStyle(.bordered)
+
+                Button("Load Demo") {
+                    onFinish(true)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
             }
         }
-        .padding(22)
-        .frame(width: 380, height: 280)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .accessibilityElement(children: .contain)
+        .controlSize(.regular)
+    }
+
+    private func changePage(to nextPage: Int) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            page = min(max(0, nextPage), pages.count - 1)
+        }
     }
 }
 
@@ -109,13 +193,17 @@ final class FirstRunCoachController {
         }
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 280),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 410),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Welcome to Nerve"
+        window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.isMovableByWindowBackground = true
+        window.appearance = nil
         window.contentViewController = hosting
         window.isReleasedWhenClosed = false
         window.center()

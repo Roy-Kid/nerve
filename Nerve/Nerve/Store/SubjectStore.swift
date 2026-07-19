@@ -221,8 +221,10 @@ final class SubjectStore {
 
     // MARK: - Ribbon segments
 
+    /// One colored band on the menu-bar ribbon.
+    /// `status` is the color key (worst / dominant status of the bucket).
     struct RibbonSegment: Identifiable, Equatable {
-        var id: RibbonStatus { status }
+        var id: String
         var status: RibbonStatus
         var count: Int
         var weight: CGFloat
@@ -247,58 +249,91 @@ final class SubjectStore {
         return list
     }
 
-    func ribbonSegments() -> [RibbonSegment] {
-        let contributors = ribbonColorSubjects()
-        var counts: [RibbonStatus: Int] = [:]
-        for s in contributors {
-            counts[s.ribbonStatus, default: 0] += 1
-        }
-        guard !counts.isEmpty else { return [] }
+    /// Ribbon layout follows the status-panel grouping mode.
+    /// Subjects keep the same left→right order as the panel list under that mode;
+    /// adjacent same-status subjects merge into one color band so switching
+    /// Priority / Status / Source visibly reorders the continuous light strip.
+    func ribbonSegments(mode: PanelGroupMode? = nil) -> [RibbonSegment] {
+        let resolved = mode ?? settingsProvider?().panelGroupMode ?? .priority
+        let paintIds = Set(ribbonColorSubjects().map(\.id))
+        guard !paintIds.isEmpty else { return [] }
 
-        let ordered = RibbonStatus.allCases.filter { counts[$0, default: 0] > 0 }
-        let total = max(1, CGFloat(contributors.count))
+        // Panel order under the active grouping — this is what the user just switched.
+        var ordered: [Subject] = flatStatusSubjects(mode: resolved).filter { paintIds.contains($0.id) }
+
+        // Ribbon-only extras (e.g. recent success/failure) not present in the flat list.
+        if ordered.count < paintIds.count {
+            let seen = Set(ordered.map(\.id))
+            for s in ribbonColorSubjects() where !seen.contains(s.id) {
+                ordered.append(s)
+            }
+        }
+        guard !ordered.isEmpty else { return [] }
+
+        // Merge adjacent same-status runs so the band stays continuous, not speckled.
+        var runs: [(status: RibbonStatus, count: Int)] = []
+        for s in ordered {
+            let status = s.ribbonStatus
+            if let last = runs.last, last.status == status {
+                runs[runs.count - 1].count += 1
+            } else {
+                runs.append((status, 1))
+            }
+        }
+
+        return weightedStatusRuns(runs, mode: resolved)
+    }
+
+    /// Proportional widths with minimum wedges for high-priority / success colors.
+    private func weightedStatusRuns(
+        _ runs: [(status: RibbonStatus, count: Int)],
+        mode: PanelGroupMode
+    ) -> [RibbonSegment] {
+        guard !runs.isEmpty else { return [] }
+
+        let total = max(1, CGFloat(runs.reduce(0) { $0 + $1.count }))
         let minHigh: CGFloat = 0.12
-        // Recent success needs a visible green wedge even if outnumbered by active blue
         let minSuccess: CGFloat = 0.10
-        var weights: [RibbonStatus: CGFloat] = [:]
+
+        var weights: [CGFloat] = Array(repeating: 0, count: runs.count)
         var reserved: CGFloat = 0
         var freeCount: CGFloat = 0
 
-        for status in ordered {
-            let c = CGFloat(counts[status, default: 0])
-            if status.isHighPriority {
+        for (i, run) in runs.enumerated() {
+            let c = CGFloat(run.count)
+            if run.status.isHighPriority {
                 let w = max(c / total, minHigh)
-                weights[status] = w
+                weights[i] = w
                 reserved += w
-            } else if status == .success {
+            } else if run.status == .success {
                 let w = max(c / total, minSuccess)
-                weights[status] = w
+                weights[i] = w
                 reserved += w
             } else {
                 freeCount += c
+                weights[i] = -1
             }
         }
 
         let freeBudget = max(0.0001, 1 - reserved)
-        for status in ordered where !status.isHighPriority && status != .success {
-            let c = CGFloat(counts[status, default: 0])
-            weights[status] = freeCount > 0 ? (c / freeCount) * freeBudget : 0
+        for i in weights.indices where weights[i] < 0 {
+            let c = CGFloat(runs[i].count)
+            weights[i] = freeCount > 0 ? (c / freeCount) * freeBudget : 0
         }
 
-        let sum = weights.values.reduce(0, +)
-        if sum > 0 {
-            for k in weights.keys {
-                weights[k] = (weights[k] ?? 0) / sum
-            }
-        }
-
-        return ordered.map { status in
-            RibbonSegment(status: status, count: counts[status, default: 0], weight: weights[status] ?? 0)
+        let sum = weights.reduce(0, +)
+        return runs.enumerated().map { index, run in
+            RibbonSegment(
+                id: "\(mode.rawValue):\(index):\(run.status.rawValue)",
+                status: run.status,
+                count: run.count,
+                weight: sum > 0 ? weights[index] / sum : 0
+            )
         }
     }
 
     /// Maps active count → 0...1 with clear steps at low N (1/2/3/5/8/12+).
-    /// 0…1 scale for menu-bar ribbon length (piecewise; ignores absolute pixel settings).
+    /// 0…1 scale for menu-bar ribbon length (piecewise; user length scale applied in renderer).
     func ribbonLengthFactor() -> CGFloat {
         let n = activeCount
         if n <= 0 { return 0 }
@@ -319,10 +354,11 @@ final class SubjectStore {
     }
 
     /// Signature of ribbon appearance for cheap change detection.
-    func ribbonSignature() -> String {
-        let segs = ribbonSegments()
-        let body = segs.map { "\($0.status.rawValue):\($0.count)" }.joined(separator: ",")
-        return "n=\(activeCount)|r=\(revision)|\(body)"
+    func ribbonSignature(mode: PanelGroupMode? = nil) -> String {
+        let resolved = mode ?? settingsProvider?().panelGroupMode ?? .priority
+        let segs = ribbonSegments(mode: resolved)
+        let body = segs.map { "\($0.id):\($0.status.rawValue):\($0.count)" }.joined(separator: ",")
+        return "n=\(activeCount)|r=\(revision)|g=\(resolved.rawValue)|\(body)"
     }
 
     // MARK: - Ingest

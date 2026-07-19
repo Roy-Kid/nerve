@@ -7,9 +7,9 @@ struct NerveApp: App {
 
     var body: some Scene {
         // No floating windows / MenuBarExtra.
-        // Ribbon + left-click status + right-click → Preferences window are AppKit status item.
+        // Ribbon + left-click status + right-click → Settings window are AppKit status item.
         Settings {
-            // Secondary path (e.g. system Settings). Primary UI is PreferencesWindowController.
+            // Secondary path (e.g. system Settings). Primary UI is the status-item menu.
             SettingsView()
         }
     }
@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `nil` is the AppKit contract for inheriting the current macOS appearance.
+        // Keep this app system-driven; individual windows and popovers inherit it.
+        NSApp.appearance = nil
         NSApp.setActivationPolicy(.accessory)
         model.start()
     }
