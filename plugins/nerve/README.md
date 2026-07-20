@@ -1,13 +1,13 @@
-# nerve (agent status plugin)
+# nerve (job status plugin)
 
-Reports agent session lifecycle to the **Nerve** menu-bar status hub at `http://127.0.0.1:17890`.
+Reports agent session lifecycle to the **Nerve** menu-bar hub as **jobs**.
 
 - Fail-open: if Nerve is down, hooks exit `0` and never block the agent.
-- One GitHub repo is the marketplace for **Claude Code** and **Codex** (and Grok via Claude-compatible hooks).
+- **No environment variables.** Ingest URL is fixed: `http://127.0.0.1:17890`.
+- **Stateless:** no `~/.nerve` state files; each event posts a full job snapshot.
+- **Alias** = free-form machine label (prefer Bonjour LocalHostName on macOS). Nerve shows whatever arrives; Settings → Machines is only for SSH tunnels.
 
 ## Install from GitHub
-
-Marketplace lives at the **repository root** (`.claude-plugin/marketplace.json`). There is no extra nested marketplace directory.
 
 ### Claude Code
 
@@ -23,105 +23,37 @@ codex plugin marketplace add Roy-Kid/nerve
 codex plugin add nerve@nerve
 ```
 
-Or in an interactive Codex session: `/plugins` → marketplace **nerve** → install **nerve**.
+## Remote machines
 
-If Codex prompts to review hooks, trust them once via `/hooks`.
+On the **Mac running Nerve**:
 
-### Alternatives
+1. Settings → **Machines** → **Add Machine…**
+2. Alias = remote hostname short name
+3. Host / user / optional identity file
+4. Enable + Connect (SSH reverse tunnel managed by Nerve)
 
-```bash
-# Full git URL
-codex plugin marketplace add https://github.com/Roy-Kid/nerve.git
-
-# Local checkout (development)
-codex plugin marketplace add /ABS/PATH/TO/nerve
-# Claude Code:
-# /plugin marketplace add /ABS/PATH/TO/nerve
-```
-
-Then:
-
-1. Start Nerve: `./scripts/run.sh` (from this repo, or your installed app)
-2. Open a Claude / Codex / Grok session
-3. Ribbon shows **Claude Code — &lt;project&gt;** or **Codex — &lt;project&gt;**
-
-### Verify / uninstall
-
-**Claude**
-
-```text
-/plugin
-/hooks
-/plugin uninstall nerve@nerve
-```
-
-**Codex**
-
-```bash
-codex plugin list --marketplace nerve
-codex plugin remove nerve@nerve
-codex plugin marketplace remove nerve   # optional
-```
+On the remote, install this plugin and run sessions as usual — hooks post to `127.0.0.1:17890`, which the tunnel forwards to the host.
 
 ## What it reports
 
-| Hook | Ribbon effect |
-|------|----------------|
-| `SessionStart` | New `agent.session` (Running) |
-| `UserPromptSubmit` / `PreToolUse` | Update current activity |
-| `PermissionRequest` / permission `Notification` | Attention (orange) |
-| `Stop` | Idle between turns (session still active) |
-| `SessionEnd` | Ended / Success |
-| `StopFailure` / tool failure | Degraded / informational |
+| Hook (structured) | Facets | Ribbon |
+|-------------------|--------|--------|
+| `SessionStart` | `active` + `starting` | Running |
+| `UserPromptSubmit` / `PreToolUse` / `PostToolUse` | `active` + `thinking`/`tool` | Running |
+| `SubagentStart` | `active` + `subagent` | Running |
+| `SubagentStop` | still `active` | Running |
+| `PermissionRequest` / `Notification` `permission_prompt` | `attention.reason=approval` | Attention |
+| `Stop` with empty `background_tasks` / `idle_prompt` | `attention.reason=input` | Attention |
+| `Stop` with non-empty `background_tasks` / `SubagentStart` | `current.type=subagent` | Running |
+| `SessionEnd` | `ended` + success | **Leaves panel** (no Success linger) |
+| Other `Notification` (no type) | `active` + `info` (message is display-only) | Running |
 
-Subject ids (auto-detected):
+Status is **never** inferred from free-text titles/messages — only event name + fields like `notification_type`.
 
-- `claude-code:{session_id}`
-- `codex:{session_id}`
-- `grok:{session_id}`
-
-## Environment (optional)
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `NERVE_URL` | `http://127.0.0.1:17890` | Ingest base URL |
-| `NERVE_PORT` | `17890` | Used if `NERVE_URL` unset |
-| `NERVE_SOURCE` | auto | Force `claude` / `codex` / `grok` |
-| `NERVE_HOOK_DEBUG` | off | Log to stderr + `~/.nerve/hook.log` |
-| `NERVE_HOOK_DRY_RUN` | off | Print snapshot JSON; skip HTTP |
-
-Detection notes:
-
-- Codex sets `PLUGIN_ROOT` (and often `CLAUDE_PLUGIN_ROOT` for compatibility) → reported as **Codex**
-- Claude plugin host sets `CLAUDE_PLUGIN_ROOT` → **Claude Code**
-- Grok session / plugin env → **Grok**
-
-## Layout
-
-```
-plugins/nerve/
-  .claude-plugin/plugin.json   # Claude plugin metadata
-  .codex-plugin/plugin.json    # Codex plugin metadata
-  hooks/hooks.json             # lifecycle wiring (${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}})
-  hooks/nerve_hook.py          # stdin JSON → POST /v1/snapshot
-  README.md
-```
+Job ids: `{producer}:{session_id}` e.g. `claude-code:…`, `codex:…`, `grok:…`.
 
 ## Development
 
 ```bash
-# Unit tests (no Nerve server required)
 python3 sources/agents/tests/test_nerve_hook.py
-
-# Dry-run a SessionStart payload
-NERVE_HOOK_DRY_RUN=1 python3 plugins/nerve/hooks/nerve_hook.py <<'EOF'
-{"hook_event_name":"SessionStart","session_id":"demo","cwd":"/tmp/demo","source":"startup"}
-EOF
-```
-
-After editing the plugin, reinstall so the host reloads the cache:
-
-```bash
-codex plugin remove nerve@nerve && codex plugin add nerve@nerve
-# Claude: /plugin uninstall nerve@nerve then /plugin install nerve@nerve
 ```

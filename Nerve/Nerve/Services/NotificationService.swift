@@ -11,7 +11,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private var lastFire: [String: Date] = [:]
     private let dedupeInterval: TimeInterval = 120
 
-    var onOpenSubject: ((String) -> Void)?
+    var onOpenJob: ((String) -> Void)?
 
     init(settings: SettingsStore) {
         self.settings = settings
@@ -30,9 +30,9 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func evaluate(previous: Subject?, next: Subject) {
+    func evaluate(previous: Job?, next: Job) {
         guard settings.shouldDeliverNotifications(at: Date()) else { return }
-        if settings.mutedSourceIds.contains(next.source.id) { return }
+        if settings.mutedSourceIds.contains(next.producer.id) { return }
         if let project = next.context?.project, settings.mutedProjectIds.contains(project) {
             return
         }
@@ -106,7 +106,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func notify(subject: Subject, kind: String, title: String, body: String) {
+    private func notify(subject: Job, kind: String, title: String, body: String) {
         let key = "\(subject.id)|\(kind)"
         let now = Date()
         if let last = lastFire[key], now.timeIntervalSince(last) < dedupeInterval {
@@ -157,7 +157,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         let subjectId = info["subjectId"] as? String
         Task { @MainActor in
             if let subjectId {
-                self.onOpenSubject?(subjectId)
+                self.onOpenJob?(subjectId)
             }
             completionHandler()
         }

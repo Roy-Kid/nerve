@@ -4,12 +4,12 @@ import AppKit
 enum ActionResult: Sendable {
     case succeeded(String)
     case failed(String)
-    case pending(String)   // queued for owning source
+    case pending(String)   // queued for owning producer
     case unsupported
     case denied(String)
 }
 
-/// Executes only declared Actions. Never controls another source's Subject.
+/// Executes only declared Actions. Never controls another source's Job.
 enum ActionService {
     /// Kinds Nerve can fulfill locally without the source process.
     static let localKinds: Set<String> = [
@@ -18,14 +18,14 @@ enum ActionService {
         "open_logs", "openlogs", "hide", "mute",
     ]
 
-    /// Kinds that must be delivered to the owning source.
+    /// Kinds that must be delivered to the owning producer.
     static let remoteKinds: Set<String> = [
         "approve", "reject", "cancel", "pause", "resume", "retry", "submit",
         "submit_input", "submitinput",
     ]
 
     @MainActor
-    static func classify(action: SubjectAction) -> KindClass {
+    static func classify(action: JobAction) -> KindClass {
         let k = action.kind.lowercased()
         if localKinds.contains(k) { return .local }
         if remoteKinds.contains(k) { return .remote }
@@ -40,7 +40,7 @@ enum ActionService {
     }
 
     @MainActor
-    static func performLocal(action: SubjectAction, on subject: Subject) -> ActionResult {
+    static func performLocal(action: JobAction, on subject: Job) -> ActionResult {
         guard action.state == .available || action.state == .pending else {
             return .denied("Action is \(action.state.rawValue)")
         }
@@ -78,7 +78,7 @@ enum ActionService {
     }
 
     @MainActor
-    private static func openLocation(_ subject: Subject) -> ActionResult {
+    private static func openLocation(_ subject: Job) -> ActionResult {
         if let raw = subject.location?.openURL, let url = URL(string: raw) {
             let ok = NSWorkspace.shared.open(url)
             return ok ? .succeeded("Opened") : .failed("Could not open URL")
@@ -92,7 +92,7 @@ enum ActionService {
     }
 
     /// Destructive kinds require explicit confirmation in UI.
-    static func isDestructive(_ action: SubjectAction) -> Bool {
+    static func isDestructive(_ action: JobAction) -> Bool {
         if action.destructive { return true }
         switch action.kind.lowercased() {
         case "cancel", "reject":

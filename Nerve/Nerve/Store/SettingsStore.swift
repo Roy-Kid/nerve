@@ -167,8 +167,37 @@ final class SettingsStore {
         }
     }
 
+    /// Status panel width in points (user-resizable; remembered across opens).
+    var panelWidth: Double {
+        didSet {
+            let clamped = Self.clampPanelWidth(panelWidth)
+            if panelWidth != clamped {
+                panelWidth = clamped
+                return
+            }
+            persist()
+        }
+    }
+
+    /// Status panel height in points (user-resizable; remembered across opens).
+    var panelHeight: Double {
+        didSet {
+            let clamped = Self.clampPanelHeight(panelHeight)
+            if panelHeight != clamped {
+                panelHeight = clamped
+                return
+            }
+            persist()
+        }
+    }
+
+    /// Remote machines configured in Settings (SSH Host alias + tunnel). Local Mac is implicit.
+    var machines: [MachineConfig] {
+        didSet { persist() }
+    }
+
     private let defaults = UserDefaults.standard
-    private let key = "nerve.settings.v4"
+    private let key = "nerve.settings.v5"
     private var isLoading = true
 
     private func notifyRibbonAppearance() {
@@ -187,12 +216,25 @@ final class SettingsStore {
     static let ribbonLengthScaleRange: ClosedRange<Double> = 0.5...2.0
     static let ribbonThicknessRange: ClosedRange<Double> = 3...12
 
+    static let defaultPanelWidth: Double = 340
+    static let defaultPanelHeight: Double = 360
+    static let panelWidthRange: ClosedRange<Double> = 280...560
+    static let panelHeightRange: ClosedRange<Double> = 180...720
+
     static func clampRibbonLengthScale(_ v: Double) -> Double {
         min(ribbonLengthScaleRange.upperBound, max(ribbonLengthScaleRange.lowerBound, v))
     }
 
     static func clampRibbonThickness(_ v: Double) -> Double {
         min(ribbonThicknessRange.upperBound, max(ribbonThicknessRange.lowerBound, v))
+    }
+
+    static func clampPanelWidth(_ v: Double) -> Double {
+        min(panelWidthRange.upperBound, max(panelWidthRange.lowerBound, v))
+    }
+
+    static func clampPanelHeight(_ v: Double) -> Double {
+        min(panelHeightRange.upperBound, max(panelHeightRange.lowerBound, v))
     }
 
     init() {
@@ -216,12 +258,18 @@ final class SettingsStore {
         dndEndMinutes = 8 * 60
         hasCompletedFirstRun = false
         hasSeenCoachMarks = false
-        panelGroupMode = .priority
+        panelGroupMode = .machine
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
+        panelWidth = Self.defaultPanelWidth
+        panelHeight = Self.defaultPanelHeight
+        machines = []
 
         if let data = UserDefaults.standard.data(forKey: key),
            let p = try? JSONDecoder().decode(Persisted.self, from: data) {
+            apply(p)
+        } else if let data = UserDefaults.standard.data(forKey: "nerve.settings.v4"),
+                  let p = try? JSONDecoder().decode(Persisted.self, from: data) {
             apply(p)
         } else if let data = UserDefaults.standard.data(forKey: "nerve.settings.v3"),
                   let p = try? JSONDecoder().decode(PersistedV3.self, from: data) {
@@ -258,9 +306,16 @@ final class SettingsStore {
         dndEndMinutes = p.dndEndMinutes
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
-        panelGroupMode = p.panelGroupMode ?? .priority
+        if let mode = p.panelGroupMode {
+            panelGroupMode = mode
+        } else {
+            panelGroupMode = .machine
+        }
         ribbonLengthScale = Self.clampRibbonLengthScale(p.ribbonLengthScale ?? Self.defaultRibbonLengthScale)
         ribbonThickness = Self.clampRibbonThickness(p.ribbonThickness ?? Self.defaultRibbonThickness)
+        panelWidth = Self.clampPanelWidth(p.panelWidth ?? Self.defaultPanelWidth)
+        panelHeight = Self.clampPanelHeight(p.panelHeight ?? Self.defaultPanelHeight)
+        machines = p.machines ?? []
     }
 
     private func applyV3(_ p: PersistedV3) {
@@ -283,9 +338,11 @@ final class SettingsStore {
         dndEndMinutes = p.dndEndMinutes
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
-        panelGroupMode = p.panelGroupMode ?? .priority
+        panelGroupMode = p.panelGroupMode ?? .machine
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
+        panelWidth = Self.defaultPanelWidth
+        panelHeight = Self.defaultPanelHeight
         // Privacy/storage flags intentionally dropped — subjects are memory-only.
     }
 
@@ -340,14 +397,30 @@ final class SettingsStore {
         }
     }
 
-    func toggleMute(sourceId: String) {
-        if mutedSourceIds.contains(sourceId) { mutedSourceIds.remove(sourceId) }
-        else { mutedSourceIds.insert(sourceId) }
+    func toggleMute(producerId: String) {
+        if mutedSourceIds.contains(producerId) { mutedSourceIds.remove(producerId) }
+        else { mutedSourceIds.insert(producerId) }
     }
 
     func toggleMuteProject(_ project: String) {
         if mutedProjectIds.contains(project) { mutedProjectIds.remove(project) }
         else { mutedProjectIds.insert(project) }
+    }
+
+    func upsertMachine(_ machine: MachineConfig) {
+        if let idx = machines.firstIndex(where: { $0.id == machine.id }) {
+            machines[idx] = machine
+        } else {
+            machines.append(machine)
+        }
+    }
+
+    func removeMachine(id: UUID) {
+        machines.removeAll { $0.id == id }
+    }
+
+    func machine(id: UUID) -> MachineConfig? {
+        machines.first { $0.id == id }
     }
 
     var effectiveAnimationsEnabled: Bool {
@@ -379,7 +452,10 @@ final class SettingsStore {
             hasSeenCoachMarks: hasSeenCoachMarks,
             panelGroupMode: panelGroupMode,
             ribbonLengthScale: ribbonLengthScale,
-            ribbonThickness: ribbonThickness
+            ribbonThickness: ribbonThickness,
+            panelWidth: panelWidth,
+            panelHeight: panelHeight,
+            machines: machines
         )
         if let data = try? JSONEncoder().encode(value) {
             defaults.set(data, forKey: key)
@@ -410,6 +486,9 @@ final class SettingsStore {
         var panelGroupMode: PanelGroupMode?
         var ribbonLengthScale: Double?
         var ribbonThickness: Double?
+        var panelWidth: Double?
+        var panelHeight: Double?
+        var machines: [MachineConfig]?
     }
 
     /// Subset of v3 prefs we still care about (storage/privacy fields ignored).

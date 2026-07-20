@@ -1,6 +1,6 @@
 # Nerve for macOS
 
-Lightweight **menu-bar** status hub for long-running work: agents, builds, tests, jobs, and custom subjects.
+Lightweight **menu-bar** status hub for long-running work: sessions, builds, tests, jobs — all modeled as **Jobs** on **Machines**.
 
 Nerve does **not** run your agents. It aggregates status they push over a local HTTP ingest API into one continuous ribbon.
 
@@ -19,18 +19,25 @@ A continuous **ribbon** appears in the macOS menu bar (no Dock icon, no floating
 | **Left-click** ribbon | Status panel (↑/↓, Enter expand; detail + timeline + actions) |
 | **Right-click** ribbon | **Settings…** or **Quit Nerve** |
 
-Settings tabs: **General** · **Appearance** (ribbon size + status → color map) · **Notifications** · **About**
+Settings tabs: **General** · **Machines** · **Appearance** · **Notifications** · **About**
 
-The status panel **Group by** control (Priority / Status / Source) reorders the menu-bar ribbon to match the panel list.
+### Machines (Settings — no CLI)
+
+1. Open **Settings → Machines**
+2. **This Mac** is always present (alias = hostname short name)
+3. **Add Machine…** for a remote: alias, host, SSH user, optional identity file
+4. Toggle **Enabled** / **Connect** — Nerve writes a managed block into `~/.ssh/config` and opens `ssh -N` with `RemoteForward` so the remote’s `127.0.0.1:17890` reaches this Mac
+
+Use the **remote hostname short name** as the alias so hooks match without extra setup.
 
 ```bash
-./scripts/inject_demo.sh   # or: curl -X POST http://127.0.0.1:17890/v1/demo
+./scripts/inject_demo.sh
 ./scripts/verify_loop.sh
 ```
 
 ## Agent plugins (Claude Code · Codex · Grok)
 
-Push live agent sessions into the ribbon from **one GitHub marketplace**. No install scripts; no nested marketplace path.
+Push live sessions as **jobs** from **one GitHub marketplace**. Hooks are fail-open, **stateless**, and use **no environment variables**.
 
 | Harness | Install |
 |---------|---------|
@@ -38,21 +45,19 @@ Push live agent sessions into the ribbon from **one GitHub marketplace**. No ins
 | **Codex** | `codex plugin marketplace add Roy-Kid/nerve` then `codex plugin add nerve@nerve` |
 | **Grok** | Same Claude-compatible marketplace / plugin |
 
-Then start Nerve and open a session — the ribbon shows e.g. **Claude Code — &lt;project&gt;** or **Codex — &lt;project&gt;**.
-
 Full plugin docs: [`plugins/nerve/README.md`](./plugins/nerve/README.md)
 
 ```bash
-# Offline hook unit tests
 python3 sources/agents/tests/test_nerve_hook.py
 ```
 
 ## Privacy (by design)
 
-- **Subjects, timelines, and pending actions are memory-only** for the current process.
-- Quitting Nerve clears them. Nothing is written under Application Support for subject data.
-- Only **preferences** (colors, notification toggles, DND, mute lists, coach flags) use `UserDefaults`.
-- Loopback ingest only (`127.0.0.1`).
+- **Jobs, timelines, and pending actions are memory-only** for the current process.
+- Quitting Nerve clears them.
+- Only **preferences** (machines list, colors, notifications, coach flags) use `UserDefaults`.
+- Machine SSH definitions are also mirrored into a **managed block** in `~/.ssh/config`.
+- Loopback ingest only (`127.0.0.1`); remotes arrive via SSH reverse forward.
 
 ## Ingest API
 
@@ -61,16 +66,45 @@ Loopback: `http://127.0.0.1:17890`
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/v1/health` | Liveness |
-| GET | `/v1/subjects` | Current subjects (in memory) |
-| POST | `/v1/snapshot` | Full subject snapshot(s) |
-| POST | `/v1/events` | Incremental events |
-| POST | `/v1/demo` | Built-in demo subjects |
-| POST | `/v1/clear` | Clear in-memory subjects |
-| GET | `/v1/actions/pending?sourceId=` | Poll remote action queue |
-| POST | `/v1/actions/result?sourceId=` | Report action completion |
+| GET | `/v1/jobs` | Current jobs (in memory) |
+| POST | `/v1/snapshot` | Full job snapshot(s) — requires `alias` |
+| POST | `/v1/events` | Incremental events — requires `alias` when creating jobs |
+| POST | `/v1/demo` | Built-in demo jobs |
+| POST | `/v1/clear` | Clear in-memory jobs |
+| GET | `/v1/actions/pending?producerId=` | Poll action queue |
+| POST | `/v1/actions/result?producerId=` | Report action completion |
 | POST | `/v1/actions/invoke` | Invoke as from UI |
 
-Wire format: [`fixtures/demo_snapshot.json`](./fixtures/demo_snapshot.json).
+### Snapshot body
+
+```json
+{
+  "alias": "gpu-box",
+  "machineKind": "linux",
+  "jobs": [
+    {
+      "id": "claude-code:sess_1",
+      "kind": "session",
+      "name": "Claude Code — nerve",
+      "alias": "gpu-box",
+      "producer": { "id": "claude-code", "name": "Claude Code", "kind": "agent.claude" },
+      "lifecycle": "active",
+      "attention": { "level": "none" },
+      "health": "ok",
+      "progress": { "kind": "none" },
+      "createdAt": "…",
+      "updatedAt": "…",
+      "version": 1
+    }
+  ]
+}
+```
+
+- **`alias`** — free-form machine label shown in the panel (any string; Settings → Machines is only for SSH tunnels).
+- **`kind`** — job shape (`session`, `build`, `test`, …), not “agent”.
+- **`producer`** — who reported the job.
+
+Wire sample: [`fixtures/demo_snapshot.json`](./fixtures/demo_snapshot.json).
 
 ## Ribbon statuses (default colors)
 
@@ -80,33 +114,31 @@ Wire format: [`fixtures/demo_snapshot.json`](./fixtures/demo_snapshot.json).
 | Attention | Orange | Needs input, auth, or decision |
 | Waiting | Purple | Waiting on system / resources / deps |
 | Running | Blue | Actively executing |
-| Success | Green | Recently completed OK |
+| Success | Green | Reserved (sessions leave the panel on `SessionEnd`) |
 | Inactive | Gray | Paused, idle, or unknown |
 
-Edit under **Settings → Appearance** (reset to defaults anytime).
+Open agent sessions stay on the panel while `lifecycle` is active. On **`SessionEnd`** the job is removed immediately (no Recent / Success linger). Waiting for input is **Attention**, not leave.
 
 ## Requirements
 
 - macOS 14+
-- Xcode 15+ (tested with Xcode 26)
+- Xcode 15+
 - Python 3 (agent hook plugin only)
+- OpenSSH client (for remote machines)
 
 ## Layout
 
 ```
-.claude-plugin/          GitHub marketplace (Claude + Codex discover this)
-plugins/nerve/           Agent status plugin (hooks → local ingest)
-sources/agents/          Hook tests + symlink to plugin script
+.claude-plugin/          GitHub marketplace
+plugins/nerve/           Hooks → local ingest (jobs + alias)
+sources/agents/          Hook tests + symlink
 Nerve/Nerve/
-  App/                   NerveApp, AppModel, Settings
-  Models/                Subject, Event, History, Actions, CoreTypes
-  Store/                 SubjectStore (memory), SettingsStore
-  Services/              Notifications, ActionService
+  App/                   AppModel, Settings (Machines tab)
+  Models/                Job, MachineConfig, events
+  Store/                 JobStore (memory), SettingsStore
+  Services/              Notifications, Actions, SSH + tunnels
   Ingest/                Loopback HTTP
-  UI/MenuBar             Status-item ribbon + context menu
-  UI/Panel               Status popover
-  UI/Onboarding          First-run coach
-  UI/Ribbon              Palette helpers
+  UI/…                   Ribbon, panel, coach
 fixtures/                Demo snapshot JSON
 scripts/                 run / inject_demo / verify_loop
 docs/                    Implementation status

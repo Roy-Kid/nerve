@@ -1,13 +1,34 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
-/// Borderless status list. Left-click ribbon opens this.
+private enum PanelConfirmation: Identifiable {
+    case clearAll
+    case destructiveAction(actionId: String, jobId: String, title: String, producer: String)
+
+    var id: String {
+        switch self {
+        case .clearAll:
+            return "clear-all"
+        case let .destructiveAction(actionId, jobId, _, _):
+            return "\(jobId):\(actionId)"
+        }
+    }
+}
+
+/// Status list shown under the menu-bar ribbon.
+/// All visible chrome and controls are rendered by SwiftUI.
 struct StatusPanelView: View {
-    @Environment(SubjectStore.self) private var store
+    @Environment(JobStore.self) private var store
     @Environment(SettingsStore.self) private var settings
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @FocusState private var listFocused: Bool
     @State private var expandedId: String?
+    @State private var confirmation: PanelConfirmation?
+    @State private var resizeOrigin: CGSize?
+    @State private var livePanelSize: CGSize?
+    /// Pins MenuBarExtra window top-left while dragging so the panel grows down/right
+    /// instead of re-centering under the status item (the classic “runs away” bug).
+    @State private var resizeAnchor = PanelResizeAnchor()
 
     /// User preference + system Reduce Motion.
     private var animate: Bool { settings.effectiveAnimationsEnabled && !systemReduceMotion }
@@ -18,13 +39,30 @@ struct StatusPanelView: View {
             thinDivider
             statusBody
         }
-        .frame(width: 340)
-        .frame(minHeight: 160, maxHeight: 480)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(
+            width: renderedPanelSize.width,
+            height: renderedPanelSize.height,
+            alignment: .topLeading
+        )
+        .overlay(alignment: .bottomTrailing) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 8, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tertiary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .gesture(resizeGesture)
+                .help("Resize panel")
+                .accessibilityLabel("Resize panel")
+        }
+        // Host window bridge: re-pins origin after every layout pass during resize.
+        .background(PanelWindowBridge(anchor: resizeAnchor))
+        // Keep ↑/↓ keyboard focus without the system blue focus ring around the panel.
         .focusable()
+        .focusEffectDisabled()
         .focused($listFocused)
         .onAppear { listFocused = true }
-        .onChange(of: store.selectedSubjectId) { _, id in
+        .onChange(of: store.selectedJobId) { _, id in
             if let id { expandedId = id }
         }
         .onKeyPress(.downArrow) {
@@ -45,16 +83,74 @@ struct StatusPanelView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Nerve status panel")
+        .alert(item: $confirmation) { item in
+            confirmationAlert(item)
+        }
+        .onAppear { store.panelOpen = true }
+        .onDisappear {
+            store.panelOpen = false
+            resizeAnchor.endResize()
+            resizeOrigin = nil
+            livePanelSize = nil
+        }
     }
 
-    private var listedSubjects: [Subject] {
-        store.flatStatusSubjects(mode: settings.panelGroupMode)
+    private var renderedPanelSize: CGSize {
+        livePanelSize ?? CGSize(
+            width: CGFloat(SettingsStore.clampPanelWidth(settings.panelWidth)),
+            height: CGFloat(SettingsStore.clampPanelHeight(settings.panelHeight))
+        )
+    }
+
+    private var resizeGesture: some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { value in
+                let origin = resizeOrigin ?? renderedPanelSize
+                if resizeOrigin == nil {
+                    resizeOrigin = origin
+                    resizeAnchor.beginResize()
+                }
+                let next = CGSize(
+                    width: CGFloat(SettingsStore.clampPanelWidth(
+                        Double(origin.width + value.translation.width)
+                    )),
+                    height: CGFloat(SettingsStore.clampPanelHeight(
+                        Double(origin.height + value.translation.height)
+                    ))
+                )
+                // No implicit animation — size must track the cursor 1:1.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    livePanelSize = next
+                }
+                // Immediate pin + layout-pass pin (bridge) fights MenuBarExtra re-anchor.
+                resizeAnchor.pinTopLeft(contentSize: next)
+            }
+            .onEnded { _ in
+                if let livePanelSize {
+                    settings.panelWidth = Double(livePanelSize.width)
+                    settings.panelHeight = Double(livePanelSize.height)
+                }
+                resizeAnchor.endResize()
+                resizeOrigin = nil
+                // Keep live size one frame so clearing doesn't flash default before
+                // settings-backed size is rendered.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    self.livePanelSize = nil
+                }
+            }
+    }
+
+    private var listedSubjects: [Job] {
+        store.flatStatusJobs(mode: settings.panelGroupMode)
     }
 
     private var thinDivider: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.08))
-            .frame(height: 1)
+        Divider()
+            .accessibilityHidden(true)
     }
 
     private func moveFocus(_ delta: Int) {
@@ -62,7 +158,7 @@ struct StatusPanelView: View {
         guard !list.isEmpty else { return }
         let next = min(max(0, store.focusedListIndex + delta), list.count - 1)
         store.focusedListIndex = next
-        store.selectedSubjectId = list[next].id
+        store.selectedJobId = list[next].id
     }
 
     private func toggleFocused() {
@@ -73,38 +169,73 @@ struct StatusPanelView: View {
             if expandedId == id { expandedId = nil }
             else {
                 expandedId = id
-                store.selectedSubjectId = id
+                store.selectedJobId = id
             }
         }
     }
 
-    /// Center control: click cycles Priority → Status → Source → …
-    private var groupModeToggle: some View {
-        Button(action: cycleGroupMode) {
-            HStack(spacing: 4) {
-                Text(settings.panelGroupMode.title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
-            .contentShape(Capsule())
+    /// Cycles Machine → Priority → Status. Icon-only (`arrow.up.arrow.down`).
+    private var groupModeButton: some View {
+        headerIconButton(
+            systemName: "arrow.up.arrow.down",
+            help: "Group by \(settings.panelGroupMode.title). Click to cycle: Machine → Priority → Status",
+            accessibilityLabel: "Group by \(settings.panelGroupMode.title)",
+            accessibilityHint: "Cycles grouping mode"
+        ) {
+            cycleGroupMode()
         }
-        .buttonStyle(.plain)
-        .help("Click to switch grouping: Priority → Status → Source")
-        .accessibilityLabel("Group by \(settings.panelGroupMode.title)")
-        .accessibilityHint("Cycles grouping mode")
+    }
+
+    private var refreshButton: some View {
+        headerIconButton(
+            systemName: "arrow.clockwise",
+            help: "Refresh ribbon and expire stale pending actions",
+            accessibilityLabel: "Refresh",
+            accessibilityHint: "Refreshes presentation"
+        ) {
+            refreshPresentation()
+        }
+    }
+
+    private var clearButton: some View {
+        headerIconButton(
+            systemName: "trash",
+            help: "Clear all jobs from memory",
+            accessibilityLabel: "Clear all",
+            accessibilityHint: "Removes all jobs from the panel"
+        ) {
+            confirmClearAll()
+        }
+        .disabled(store.allJobs.isEmpty)
+    }
+
+    private func headerIconButton(
+        systemName: String,
+        help: String,
+        accessibilityLabel: String,
+        accessibilityHint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint)
         .accessibilityAddTraits(.isButton)
     }
 
     private func cycleGroupMode() {
         let all = PanelGroupMode.allCases
         guard let idx = all.firstIndex(of: settings.panelGroupMode) else {
-            settings.panelGroupMode = .priority
+            settings.panelGroupMode = .machine
             return
         }
         let next = all[(idx + 1) % all.count]
@@ -114,26 +245,72 @@ struct StatusPanelView: View {
         }
     }
 
-    /// Status (left) + group mode (center) + counts (right) on one row.
+    private func refreshPresentation() {
+        store.expireStalePendingActions()
+        store.ribbonInvalidationSink?()
+    }
+
+    private func confirmClearAll() {
+        confirmation = .clearAll
+    }
+
+    /// Twin metric chips on the left (same glyph family); icon-only actions on the right.
     private var header: some View {
-        ZStack {
-            HStack(spacing: 8) {
-                Text("Status")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer(minLength: 4)
-                Text("\(store.activeCount)")
-                    .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if store.attentionCount > 0 {
-                    Text("\(store.attentionCount) attention")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color(red: 1.0, green: 0.48, blue: 0.08))
-                }
+        HStack(spacing: 10) {
+            headerMetric(
+                systemName: "play.circle.fill",
+                count: store.activeCount,
+                color: .blue,
+                help: "\(store.activeCount) running",
+                accessibilityLabel: "\(store.activeCount) running"
+            )
+
+            if store.attentionCount > 0 {
+                headerMetric(
+                    systemName: "exclamationmark.circle.fill",
+                    count: store.attentionCount,
+                    color: .orange,
+                    help: "\(store.attentionCount) need attention",
+                    accessibilityLabel: "\(store.attentionCount) attention"
+                )
             }
-            groupModeToggle
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 0) {
+                groupModeButton
+                refreshButton
+                clearButton
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .frame(height: 38)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Status")
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// Shared chip: filled-circle SF Symbol + monospaced count.
+    private func headerMetric(
+        systemName: String,
+        count: Int,
+        color: Color,
+        help: String,
+        accessibilityLabel: String
+    ) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .frame(width: 14, height: 14)
+            Text("\(count)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+        }
+        .foregroundStyle(color)
+        .help(help)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     @ViewBuilder
@@ -150,7 +327,7 @@ struct StatusPanelView: View {
                             ExpandableSubjectRow(
                                 subject: subject,
                                 isExpanded: expandedId == subject.id,
-                                isKeyboardFocused: store.selectedSubjectId == subject.id,
+                                isKeyboardFocused: store.selectedJobId == subject.id,
                                 timeline: store.timeline(for: subject.id),
                                 onToggle: {
                                     withAnimation(animate ? .easeInOut(duration: 0.14) : nil) {
@@ -158,7 +335,7 @@ struct StatusPanelView: View {
                                             expandedId = nil
                                         } else {
                                             expandedId = subject.id
-                                            store.selectedSubjectId = subject.id
+                                            store.selectedJobId = subject.id
                                             if let idx = listedSubjects.firstIndex(where: { $0.id == subject.id }) {
                                                 store.focusedListIndex = idx
                                             }
@@ -175,68 +352,228 @@ struct StatusPanelView: View {
                 }
                 .padding(.bottom, 6)
             }
+            .scrollIndicators(.automatic)
         }
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Nothing running")
-                .font(.system(size: 12, weight: .medium))
+        ContentUnavailableView {
+            Label("Nothing Running", systemImage: "waveform.path.ecg")
+        } description: {
             Text("Send snapshots to the local ingest API, or POST /v1/demo for sample data. State lives in memory only.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        } actions: {
             Text("POST 127.0.0.1:\(settings.ingestPort)/v1/snapshot")
-                .font(.system(size: 10, design: .monospaced))
+                .font(.caption2.monospaced())
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .symbolRenderingMode(.hierarchical)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
     }
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
-            .tracking(0.6)
             .padding(.horizontal, 12)
             .padding(.top, 10)
-            .padding(.bottom, 2)
+            .padding(.bottom, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var rowDivider: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.06))
-            .frame(height: 1)
-            .padding(.leading, 28)
+        Divider()
+            .padding(.leading, 36)
             .accessibilityHidden(true)
     }
 
-    private func handleAction(actionId: String, subject: Subject) {
+    private func handleAction(actionId: String, subject: Job) {
         guard let action = subject.actions.first(where: { $0.id == actionId }) else { return }
         if ActionService.isDestructive(action) {
-            let alert = NSAlert()
-            alert.messageText = action.title
-            alert.informativeText = "Run “\(action.title)” on \(subject.name)? This is provided by \(subject.source.name ?? subject.source.id)."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "Confirm")
-            alert.addButton(withTitle: "Cancel")
-            if alert.runModal() == .alertFirstButtonReturn {
-                _ = store.performAction(actionId: actionId, subjectId: subject.id, confirmed: true)
-            }
+            confirmation = .destructiveAction(
+                actionId: actionId,
+                jobId: subject.id,
+                title: action.title,
+                producer: subject.producer.name ?? subject.producer.id
+            )
         } else {
-            _ = store.performAction(actionId: actionId, subjectId: subject.id, confirmed: true)
+            _ = store.performAction(actionId: actionId, jobId: subject.id, confirmed: true)
         }
+    }
+
+    private func confirmationAlert(_ item: PanelConfirmation) -> Alert {
+        switch item {
+        case .clearAll:
+            return Alert(
+                title: Text("Clear all jobs?"),
+                message: Text("Removes every job, timeline, and pending action from memory. Incoming snapshots can repopulate the list."),
+                primaryButton: .destructive(Text("Clear")) {
+                    expandedId = nil
+                    store.clearAll()
+                },
+                secondaryButton: .cancel()
+            )
+
+        case let .destructiveAction(actionId, jobId, title, producer):
+            return Alert(
+                title: Text(title),
+                message: Text("Run “\(title)” on this job? This is provided by \(producer)."),
+                primaryButton: .destructive(Text("Confirm")) {
+                    _ = store.performAction(actionId: actionId, jobId: jobId, confirmed: true)
+                },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+}
+
+struct StatusPanelRoot: View {
+    @Bindable var store: JobStore
+    @Bindable var settings: SettingsStore
+
+    var body: some View {
+        StatusPanelView()
+            .environment(store)
+            .environment(settings)
+    }
+}
+
+// MARK: - MenuBarExtra resize anchor
+
+/// Holds the hosting `NSWindow` and a screen-space top-left pin for the duration
+/// of a corner-drag resize. MenuBarExtra re-centers under the status item whenever
+/// content size changes; re-applying the pin after layout keeps growth down/right.
+@MainActor
+final class PanelResizeAnchor {
+    weak var window: NSWindow?
+    /// Screen coordinates: x = minX, y = maxY (top edge).
+    private var pinnedTopLeft: CGPoint?
+    private(set) var isResizing = false
+
+    func beginResize() {
+        guard let window else { return }
+        isResizing = true
+        let frame = window.frame
+        pinnedTopLeft = CGPoint(x: frame.minX, y: frame.maxY)
+    }
+
+    func endResize() {
+        isResizing = false
+        pinnedTopLeft = nil
+    }
+
+    /// Resize window content to `contentSize` while keeping the captured top-left fixed.
+    func pinTopLeft(contentSize: CGSize) {
+        guard let window, isResizing else { return }
+        let pin = pinnedTopLeft ?? CGPoint(x: window.frame.minX, y: window.frame.maxY)
+        pinnedTopLeft = pin
+
+        let contentRect = NSRect(
+            x: pin.x,
+            y: pin.y - contentSize.height,
+            width: contentSize.width,
+            height: contentSize.height
+        )
+        // Convert content rect → full window frame (title bar / shadow chrome).
+        let frame = window.frameRect(forContentRect: contentRect)
+        // Keep top-left of the *window* aligned with the original content top-left
+        // when chrome differs; prefer the explicit content placement above.
+        var placed = frame
+        // frameRect(forContentRect:) already places correctly in screen space for
+        // borderless MenuBarExtra windows; still force top edge in case of drift.
+        let contentAfter = window.contentRect(forFrameRect: placed)
+        let dy = pin.y - contentAfter.maxY
+        let dx = pin.x - contentAfter.minX
+        if abs(dx) > 0.5 || abs(dy) > 0.5 {
+            placed.origin.x += dx
+            placed.origin.y += dy
+        }
+        if placed != window.frame {
+            window.setFrame(placed, display: true, animate: false)
+        }
+    }
+
+    /// Called from the bridge view after AppKit layout — re-apply pin if the system moved us.
+    func reassertPinIfNeeded() {
+        guard isResizing, let window, let pin = pinnedTopLeft else { return }
+        let content = window.contentRect(forFrameRect: window.frame)
+        let dx = pin.x - content.minX
+        let dy = pin.y - content.maxY
+        guard abs(dx) > 0.5 || abs(dy) > 0.5 else { return }
+        var frame = window.frame
+        frame.origin.x += dx
+        frame.origin.y += dy
+        window.setFrame(frame, display: true, animate: false)
+    }
+}
+
+/// Invisible NSView that discovers the MenuBarExtra host window and re-pins it
+/// after each layout pass while a resize is active.
+private struct PanelWindowBridge: NSViewRepresentable {
+    let anchor: PanelResizeAnchor
+
+    func makeNSView(context: Context) -> PanelResizeBridgeView {
+        let view = PanelResizeBridgeView()
+        view.anchor = anchor
+        return view
+    }
+
+    func updateNSView(_ nsView: PanelResizeBridgeView, context: Context) {
+        nsView.anchor = anchor
+        if let window = nsView.window {
+            anchor.window = window
+        }
+    }
+}
+
+private final class PanelResizeBridgeView: NSView {
+    var anchor: PanelResizeAnchor?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        anchor?.window = window
+    }
+
+    override func layout() {
+        super.layout()
+        if let window {
+            anchor?.window = window
+        }
+        // After MenuBarExtra reflows content size it recenters; pull origin back.
+        anchor?.reassertPinIfNeeded()
+    }
+}
+
+// MARK: - Status color dot
+
+/// Native semantic status marker with the standard delayed help tip.
+private struct StatusColorDot: View {
+    let status: RibbonStatus
+    let color: Color
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .overlay {
+                Circle()
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            }
+            .frame(width: 8, height: 8)
+            // Keep the native help target comfortable without enlarging the dot.
+            .frame(width: 16, height: 16)
+            .contentShape(Rectangle())
+            .help(status.panelTitle)
+            .accessibilityLabel(status.panelTitle)
+            .accessibilityAddTraits(.isStaticText)
     }
 }
 
 // MARK: - Single-line expandable subject
 
 struct ExpandableSubjectRow: View {
-    let subject: Subject
+    let subject: Job
     let isExpanded: Bool
     var isKeyboardFocused: Bool = false
     var timeline: [TimelineEntry]
@@ -249,159 +586,153 @@ struct ExpandableSubjectRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: onToggle) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(RibbonPalette.color(for: subject.ribbonStatus, scheme: colorScheme, map: settings.statusColors))
-                        .frame(width: 7, height: 7)
-                        .shadow(
-                            color: RibbonPalette.color(for: subject.ribbonStatus, scheme: colorScheme, map: settings.statusColors).opacity(0.65),
-                            radius: 2.5
-                        )
-                        .accessibilityHidden(true)
+            HStack(spacing: 8) {
+                StatusColorDot(
+                    status: subject.ribbonStatus,
+                    color: RibbonPalette.color(
+                        for: subject.ribbonStatus,
+                        scheme: colorScheme,
+                        map: settings.statusColors
+                    )
+                )
 
-                    Text(subject.name)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .layoutPriority(1)
+                Button(action: onToggle) {
+                    HStack(spacing: 8) {
+                        Text(subject.name)
+                            .font(.body.weight(.medium))
+                            .lineLimit(1)
+                            .layoutPriority(1)
 
-                    Text(subject.displaySummary)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(subject.displaySummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(timeLabel)
-                        .font(.system(size: 10).monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                        .fixedSize()
+                        Text(timeLabel)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.quaternary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .accessibilityHidden(true)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.quaternary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .background(
-                hovered || isExpanded || isKeyboardFocused
-                    ? Color.primary.opacity(isKeyboardFocused ? 0.08 : 0.045)
-                    : Color.clear
-            )
-            .overlay(
-                isKeyboardFocused
-                    ? RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.55), lineWidth: 1)
-                    : nil
-            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background { rowSelectionBackground }
             .onHover { hovered = $0 }
-            .accessibilityLabel("\(subject.name), \(subject.displaySummary), \(subject.ribbonStatus.rawValue)")
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(subject.name), \(subject.displaySummary), \(subject.ribbonStatus.panelTitle)")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(isExpanded ? "Collapse details" : "Expand details")
             .accessibilityAddTraits(isExpanded ? [.isSelected] : [])
+            .accessibilityAction { onToggle() }
 
             if isExpanded {
                 detailBlock
-                    .padding(.leading, 27)
-                    .padding(.trailing, 12)
-                    .padding(.bottom, 8)
+                    .padding(.leading, 28)
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 9)
                     .transition(.opacity)
             }
         }
     }
 
-    private var detailBlock: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            meta("Type", subject.type)
-            meta("Lifecycle", subject.lifecycle.rawValue)
-            meta("Current", subject.current?.summary ?? subject.current?.name ?? "—")
-            meta("Attention", attentionText)
-            meta("Health", subject.health.rawValue)
-            meta("Outcome", subject.outcome?.rawValue ?? "—")
-            meta("Progress", progressText)
-            meta("Source", subject.source.name ?? subject.source.id)
-            if let project = subject.context?.project ?? subject.context?.workspace {
-                meta("Project", project)
-            }
-            meta("Started", format(subject.startedAt ?? subject.createdAt))
-            meta("Updated", format(subject.updatedAt))
-
-            if !subject.actions.isEmpty {
-                HStack(spacing: 12) {
-                    ForEach(subject.actions) { action in
-                        Button(action.title) {
-                            onAction(action.id)
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(action.state == .available ? Color.accentColor : Color.secondary)
-                        .disabled(action.state != .available)
-                        .help(action.kind)
-                    }
-                }
-                .padding(.top, 4)
-            }
-
-            if !timeline.isEmpty {
-                Text("Timeline")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 6)
-                ForEach(timeline.prefix(8)) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-                            .font(.system(size: 10).monospacedDigit())
-                            .foregroundStyle(.quaternary)
-                            .frame(width: 52, alignment: .leading)
-                        Text(entry.title)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-            }
+    @ViewBuilder
+    private var rowSelectionBackground: some View {
+        if hovered || isExpanded || isKeyboardFocused {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(rowSelectionColor)
+                .padding(.horizontal, 6)
         }
-        .font(.system(size: 11))
+    }
+
+    private var rowSelectionColor: Color {
+        if isKeyboardFocused {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.30 : 0.14)
+        }
+        return Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.055)
+    }
+
+    private var detailBlock: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 4) {
+                meta("Status", subject.ribbonStatus.panelTitle)
+                if let summary = subject.current?.summary ?? subject.current?.name, !summary.isEmpty {
+                    meta("Doing", summary)
+                }
+                if let project = subject.context?.project, !project.isEmpty {
+                    meta("Project", project)
+                }
+                if !subject.alias.isEmpty {
+                    meta("Machine", subject.alias)
+                }
+                meta("Updated", format(subject.updatedAt))
+
+                if !subject.actions.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(subject.actions) { action in
+                            Button(
+                                action.title,
+                                role: ActionService.isDestructive(action) ? .destructive : nil
+                            ) {
+                                onAction(action.id)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .disabled(action.state != .available)
+                            .help(action.kind)
+                        }
+                    }
+                    .padding(.top, 5)
+                }
+
+                if !timeline.isEmpty {
+                    Divider()
+                        .padding(.vertical, 3)
+
+                    Text("Recent")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+
+                    ForEach(timeline.prefix(5)) { entry in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.quaternary)
+                                .frame(width: 52, alignment: .leading)
+                            Text(entry.title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+            .padding(2)
+        }
+        .groupBoxStyle(.automatic)
+        .font(.caption)
     }
 
     private func meta(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label)
                 .foregroundStyle(.tertiary)
-                .frame(width: 64, alignment: .leading)
+                .frame(width: 56, alignment: .leading)
             Text(value)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var attentionText: String {
-        var parts = [subject.attention.level.rawValue]
-        if let t = subject.attention.title { parts.append(t) }
-        else if let r = subject.attention.reason { parts.append(r) }
-        return parts.joined(separator: " · ")
-    }
-
-    private var progressText: String {
-        switch subject.progress.kind {
-        case .none: return "—"
-        case .indeterminate: return subject.progress.label ?? "Indeterminate"
-        case .determinate:
-            if let r = subject.progress.ratio { return "\(Int(r * 100))%" }
-            return subject.progress.label ?? "Determinate"
-        case .metrics:
-            if let m = subject.progress.metrics?.first {
-                if let c = m.current, let t = m.total {
-                    return "\(Int(c)) / \(Int(t)) \(m.unit ?? "")"
-                }
-                return m.label
-            }
-            return subject.progress.label ?? "Metrics"
         }
     }
 
@@ -423,5 +754,128 @@ struct ExpandableSubjectRow: View {
 
     private func format(_ date: Date) -> String {
         date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+// MARK: - SwiftUI menu-bar label
+
+struct MenuBarRibbonLabel: View {
+    @Bindable var store: JobStore
+    @Bindable var settings: SettingsStore
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+
+    private var animate: Bool {
+        settings.effectiveAnimationsEnabled && !systemReduceMotion
+    }
+
+    var body: some View {
+        ribbonImage
+            .contentShape(Rectangle())
+            .animation(
+                animate ? .easeInOut(duration: 0.28) : nil,
+                value: visualSignature
+            )
+            .accessibilityLabel("Nerve")
+            .accessibilityValue("\(store.activeCount) active jobs")
+    }
+
+    private var ribbonImage: Image {
+        let width = preferredWidth
+        let height: CGFloat = 22
+        let barHeight = min(18, max(3, CGFloat(settings.ribbonThickness)))
+        let rect = CGRect(
+            x: 2,
+            y: (height - barHeight) / 2,
+            width: max(6, width - 4),
+            height: barHeight
+        )
+        let path = Path(
+            roundedRect: rect,
+            cornerRadius: barHeight / 2,
+            style: .continuous
+        )
+        let gradient = Gradient(stops: ribbonStops)
+
+        return Image(
+            size: CGSize(width: width, height: height),
+            label: Text("Nerve status ribbon"),
+            opaque: false,
+            colorMode: .nonLinear
+        ) { context in
+            context.fill(
+                path,
+                with: .linearGradient(
+                    gradient,
+                    startPoint: CGPoint(x: rect.minX, y: rect.midY),
+                    endPoint: CGPoint(x: rect.maxX, y: rect.midY)
+                )
+            )
+            context.stroke(
+                path,
+                with: .color(Color.primary.opacity(0.22)),
+                lineWidth: 0.5
+            )
+        }
+        .renderingMode(.original)
+    }
+
+    private var preferredWidth: CGFloat {
+        let count = store.activeCount
+        if count == 0 {
+            return max(14, (22 * CGFloat(settings.ribbonLengthScale)).rounded())
+        }
+        let base = 28 + (100 - 28) * store.ribbonLengthFactor()
+        return min(220, max(16, base * CGFloat(settings.ribbonLengthScale))).rounded()
+    }
+
+    private var visualSignature: String {
+        "\(store.ribbonSignature(mode: settings.panelGroupMode))|\(settings.ribbonLengthScale)|\(settings.ribbonThickness)|\(settings.statusColors)"
+    }
+
+    private var ribbonStops: [Gradient.Stop] {
+        let segments = store.ribbonSegments(mode: settings.panelGroupMode)
+        guard !segments.isEmpty else {
+            let idle = statusColor(.inactive).opacity(0.55)
+            return [
+                .init(color: idle, location: 0),
+                .init(color: idle, location: 1),
+            ]
+        }
+
+        var stops: [Gradient.Stop] = []
+        var cursor: CGFloat = 0
+
+        for (index, segment) in segments.enumerated() {
+            let color = statusColor(segment.status)
+            let end = min(1, cursor + segment.weight)
+
+            if index == 0 {
+                stops.append(.init(color: color, location: 0))
+            }
+
+            if index < segments.count - 1 {
+                let next = segments[index + 1]
+                let blend = min(0.045, min(segment.weight, next.weight) * 0.28)
+                stops.append(.init(color: color, location: max(cursor, end - blend)))
+                stops.append(.init(color: statusColor(next.status), location: min(1, end + blend)))
+            } else {
+                stops.append(.init(color: color, location: 1))
+            }
+
+            cursor = end
+        }
+
+        return stops
+    }
+
+    private func statusColor(_ status: RibbonStatus) -> Color {
+        let rgb = settings.statusColors.color(for: status)
+        let lift = colorScheme == .dark ? 0.04 : 0
+        return Color(
+            red: rgb.r + (1 - rgb.r) * lift,
+            green: rgb.g + (1 - rgb.g) * lift,
+            blue: rgb.b + (1 - rgb.b) * lift
+        )
     }
 }

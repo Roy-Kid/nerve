@@ -17,16 +17,15 @@ enum PanelGroup: String, CaseIterable, Identifiable {
 }
 
 @Observable
-final class SubjectStore {
-    private(set) var subjects: [String: Subject] = [:]
+final class JobStore {
+    private(set) var jobs: [String: Job] = [:]
     private(set) var timelines: [String: [TimelineEntry]] = [:]
     private(set) var pendingActions: [PendingActionRequest] = []
 
     private var seenEventIds: Set<String> = []
     private var seenEventOrder: [String] = []
     private let maxSeenEvents = 4_000
-    private let maxRecentEnded = 50
-    private let maxTimelinePerSubject = 40
+    private let maxTimelinePerJob = 40
     private let maxPendingActions = 200
 
     private let clock: () -> Date
@@ -34,7 +33,7 @@ final class SubjectStore {
     private var pendingRibbonInvalidation = false
 
     var panelOpen: Bool = false
-    var selectedSubjectId: String?
+    var selectedJobId: String?
     var lastError: String?
     /// Accessibility: focused row in status list (keyboard)
     var focusedListIndex: Int = 0
@@ -42,7 +41,7 @@ final class SubjectStore {
     private(set) var revision: UInt64 = 0
 
     /// Set by AppModel after construction.
-    var notificationSink: ((Subject?, Subject) -> Void)?
+    var notificationSink: ((Job?, Job) -> Void)?
     /// Fired after any state change that should refresh the ribbon.
     var ribbonInvalidationSink: (() -> Void)?
     var settingsProvider: (() -> SettingsStore)?
@@ -55,27 +54,27 @@ final class SubjectStore {
 
     // MARK: - Queries
 
-    var allSubjects: [Subject] { Array(subjects.values) }
+    var allJobs: [Job] { Array(jobs.values) }
 
-    var activeSubjects: [Subject] {
-        subjects.values.filter { $0.lifecycle != .ended }.sorted(by: sortComparator)
+    var activeJobs: [Job] {
+        jobs.values.filter { $0.lifecycle != .ended }.sorted(by: sortComparator)
     }
 
-    var activeCount: Int { activeSubjects.count }
+    var activeCount: Int { activeJobs.count }
 
     var attentionCount: Int {
-        subjects.values.filter { $0.lifecycle != .ended && $0.attention.level >= .suggested }.count
+        jobs.values.filter { $0.lifecycle != .ended && $0.attention.level >= .suggested }.count
     }
 
-    var knownSources: [SourceInfo] {
-        var map: [String: SourceInfo] = [:]
-        for s in subjects.values { map[s.source.id] = s.source }
+    var knownProducers: [ProducerInfo] {
+        var map: [String: ProducerInfo] = [:]
+        for s in jobs.values { map[s.producer.id] = s.producer }
         return map.values.sorted { ($0.name ?? $0.id) < ($1.name ?? $1.id) }
     }
 
     var knownProjects: [String] {
         var set = Set<String>()
-        for s in subjects.values {
+        for s in jobs.values {
             if let p = s.context?.project { set.insert(p) }
             if let w = s.context?.workspace { set.insert(w) }
         }
@@ -83,12 +82,12 @@ final class SubjectStore {
     }
 
     /// Flat list for keyboard navigation under the default priority grouping.
-    var flatStatusSubjects: [Subject] {
-        flatStatusSubjects(mode: .priority)
+    var flatStatusJobs: [Job] {
+        flatStatusJobs(mode: .machine)
     }
 
     /// Flat list for keyboard navigation under a chosen grouping mode.
-    func flatStatusSubjects(mode: PanelGroupMode) -> [Subject] {
+    func flatStatusJobs(mode: PanelGroupMode) -> [Job] {
         statusSections(mode: mode).flatMap(\.subjects)
     }
 
@@ -105,29 +104,29 @@ final class SubjectStore {
             }
         case .status:
             return statusGroupedSections()
-        case .source:
-            return sourceGroupedSections()
+        case .machine:
+            return machineGroupedSections()
         }
     }
 
-    func openPendingActions(forSource sourceId: String?) -> [PendingActionRequest] {
+    func openPendingActions(forProducer producerId: String?) -> [PendingActionRequest] {
         let now = clock()
         return pendingActions.filter { req in
             guard req.state == .pending else { return false }
             if let exp = req.expiresAt, exp < now { return false }
-            if let sourceId { return req.sourceId == sourceId }
+            if let producerId { return req.producerId == producerId }
             return true
         }
     }
 
-    func subjects(in group: PanelGroup) -> [Subject] {
+    func subjects(in group: PanelGroup) -> [Job] {
         switch group {
         case .attention:
-            return subjects.values
+            return jobs.values
                 .filter { $0.lifecycle != .ended && $0.attention.level >= .informational }
                 .sorted(by: sortComparator)
         case .active:
-            return subjects.values
+            return jobs.values
                 .filter {
                     $0.lifecycle != .ended
                         && $0.attention.level < .informational
@@ -136,31 +135,20 @@ final class SubjectStore {
                 }
                 .sorted(by: sortComparator)
         case .recent:
-            return subjects.values
-                .filter { $0.lifecycle == .ended }
-                .sorted { a, b in
-                    (a.endedAt ?? a.updatedAt) > (b.endedAt ?? b.updatedAt)
-                }
-                .prefix(maxRecentEnded)
-                .map { $0 }
+            // Session close removes the job immediately — no Recent linger.
+            return []
         }
     }
 
-    /// Subjects eligible for the status list: all non-ended + capped recent ended.
-    private func panelListSubjects() -> [Subject] {
-        let active = subjects.values.filter { $0.lifecycle != .ended }
-        let recent = subjects.values
-            .filter { $0.lifecycle == .ended }
-            .sorted { (a, b) in
-                (a.endedAt ?? a.updatedAt) > (b.endedAt ?? b.updatedAt)
-            }
-            .prefix(maxRecentEnded)
-        return Array(active) + Array(recent)
+    /// Subjects eligible for the status list: open sessions only.
+    /// `SessionEnd` / ended lifecycle drops the job from the store (see `applySnapshot`).
+    private func panelListJobs() -> [Job] {
+        Array(jobs.values.filter { $0.lifecycle != .ended })
     }
 
     private func statusGroupedSections() -> [StatusSection] {
-        let list = panelListSubjects()
-        var buckets: [RibbonStatus: [Subject]] = [:]
+        let list = panelListJobs()
+        var buckets: [RibbonStatus: [Job]] = [:]
         for s in list {
             buckets[s.ribbonStatus, default: []].append(s)
         }
@@ -171,41 +159,32 @@ final class SubjectStore {
         }
     }
 
-    private func sourceGroupedSections() -> [StatusSection] {
-        let list = panelListSubjects()
-        var buckets: [String: (label: String, items: [Subject])] = [:]
+    private func machineGroupedSections() -> [StatusSection] {
+        let list = panelListJobs()
+        var buckets: [String: [Job]] = [:]
         for s in list {
-            let key = s.source.id
-            let label = s.source.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = (label?.isEmpty == false) ? label! : s.source.id
-            if buckets[key] == nil {
-                buckets[key] = (label: title, items: [])
-            }
-            buckets[key]!.items.append(s)
+            let key = s.alias.trimmingCharacters(in: .whitespacesAndNewlines)
+            buckets[key.isEmpty ? "unknown" : key, default: []].append(s)
         }
         return buckets
-            .map { key, value in
-                var items = value.items
-                items.sort(by: sortComparator)
-                return StatusSection(id: "source:\(key)", title: value.label, subjects: items)
+            .map { key, items in
+                var sorted = items
+                sorted.sort(by: sortComparator)
+                return StatusSection(id: "machine:\(key)", title: key, jobs: sorted)
             }
             .sorted { a, b in
-                // Sources with higher-attention subjects first, then name.
-                let aTop = a.subjects.first?.attention.level ?? .none
-                let bTop = b.subjects.first?.attention.level ?? .none
-                if aTop != bTop { return aTop > bTop }
-                return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+                a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
             }
     }
 
-    func subject(id: String) -> Subject? { subjects[id] }
+    func job(id: String) -> Job? { jobs[id] }
 
-    func timeline(for subjectId: String) -> [TimelineEntry] {
-        (timelines[subjectId] ?? []).sorted { $0.timestamp > $1.timestamp }
+    func timeline(for jobId: String) -> [TimelineEntry] {
+        (timelines[jobId] ?? []).sorted { $0.timestamp > $1.timestamp }
     }
 
 
-    private func sortComparator(_ a: Subject, _ b: Subject) -> Bool {
+    private func sortComparator(_ a: Job, _ b: Job) -> Bool {
         if a.attention.level != b.attention.level {
             return a.attention.level > b.attention.level
         }
@@ -230,23 +209,10 @@ final class SubjectStore {
         var weight: CGFloat
     }
 
-    /// Subjects that paint the ribbon colors.
-    /// Active work always counts; **recent ended** failure/success also count so red/green show
-    /// (SPEC: failure red, recent success green — both are typically ended subjects).
-    func ribbonColorSubjects() -> [Subject] {
-        var list = activeSubjects
-        let seen = Set(list.map(\.id))
-        // Recent ended with a clear outcome (same window as panel Recent)
-        for s in subjects(in: .recent) {
-            guard !seen.contains(s.id) else { continue }
-            switch s.ribbonStatus {
-            case .problem, .success:
-                list.append(s)
-            default:
-                break
-            }
-        }
-        return list
+    /// Subjects that paint the ribbon colors — open work only.
+    /// Ended sessions leave on `SessionEnd` and do not paint Success/Problem wedges.
+    func ribbonColorJobs() -> [Job] {
+        activeJobs
     }
 
     /// Ribbon layout follows the status-panel grouping mode.
@@ -254,17 +220,16 @@ final class SubjectStore {
     /// adjacent same-status subjects merge into one color band so switching
     /// Priority / Status / Source visibly reorders the continuous light strip.
     func ribbonSegments(mode: PanelGroupMode? = nil) -> [RibbonSegment] {
-        let resolved = mode ?? settingsProvider?().panelGroupMode ?? .priority
-        let paintIds = Set(ribbonColorSubjects().map(\.id))
+        let resolved = mode ?? settingsProvider?().panelGroupMode ?? .machine
+        let paintIds = Set(ribbonColorJobs().map(\.id))
         guard !paintIds.isEmpty else { return [] }
 
         // Panel order under the active grouping — this is what the user just switched.
-        var ordered: [Subject] = flatStatusSubjects(mode: resolved).filter { paintIds.contains($0.id) }
+        var ordered: [Job] = flatStatusJobs(mode: resolved).filter { paintIds.contains($0.id) }
 
-        // Ribbon-only extras (e.g. recent success/failure) not present in the flat list.
         if ordered.count < paintIds.count {
             let seen = Set(ordered.map(\.id))
-            for s in ribbonColorSubjects() where !seen.contains(s.id) {
+            for s in ribbonColorJobs() where !seen.contains(s.id) {
                 ordered.append(s)
             }
         }
@@ -353,12 +318,16 @@ final class SubjectStore {
         }
     }
 
-    /// Signature of ribbon appearance for cheap change detection.
+    /// Visual signature of the ribbon (segments / counts / weights) for change detection.
+    /// Intentionally excludes `revision` so tool churn that does not change ribbon
+    /// colors or length does not force a redraw / animation restart.
     func ribbonSignature(mode: PanelGroupMode? = nil) -> String {
-        let resolved = mode ?? settingsProvider?().panelGroupMode ?? .priority
+        let resolved = mode ?? settingsProvider?().panelGroupMode ?? .machine
         let segs = ribbonSegments(mode: resolved)
-        let body = segs.map { "\($0.id):\($0.status.rawValue):\($0.count)" }.joined(separator: ",")
-        return "n=\(activeCount)|r=\(revision)|g=\(resolved.rawValue)|\(body)"
+        let body = segs.map {
+            "\($0.status.rawValue):\($0.count):\(String(format: "%.3f", Double($0.weight)))"
+        }.joined(separator: ",")
+        return "n=\(activeCount)|g=\(resolved.rawValue)|\(body)"
     }
 
     // MARK: - Ingest
@@ -368,9 +337,16 @@ final class SubjectStore {
         beginRibbonBatch()
         defer { endRibbonBatch() }
         var applied = 0
-        if let list = envelope.subjects {
-            for s in list {
-                applySnapshot(s)
+        let envelopeAlias = envelope.alias?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let list = envelope.jobs {
+            for var job in list {
+                if job.alias.isEmpty, let envelopeAlias, !envelopeAlias.isEmpty {
+                    job.alias = envelopeAlias
+                }
+                if job.alias.isEmpty {
+                    job.alias = LocalMachine.alias
+                }
+                applySnapshot(job)
                 applied += 1
             }
         }
@@ -379,7 +355,6 @@ final class SubjectStore {
                 if apply(event: e) { applied += 1 }
             }
         }
-        pruneEnded()
         return applied
     }
 
@@ -390,10 +365,10 @@ final class SubjectStore {
         }
         rememberEventId(event.id)
 
-        if event.kind == .snapshot, let full = event.subject {
+        if event.kind == .snapshot, let full = event.job {
             applySnapshot(full)
             appendTimeline(
-                subjectId: full.id,
+                jobId: full.id,
                 kind: event.kind.rawValue,
                 title: "Snapshot",
                 at: event.timestamp
@@ -401,10 +376,10 @@ final class SubjectStore {
             return true
         }
 
-        if let full = event.subject, event.kind == .subjectCreated || subjects[event.subjectId] == nil {
+        if let full = event.job, event.kind == .jobCreated || jobs[event.jobId] == nil {
             applySnapshot(full)
             appendTimeline(
-                subjectId: full.id,
+                jobId: full.id,
                 kind: event.kind.rawValue,
                 title: "Created",
                 at: event.timestamp
@@ -412,22 +387,28 @@ final class SubjectStore {
             return true
         }
 
-        guard var existing = subjects[event.subjectId] else {
-            if event.kind == .subjectCreated || event.name != nil {
-                let src = SourceInfo(id: event.sourceId)
-                var s = Subject.make(
-                    id: event.subjectId,
-                    type: event.type ?? "custom.unknown",
-                    name: event.name ?? event.subjectId,
-                    source: src,
+        guard var existing = jobs[event.jobId] else {
+            if event.kind == .jobCreated || event.name != nil {
+                let src = ProducerInfo(id: event.producerId)
+                var s = Job.make(
+                    id: event.jobId,
+                    kind: event.jobKind ?? "session",
+                    name: event.name ?? event.jobId,
+                    alias: event.alias ?? LocalMachine.alias,
+                    producer: src,
                     lifecycle: event.lifecycle ?? .active,
                     now: event.timestamp
                 )
-                let before: Subject? = nil
+                let before: Job? = nil
                 applyPatch(event, to: &s)
+                if s.lifecycle == .ended {
+                    // Never insert a closed session into the panel.
+                    evictEnded(before: before, ended: s)
+                    return true
+                }
                 commit(before: before, next: s)
                 appendTimeline(
-                    subjectId: s.id,
+                    jobId: s.id,
                     kind: event.kind.rawValue,
                     title: timelineTitle(for: event),
                     at: event.timestamp
@@ -449,9 +430,15 @@ final class SubjectStore {
             existing.version += 1
         }
         existing.updatedAt = max(existing.updatedAt, event.timestamp)
+        if existing.lifecycle == .ended {
+            // Same policy as full snapshot: notify outcome, then leave the panel.
+            evictEnded(before: before, ended: existing)
+            return true
+        }
+
         commit(before: before, next: existing)
         appendTimeline(
-            subjectId: existing.id,
+            jobId: existing.id,
             kind: event.kind.rawValue,
             title: timelineTitle(for: event),
             at: event.timestamp
@@ -459,18 +446,45 @@ final class SubjectStore {
         return true
     }
 
-    func applySnapshot(_ subject: Subject) {
-        let before = subjects[subject.id]
-        if let existing = before, subject.version < existing.version {
+    func applySnapshot(_ job: Job) {
+        let before = jobs[job.id]
+        if let existing = before, job.version < existing.version {
             return
         }
-        commit(before: before, next: subject)
+        if job.lifecycle == .ended {
+            var ended = job
+            // Preserve duration anchors for long-success notifications.
+            if let before {
+                ended.createdAt = before.createdAt
+                ended.startedAt = before.startedAt ?? before.createdAt
+            }
+            if ended.endedAt == nil {
+                ended.endedAt = clock()
+            }
+            evictEnded(before: before, ended: ended)
+            return
+        }
+        commit(before: before, next: job)
     }
 
-    private func commit(before: Subject?, next: Subject) {
-        subjects[next.id] = next
+    private func commit(before: Job?, next: Job) {
+        jobs[next.id] = next
         bumpRevision()
         notificationSink?(before, next)
+    }
+
+    /// Session closed (`lifecycle == ended`): fire outcome notifications, then drop from panel/store.
+    /// No Success/Recent linger — only open sessions stay visible.
+    private func evictEnded(before: Job?, ended: Job) {
+        notificationSink?(before, ended)
+        let id = ended.id
+        if jobs.removeValue(forKey: id) != nil || before != nil {
+            timelines.removeValue(forKey: id)
+            if selectedJobId == id {
+                selectedJobId = nil
+            }
+            bumpRevision()
+        }
     }
 
     private func beginRibbonBatch() {
@@ -495,10 +509,9 @@ final class SubjectStore {
         }
     }
 
-    private func applyPatch(_ event: NerveEvent, to s: inout Subject) {
+    private func applyPatch(_ event: NerveEvent, to s: inout Job) {
         if let name = event.name { s.name = name }
-        if let type = event.type { s.type = type }
-        if let parentId = event.parentId { s.parentId = parentId }
+        if let k = event.jobKind { s.kind = k }
         if let lifecycle = event.lifecycle {
             s.lifecycle = lifecycle
             if lifecycle == .ended {
@@ -519,7 +532,7 @@ final class SubjectStore {
         }
 
         switch event.kind {
-        case .subjectEnded:
+        case .jobEnded:
             s.lifecycle = .ended
             s.endedAt = event.timestamp
         default:
@@ -539,7 +552,7 @@ final class SubjectStore {
             return "Health → \(event.health?.rawValue ?? "?")"
         case .outcomeReported:
             return "Outcome → \(event.outcome?.rawValue ?? "?")"
-        case .subjectEnded:
+        case .jobEnded:
             return "Ended"
         case .progressUpdated:
             return event.progress?.label ?? "Progress"
@@ -550,22 +563,22 @@ final class SubjectStore {
         }
     }
 
-    private func appendTimeline(subjectId: String, kind: String, title: String, at: Date) {
+    private func appendTimeline(jobId: String, kind: String, title: String, at: Date) {
         // Skip pure heartbeats from cluttering
         if kind == EventKind.heartbeat.rawValue { return }
-        var list = timelines[subjectId] ?? []
+        var list = timelines[jobId] ?? []
         let entry = TimelineEntry(
             id: UUID().uuidString,
-            subjectId: subjectId,
+            jobId: jobId,
             kind: kind,
             title: title,
             timestamp: at
         )
         list.insert(entry, at: 0)
-        if list.count > maxTimelinePerSubject {
-            list = Array(list.prefix(maxTimelinePerSubject))
+        if list.count > maxTimelinePerJob {
+            list = Array(list.prefix(maxTimelinePerJob))
         }
-        timelines[subjectId] = list
+        timelines[jobId] = list
     }
 
 
@@ -581,26 +594,16 @@ final class SubjectStore {
         }
     }
 
-    private func pruneEnded() {
-        let ended = subjects.values.filter { $0.lifecycle == .ended }
-            .sorted { ($0.endedAt ?? $0.updatedAt) > ($1.endedAt ?? $1.updatedAt) }
-        if ended.count > maxRecentEnded {
-            for old in ended.dropFirst(maxRecentEnded) {
-                subjects.removeValue(forKey: old.id)
-            }
-        }
-    }
-
     // MARK: - Actions
 
     @MainActor
     @discardableResult
-    func performAction(actionId: String, subjectId: String, confirmed: Bool = false) -> ActionResult {
-        guard var subject = subjects[subjectId] else {
-            return .denied("Subject not found")
+    func performAction(actionId: String, jobId: String, confirmed: Bool = false) -> ActionResult {
+        guard var subject = jobs[jobId] else {
+            return .denied("Job not found")
         }
         guard let action = subject.actions.first(where: { $0.id == actionId }) else {
-            return .denied("Action not declared on this Subject")
+            return .denied("Action not declared on this Job")
         }
         guard action.state == .available else {
             return .denied("Action is \(action.state.rawValue)")
@@ -614,13 +617,13 @@ final class SubjectStore {
         switch klass {
         case .local:
             let result = ActionService.performLocal(action: action, on: subject)
-            applyLocalResult(result, subjectId: subjectId, actionId: actionId)
+            applyLocalResult(result, jobId: jobId, actionId: actionId)
             return result
 
         case .localIfOpenURLElseRemote:
             if subject.location?.openURL != nil || subject.location?.focusHint != nil {
                 let result = ActionService.performLocal(action: action, on: subject)
-                applyLocalResult(result, subjectId: subjectId, actionId: actionId)
+                applyLocalResult(result, jobId: jobId, actionId: actionId)
                 return result
             }
             return enqueueRemote(action: action, subject: &subject)
@@ -631,25 +634,25 @@ final class SubjectStore {
     }
 
     @MainActor
-    private func applyLocalResult(_ result: ActionResult, subjectId: String, actionId: String) {
+    private func applyLocalResult(_ result: ActionResult, jobId: String, actionId: String) {
         switch result {
         case .succeeded(let msg):
-            setActionState(subjectId: subjectId, actionId: actionId, state: .succeeded)
-            appendTimeline(subjectId: subjectId, kind: "action.completed", title: msg, at: clock())
+            setActionState(jobId: jobId, actionId: actionId, state: .succeeded)
+            appendTimeline(jobId: jobId, kind: "action.completed", title: msg, at: clock())
         case .failed:
-            setActionState(subjectId: subjectId, actionId: actionId, state: .failed)
+            setActionState(jobId: jobId, actionId: actionId, state: .failed)
         case .pending, .unsupported, .denied:
             break
         }
     }
 
     @MainActor
-    private func enqueueRemote(action: SubjectAction, subject: inout Subject) -> ActionResult {
-        // Bind to owning source only
+    private func enqueueRemote(action: JobAction, subject: inout Job) -> ActionResult {
+        // Bind to owning producer only
         let req = PendingActionRequest(
             id: UUID().uuidString,
-            subjectId: subject.id,
-            sourceId: subject.source.id,
+            jobId: subject.id,
+            producerId: subject.producer.id,
             actionId: action.id,
             actionKind: action.kind,
             title: action.title,
@@ -662,9 +665,9 @@ final class SubjectStore {
         if pendingActions.count > maxPendingActions {
             pendingActions = Array(pendingActions.prefix(maxPendingActions))
         }
-        setActionState(subjectId: subject.id, actionId: action.id, state: .pending)
+        setActionState(jobId: subject.id, actionId: action.id, state: .pending)
         appendTimeline(
-            subjectId: subject.id,
+            jobId: subject.id,
             kind: "action.pending",
             title: "\(action.title) → source",
             at: clock()
@@ -672,37 +675,37 @@ final class SubjectStore {
         return .pending("Queued for source")
     }
 
-    private func setActionState(subjectId: String, actionId: String, state: ActionState) {
-        guard var s = subjects[subjectId] else { return }
+    private func setActionState(jobId: String, actionId: String, state: ActionState) {
+        guard var s = jobs[jobId] else { return }
         if let idx = s.actions.firstIndex(where: { $0.id == actionId }) {
             s.actions[idx].state = state
             s.updatedAt = clock()
-            subjects[subjectId] = s
+            jobs[jobId] = s
         }
     }
 
     /// Source reports action outcome. Source may only complete its own actions.
     @discardableResult
-    func completePendingAction(id: String, state: ActionState, message: String?, sourceId: String?) -> Bool {
+    func completePendingAction(id: String, state: ActionState, message: String?, producerId: String?) -> Bool {
         guard let idx = pendingActions.firstIndex(where: { $0.id == id }) else { return false }
         var req = pendingActions[idx]
-        if let sourceId, req.sourceId != sourceId {
-            return false // source isolation
+        if let producerId, req.producerId != producerId {
+            return false
         }
         guard state == .succeeded || state == .failed || state == .expired else { return false }
         req.state = state
         req.resultMessage = message
         pendingActions[idx] = req
-        setActionState(subjectId: req.subjectId, actionId: req.actionId, state: state)
+        setActionState(jobId: req.jobId, actionId: req.actionId, state: state)
         // Reset action to available after success/fail so it can be used again if source re-declares
         if state == .succeeded || state == .failed {
             DispatchQueue.main.async { [weak self] in
                 // brief delay then allow re-use if still present
-                self?.setActionState(subjectId: req.subjectId, actionId: req.actionId, state: .available)
+                self?.setActionState(jobId: req.jobId, actionId: req.actionId, state: .available)
             }
         }
         appendTimeline(
-            subjectId: req.subjectId,
+            jobId: req.jobId,
             kind: "action.completed",
             title: message ?? "\(req.title): \(state.rawValue)",
             at: clock()
@@ -719,7 +722,7 @@ final class SubjectStore {
                exp < now {
                 pendingActions[i].state = .expired
                 setActionState(
-                    subjectId: pendingActions[i].subjectId,
+                    jobId: pendingActions[i].jobId,
                     actionId: pendingActions[i].actionId,
                     state: .expired
                 )
@@ -733,12 +736,12 @@ final class SubjectStore {
     // MARK: - Demo / utilities
 
     func clearAll() {
-        subjects.removeAll()
+        jobs.removeAll()
         seenEventIds.removeAll()
         seenEventOrder.removeAll()
         timelines.removeAll()
         pendingActions.removeAll()
-        selectedSubjectId = nil
+        selectedJobId = nil
         bumpRevision()
     }
 
@@ -746,64 +749,48 @@ final class SubjectStore {
         beginRibbonBatch()
         defer { endRibbonBatch() }
         let now = clock()
-        let src = SourceInfo(id: "demo", name: "Demo Source", kind: "demo")
-        let demo: [Subject] = [
+        let src = ProducerInfo(id: "demo", name: "Demo", kind: "demo")
+        let alias = LocalMachine.alias
+        let demo: [Job] = [
             {
-                var s = Subject.make(id: "demo-1", type: "agent.session", name: "Claude Code — nerve", source: src, now: now.addingTimeInterval(-3600))
+                var s = Job.make(id: "demo-1", kind: "session", name: "Claude Code — nerve", alias: alias, producer: src, now: now.addingTimeInterval(-3600))
                 s.current = Current(type: "editing", name: "Implement ribbon", summary: "Drawing menu-bar ribbon", startedAt: now.addingTimeInterval(-120))
                 s.actions = [
-                    SubjectAction(id: "copy", title: "Copy", kind: "copy_summary"),
+                    JobAction(id: "copy", title: "Copy", kind: "copy_summary"),
                 ]
                 return s
             }(),
             {
-                var s = Subject.make(id: "demo-2", type: "build", name: "xcodebuild Nerve", source: src, now: now.addingTimeInterval(-600))
+                var s = Job.make(id: "demo-2", kind: "build", name: "xcodebuild Nerve", alias: alias, producer: src, now: now.addingTimeInterval(-600))
                 s.current = Current(type: "building", summary: "Compiling 42 files", startedAt: now.addingTimeInterval(-90))
                 s.progress = Progress(kind: .indeterminate, label: "Building")
                 return s
             }(),
             {
-                var s = Subject.make(id: "demo-3", type: "test", name: "Unit tests", source: src, now: now.addingTimeInterval(-300))
+                var s = Job.make(id: "demo-3", kind: "test", name: "Unit tests", alias: alias, producer: src, now: now.addingTimeInterval(-300))
                 s.current = Current(type: "waiting", summary: "Waiting for approval to run tests", startedAt: now.addingTimeInterval(-60))
                 s.attention = Attention(level: .required, reason: "approval", title: "Approve test run", summary: "Needs permission to execute tests")
-                s.actions = [SubjectAction(id: "approve", title: "Approve", kind: "approve", confirmationRequired: true)]
+                s.actions = [JobAction(id: "approve", title: "Approve", kind: "approve", confirmationRequired: true)]
                 return s
             }(),
             {
-                var s = Subject.make(id: "demo-4", type: "process", name: "long-job", source: src, now: now.addingTimeInterval(-900))
+                var s = Job.make(id: "demo-4", kind: "process", name: "long-job", alias: alias, producer: src, now: now.addingTimeInterval(-900))
                 s.current = Current(type: "computing", summary: "No heartbeat", startedAt: now.addingTimeInterval(-900))
                 s.health = .unresponsive
                 s.attention = Attention(level: .suggested, reason: "stale", title: "Possibly stuck", summary: "No update for 15m")
                 return s
             }(),
-            {
-                var s = Subject.make(id: "demo-5", type: "workflow.run", name: "Nightly pipeline", source: src, now: now.addingTimeInterval(-7200))
-                s.lifecycle = .ended
-                s.endedAt = now.addingTimeInterval(-120)
-                s.outcome = .failure
-                s.current = Current(type: "testing", summary: "3 tests failed")
-                s.attention = Attention(level: .informational, reason: "failure", title: "Pipeline failed")
-                return s
-            }(),
-            {
-                var s = Subject.make(id: "demo-6", type: "agent.session", name: "Codex — docs", source: src, now: now.addingTimeInterval(-4000))
-                s.lifecycle = .ended
-                s.endedAt = now.addingTimeInterval(-30)
-                s.outcome = .success
-                s.startedAt = now.addingTimeInterval(-4000)
-                s.current = Current(type: "writing", summary: "Updated README")
-                return s
-            }(),
+            // Ended jobs are not demo'd: SessionEnd evicts immediately (no Recent/Success linger).
         ]
         for s in demo {
             applySnapshot(s)
-            appendTimeline(subjectId: s.id, kind: "snapshot", title: "Demo loaded", at: now)
+            appendTimeline(jobId: s.id, kind: "snapshot", title: "Demo loaded", at: now)
         }
         bumpRevision() // ensure at least one invalidation after batch
     }
 
-    func focusSubject(id: String) {
-        selectedSubjectId = id
+    func focusJob(id: String) {
+        selectedJobId = id
         panelOpen = true
     }
 }

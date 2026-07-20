@@ -1,10 +1,10 @@
 import Foundation
 
-/// User-requested Action awaiting the owning source (or completed locally).
+/// User-requested Action awaiting the owning producer (or completed locally).
 struct PendingActionRequest: Identifiable, Codable, Sendable, Hashable {
     var id: String
-    var subjectId: String
-    var sourceId: String
+    var jobId: String
+    var producerId: String
     var actionId: String
     var actionKind: String
     var title: String

@@ -173,9 +173,10 @@ struct Progress: Codable, Sendable, Hashable {
     }
 }
 
-// MARK: - Source / Context / Location
+// MARK: - Producer / Context / Location
 
-struct SourceInfo: Codable, Sendable, Hashable {
+/// Who reported the job (claude-code, codex, xcode, …). Not a machine.
+struct ProducerInfo: Codable, Sendable, Hashable {
     var id: String
     var name: String?
     var kind: String?
@@ -210,7 +211,7 @@ enum ActionState: String, Codable, Sendable, Hashable {
     case unsupported
 }
 
-struct SubjectAction: Codable, Sendable, Hashable, Identifiable {
+struct JobAction: Codable, Sendable, Hashable, Identifiable {
     var id: String
     var title: String
     var kind: String
@@ -294,32 +295,40 @@ enum RibbonStatus: String, Sendable, Hashable, CaseIterable, Comparable {
 
 // MARK: - Status panel grouping
 
-/// How the status panel buckets subjects into sections.
+/// How the status panel buckets jobs into sections.
 /// This is **grouping** (section headers), not sort order — within a section
-/// subjects still follow the default priority sort (attention → health → …).
+/// jobs still follow the default priority sort (attention → health → …).
 enum PanelGroupMode: String, Codable, CaseIterable, Identifiable, Sendable, Hashable {
-    /// Default: Attention / Active / Recent (SPEC §25).
+    /// Bucket by reported machine alias (default).
+    case machine
+    /// Attention / Active / Recent.
     case priority
-    /// Bucket by ribbon status (urgent, failure, active, …).
+    /// Bucket by ribbon status.
     case status
-    /// Bucket by owning source.
-    case source
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "source": self = .machine
+        default: self = PanelGroupMode(rawValue: raw) ?? .machine
+        }
+    }
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .machine: return "Machine"
         case .priority: return "Priority"
         case .status: return "Status"
-        case .source: return "Source"
         }
     }
 
     var shortTitle: String {
         switch self {
+        case .machine: return "Machine"
         case .priority: return "Prio"
         case .status: return "Status"
-        case .source: return "Source"
         }
     }
 }
@@ -328,7 +337,25 @@ enum PanelGroupMode: String, Codable, CaseIterable, Identifiable, Sendable, Hash
 struct StatusSection: Identifiable, Hashable {
     var id: String
     var title: String
-    var subjects: [Subject]
+    var jobs: [Job]
+
+    /// Compatibility for call sites still using `.subjects`.
+    var subjects: [Job] {
+        get { jobs }
+        set { jobs = newValue }
+    }
+
+    init(id: String, title: String, jobs: [Job]) {
+        self.id = id
+        self.title = title
+        self.jobs = jobs
+    }
+
+    init(id: String, title: String, subjects: [Job]) {
+        self.id = id
+        self.title = title
+        self.jobs = subjects
+    }
 }
 
 // failure = clear red; success = clear green (distinct from urgent coral / active cyan)

@@ -8,8 +8,9 @@ final class PreferencesWindowController: NSWindowController {
     private static var shared: PreferencesWindowController?
 
     static func show(
-        store: SubjectStore,
+        store: JobStore,
         settings: SettingsStore,
+        tunnels: MachineTunnelManager,
         onRibbonRefresh: (() -> Void)? = nil
     ) {
         if let existing = shared {
@@ -21,6 +22,7 @@ final class PreferencesWindowController: NSWindowController {
         let root = PreferencesView(
             store: store,
             settings: settings,
+            tunnels: tunnels,
             onRibbonRefresh: onRibbonRefresh
         )
         let hosting = NSHostingController(rootView: root)
@@ -63,6 +65,7 @@ final class PreferencesWindowController: NSWindowController {
 
 private enum PreferencesTab: String, CaseIterable, Identifiable {
     case general
+    case machines
     case appearance
     case notifications
     case about
@@ -72,6 +75,7 @@ private enum PreferencesTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: return "General"
+        case .machines: return "Machines"
         case .appearance: return "Appearance"
         case .notifications: return "Notifications"
         case .about: return "About"
@@ -81,6 +85,7 @@ private enum PreferencesTab: String, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .general: return "Menu bar behavior and local connections"
+        case .machines: return "This Mac and remotes via SSH"
         case .appearance: return "Ribbon size, system appearance, and status colors"
         case .notifications: return "Choose when Nerve may get your attention"
         case .about: return "Version, privacy, and connection details"
@@ -90,6 +95,7 @@ private enum PreferencesTab: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .general: return "gearshape.fill"
+        case .machines: return "desktopcomputer"
         case .appearance: return "paintpalette.fill"
         case .notifications: return "bell.badge.fill"
         case .about: return "info"
@@ -99,6 +105,7 @@ private enum PreferencesTab: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .general: return Color(nsColor: .systemGray)
+        case .machines: return Color(nsColor: .systemTeal)
         case .appearance: return Color(nsColor: .systemIndigo)
         case .notifications: return Color(nsColor: .systemRed)
         case .about: return Color(nsColor: .systemBlue)
@@ -107,12 +114,15 @@ private enum PreferencesTab: String, CaseIterable, Identifiable {
 }
 
 struct PreferencesView: View {
-    @Bindable var store: SubjectStore
+    @Bindable var store: JobStore
     @Bindable var settings: SettingsStore
+    @Bindable var tunnels: MachineTunnelManager
     var onRibbonRefresh: (() -> Void)?
 
     @State private var tab: PreferencesTab? = .general
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var editingMachine: MachineConfig?
+    @State private var showEditor = false
 
     private var selectedTab: PreferencesTab { tab ?? .general }
 
@@ -133,6 +143,8 @@ struct PreferencesView: View {
                 switch selectedTab {
                 case .general:
                     generalPane
+                case .machines:
+                    machinesPane
                 case .appearance:
                     appearancePane
                 case .notifications:
@@ -145,6 +157,28 @@ struct PreferencesView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 660, idealWidth: 700, minHeight: 500, idealHeight: 540)
+        .sheet(isPresented: $showEditor) {
+            if let draft = editingMachine {
+                MachineEditorSheet(
+                    machine: draft,
+                    onSave: { saved in
+                        settings.upsertMachine(saved)
+                        tunnels.syncConfig()
+                        if saved.enabled {
+                            tunnels.connect(id: saved.id)
+                        } else {
+                            tunnels.disconnect(id: saved.id, clearError: true)
+                        }
+                        showEditor = false
+                        editingMachine = nil
+                    },
+                    onCancel: {
+                        showEditor = false
+                        editingMachine = nil
+                    }
+                )
+            }
+        }
     }
 
     private var sidebarFooter: some View {
@@ -218,7 +252,7 @@ struct PreferencesView: View {
                 } header: {
                     Text("Status Panel")
                 } footer: {
-                    Text("The menu-bar ribbon uses the same grouping: Priority, Status, or Source.")
+                    Text("Default is Machine (by reported alias). Ribbon uses the same grouping.")
                 }
 
                 Section {
@@ -231,12 +265,160 @@ struct PreferencesView: View {
                 } header: {
                     Text("Local Connection")
                 } footer: {
-                    Text("Nerve accepts local connections only. Runtime status stays in memory and is cleared when the app quits.")
+                    Text("Nerve accepts loopback connections only. Jobs stay in memory and clear when the app quits. Remotes reach this endpoint through SSH tunnels managed under Machines.")
                 }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
         }
+    }
+
+    // MARK: Machines
+
+    private var machinesPane: some View {
+        SettingsPage(tab: .machines) {
+            Form {
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "laptopcomputer")
+                            .foregroundStyle(Color(nsColor: .systemBlue))
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(LocalMachine.alias)
+                                .font(.body.weight(.medium))
+                            Text("This Mac · always available · kind \(LocalMachine.kind)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("Local")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color(nsColor: .systemGreen).opacity(0.15), in: Capsule())
+                            .foregroundStyle(Color(nsColor: .systemGreen))
+                    }
+                } header: {
+                    Text("This Mac")
+                } footer: {
+                    Text("Local jobs typically report alias “\(LocalMachine.alias)”. Any alias is accepted and shown — this list is only for tunnels, not an allow-list.")
+                }
+
+                Section {
+                    if settings.machines.isEmpty {
+                        Text("No remote tunnels yet. Add a machine only if you need SSH reverse-forward so a remote can reach this Mac’s ingest at 127.0.0.1.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(settings.machines) { machine in
+                            machineRow(machine)
+                        }
+                        .onDelete { indexSet in
+                            for i in indexSet {
+                                let id = settings.machines[i].id
+                                tunnels.disconnect(id: id, clearError: true)
+                                settings.removeMachine(id: id)
+                            }
+                            tunnels.syncConfig()
+                        }
+                    }
+
+                    Button {
+                        editingMachine = MachineConfig(
+                            alias: "",
+                            hostName: "",
+                            user: NSUserName()
+                        )
+                        showEditor = true
+                    } label: {
+                        Label("Add Machine…", systemImage: "plus.circle.fill")
+                    }
+                } header: {
+                    Text("Remote Tunnels")
+                } footer: {
+                    Text("Optional. Jobs do not need to be registered here — ingest shows whatever alias arrives. Configure a remote only to open SSH reverse-forward and optionally normalize its name variants.")
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private func machineRow(_ machine: MachineConfig) -> some View {
+        let state = tunnels.state(for: machine.id)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(machine.alias.isEmpty ? "Untitled" : machine.alias)
+                        .font(.body.weight(.semibold))
+                    Text("\(machine.user)@\(machine.hostName):\(machine.sshPort)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                machineStateBadge(state)
+            }
+
+            if let err = tunnels.error(for: machine.id), state == .error {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .lineLimit(3)
+            }
+
+            HStack(spacing: 12) {
+                Toggle("Enabled", isOn: Binding(
+                    get: { machine.enabled },
+                    set: { on in
+                        var m = machine
+                        m.enabled = on
+                        settings.upsertMachine(m)
+                        tunnels.syncConfig()
+                        if on {
+                            tunnels.connect(id: m.id)
+                        } else {
+                            tunnels.disconnect(id: m.id, clearError: true)
+                        }
+                    }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                Text(machine.enabled ? "On" : "Off")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button("Connect") { tunnels.connect(id: machine.id) }
+                    .disabled(!machine.enabled)
+                Button("Disconnect") { tunnels.disconnect(id: machine.id, clearError: true) }
+                Button("Edit…") {
+                    editingMachine = machine
+                    showEditor = true
+                }
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func machineStateBadge(_ state: MachineLinkState) -> some View {
+        let (label, color): (String, NSColor) = {
+            switch state {
+            case .idle: return ("Idle", .secondaryLabelColor)
+            case .connecting: return ("Connecting", .systemOrange)
+            case .connected: return ("Connected", .systemGreen)
+            case .error: return ("Error", .systemRed)
+            }
+        }()
+        return Text(label)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(nsColor: color).opacity(0.15), in: Capsule())
+            .foregroundStyle(Color(nsColor: color))
     }
 
     // MARK: Appearance
@@ -436,12 +618,12 @@ struct PreferencesView: View {
                     }
                 }
 
-                if !store.knownSources.isEmpty {
+                if !store.knownProducers.isEmpty {
                     Section("Muted Sources") {
-                        ForEach(store.knownSources, id: \.id) { source in
+                        ForEach(store.knownProducers, id: \.id) { source in
                             Toggle(source.name ?? source.id, isOn: Binding(
                                 get: { settings.mutedSourceIds.contains(source.id) },
-                                set: { _ in settings.toggleMute(sourceId: source.id) }
+                                set: { _ in settings.toggleMute(producerId: source.id) }
                             ))
                             .toggleStyle(.switch)
                         }
@@ -581,6 +763,90 @@ struct PreferencesView: View {
         case .success: return "checkmark.circle.fill"
         case .inactive: return "pause.circle.fill"
         }
+    }
+}
+
+// MARK: - Machine editor
+
+private struct MachineEditorSheet: View {
+    @State private var draft: MachineConfig
+    var onSave: (MachineConfig) -> Void
+    var onCancel: () -> Void
+
+    init(machine: MachineConfig, onSave: @escaping (MachineConfig) -> Void, onCancel: @escaping () -> Void) {
+        _draft = State(initialValue: machine)
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
+
+    private var canSave: Bool {
+        !MachineConfig.sanitizeAlias(draft.alias).isEmpty
+            && !draft.hostName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !draft.user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(draft.alias.isEmpty ? "New Machine" : "Edit Machine")
+                    .font(.headline)
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    var m = draft
+                    m.alias = MachineConfig.sanitizeAlias(m.alias)
+                    m.hostName = m.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    m.user = m.user.trimmingCharacters(in: .whitespacesAndNewlines)
+                    onSave(m)
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
+            }
+            .padding()
+
+            Divider()
+
+            Form {
+                Section {
+                    TextField("Alias (hostname short name)", text: $draft.alias)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Host (IP or DNS)", text: $draft.hostName)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("SSH user", text: $draft.user)
+                        .textFieldStyle(.roundedBorder)
+                    HStack {
+                        Text("SSH port")
+                        Spacer()
+                        TextField("", value: $draft.sshPort, format: .number)
+                            .frame(width: 72)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Remote Nerve port")
+                        Spacer()
+                        TextField("", value: $draft.remoteIngestPort, format: .number)
+                            .frame(width: 72)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    TextField("Identity file (optional)", text: Binding(
+                        get: { draft.identityFile ?? "" },
+                        set: { draft.identityFile = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                } footer: {
+                    Text("Alias should match the short hostname on the remote machine. Nerve will open an SSH reverse tunnel so remote jobs can reach this Mac at 127.0.0.1:\(draft.remoteIngestPort).")
+                }
+
+                Section {
+                    Toggle("Enabled", isOn: $draft.enabled)
+                    Toggle("Connect when Nerve starts", isOn: $draft.autoConnect)
+                }
+            }
+            .formStyle(.grouped)
+            .padding(.bottom, 12)
+        }
+        .frame(width: 440, height: 480)
     }
 }
 

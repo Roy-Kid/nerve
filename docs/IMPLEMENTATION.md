@@ -1,15 +1,17 @@
 # Nerve for macOS — Implementation Status
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 ---
 
 ## Scope decisions
 
 - **Multi-display independent ribbons:** out of scope (menu-bar status item is OS-managed).
-- **No subject disk storage:** subjects, timelines, and pending actions are **memory-only**. Settings only (UserDefaults).
-- **No Privacy / Data preference panes:** storage toggles removed; demo/clear via ingest HTTP only.
-- Custom **status → color** map is in Settings (P0 for usability).
+- **No job disk storage:** jobs, timelines, and pending actions are **memory-only**. Settings only (UserDefaults) + managed `~/.ssh/config` block for machines.
+- **Machine vs Job:** machines are configured in Settings (SSH alias + tunnel); work units are **Jobs** (not agents). Producer ≠ machine.
+- **No project env vars** on the hook; fixed loopback ingest URL.
+- **No Privacy / Data preference panes:** demo/clear via ingest HTTP only.
+- Custom **status → color** map is in Settings.
 
 ---
 
@@ -22,10 +24,12 @@ Last updated: 2026-07-19
 - [x] Ribbon **order follows panel grouping** (Priority / Status / Source — same list order, adjacent same-status merged)
 - [x] Ribbon **length scale + thickness** adjustable in Settings → Appearance
 - [x] Six display statuses with **user-editable color map** + reset defaults
-- [x] Subject / Facets / Current / Event / Action model (open types + extensions)
-- [x] Loopback HTTP ingest: snapshot, events, demo, clear
+- [x] Job / Facets / Current / Event / Action model (open kinds + extensions)
+- [x] MachineConfig in Settings + SSH config writer + reverse-forward tunnel manager
+- [x] Loopback HTTP ingest: snapshot (`alias` + `jobs`), events, demo, clear
+- [x] Open alias ingest (any reported alias is shown; Settings machines are tunnels only)
 - [x] Idempotent events + version guards
-- [x] **Memory-only** runtime state (legacy Application Support wiped on launch)
+- [x] **Memory-only** runtime job state (legacy Application Support wiped on launch)
 
 ### UI
 
@@ -33,10 +37,11 @@ Last updated: 2026-07-19
 - [x] Single-line rows; expand detail + live timeline
 - [x] Status panel **grouping modes**: Priority / Status / Source
 - [x] Right-click → **Settings…** / **Quit** only
-- [x] Settings tabs: General · Appearance · Notifications · About
+- [x] Settings tabs: General · Machines · Appearance · Notifications · About
 - [x] First-run coach (skippable); “Show Welcome Tips…” under About
 - [x] Keyboard: ↑/↓ focus, Enter/Space expand
 - [x] Accessibility labels / values / focus ring; respects Reduce Motion
+- [x] Panel group by Priority / Status / **Machine**
 
 ### Notifications
 

@@ -1,9 +1,12 @@
 {
-  "subjects": [
+  "alias": "local",
+  "machineKind": "darwin",
+  "jobs": [
     {
       "id": "demo-agent-1",
-      "type": "agent.session",
+      "kind": "session",
       "name": "Claude Code — nerve",
+      "alias": "local",
       "lifecycle": "active",
       "current": {
         "type": "editing",
@@ -14,7 +17,7 @@
       "attention": { "level": "none" },
       "health": "ok",
       "progress": { "kind": "none" },
-      "source": { "id": "demo", "name": "Demo Source", "kind": "demo" },
+      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
       "capabilities": [],
       "actions": [
         {
@@ -30,12 +33,13 @@
       "startedAt": "2026-07-19T07:00:00Z",
       "updatedAt": "2026-07-19T08:10:00Z",
       "version": 3,
-      "extensions": { "demo": true, "note": "unknown fields must be retained" }
+      "extensions": { "demo": true }
     },
     {
       "id": "demo-build-1",
-      "type": "build",
+      "kind": "build",
       "name": "xcodebuild Nerve",
+      "alias": "local",
       "lifecycle": "active",
       "current": {
         "type": "building",
@@ -45,123 +49,12 @@
       "attention": { "level": "none" },
       "health": "ok",
       "progress": { "kind": "indeterminate", "label": "Building" },
-      "source": { "id": "demo", "name": "Demo Source", "kind": "demo" },
+      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
       "capabilities": [],
       "actions": [],
       "createdAt": "2026-07-19T08:00:00Z",
       "startedAt": "2026-07-19T08:00:00Z",
       "updatedAt": "2026-07-19T08:10:00Z",
-      "version": 2,
-      "extensions": {}
-    },
-    {
-      "id": "demo-test-1",
-      "type": "test",
-      "name": "Unit tests",
-      "lifecycle": "active",
-      "current": {
-        "type": "waiting",
-        "summary": "Waiting for approval to run tests"
-      },
-      "attention": {
-        "level": "required",
-        "reason": "approval",
-        "title": "Approve test run",
-        "summary": "Needs permission to execute tests"
-      },
-      "health": "ok",
-      "progress": { "kind": "none" },
-      "source": { "id": "demo", "name": "Demo Source", "kind": "demo" },
-      "capabilities": ["approve"],
-      "actions": [
-        {
-          "id": "approve",
-          "title": "Approve",
-          "kind": "approve",
-          "state": "available",
-          "destructive": false,
-          "confirmationRequired": true
-        }
-      ],
-      "createdAt": "2026-07-19T08:00:00Z",
-      "startedAt": "2026-07-19T08:00:00Z",
-      "updatedAt": "2026-07-19T08:10:00Z",
-      "version": 2,
-      "extensions": {}
-    },
-    {
-      "id": "demo-job-1",
-      "type": "process",
-      "name": "long-job",
-      "lifecycle": "active",
-      "current": {
-        "type": "computing",
-        "summary": "No heartbeat"
-      },
-      "attention": {
-        "level": "suggested",
-        "reason": "stale",
-        "title": "Possibly stuck",
-        "summary": "No update for 15m"
-      },
-      "health": "unresponsive",
-      "progress": { "kind": "none" },
-      "source": { "id": "demo", "name": "Demo Source", "kind": "demo" },
-      "capabilities": [],
-      "actions": [],
-      "createdAt": "2026-07-19T07:30:00Z",
-      "startedAt": "2026-07-19T07:30:00Z",
-      "updatedAt": "2026-07-19T07:45:00Z",
-      "version": 1,
-      "extensions": {}
-    },
-    {
-      "id": "demo-pipeline-1",
-      "type": "workflow.run",
-      "name": "Nightly pipeline",
-      "lifecycle": "ended",
-      "current": {
-        "type": "testing",
-        "summary": "3 tests failed"
-      },
-      "attention": {
-        "level": "informational",
-        "reason": "failure",
-        "title": "Pipeline failed"
-      },
-      "health": "ok",
-      "outcome": "failure",
-      "progress": { "kind": "none" },
-      "source": { "id": "demo", "name": "Demo Source", "kind": "demo" },
-      "capabilities": [],
-      "actions": [],
-      "createdAt": "2026-07-19T06:00:00Z",
-      "startedAt": "2026-07-19T06:00:00Z",
-      "endedAt": "2026-07-19T08:00:00Z",
-      "updatedAt": "2026-07-19T08:00:00Z",
-      "version": 5,
-      "extensions": {}
-    },
-    {
-      "id": "demo-agent-2",
-      "type": "agent.session",
-      "name": "Codex — docs",
-      "lifecycle": "ended",
-      "current": {
-        "type": "writing",
-        "summary": "Updated README"
-      },
-      "attention": { "level": "none" },
-      "health": "ok",
-      "outcome": "success",
-      "progress": { "kind": "none" },
-      "source": { "id": "demo", "name": "Demo Source", "kind": "demo" },
-      "capabilities": [],
-      "actions": [],
-      "createdAt": "2026-07-19T07:50:00Z",
-      "startedAt": "2026-07-19T07:50:00Z",
-      "endedAt": "2026-07-19T08:05:00Z",
-      "updatedAt": "2026-07-19T08:05:00Z",
       "version": 2,
       "extensions": {}
     }

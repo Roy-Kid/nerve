@@ -1,14 +1,15 @@
 import Foundation
 import Network
 
-/// Loopback HTTP JSON ingest for events and snapshots.
-/// POST /v1/events  { "events": [ ... ] }
-/// POST /v1/snapshot { "subjects": [ ... ] } or single subject body
+/// Loopback HTTP JSON ingest for jobs.
+/// POST /v1/snapshot  { "alias", "machineKind"?, "jobs": [ ... ] }
+/// POST /v1/events    { "alias"?, "events": [ ... ] }
 /// GET  /v1/health
-/// GET  /v1/subjects
+/// GET  /v1/jobs
 final class IngestServer: @unchecked Sendable {
     private let port: NWEndpoint.Port
-    private let store: SubjectStore
+    private let store: JobStore
+    private let settingsProvider: () -> SettingsStore?
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "app.nerve.ingest", qos: .userInitiated)
     private let decoder: JSONDecoder = {
@@ -25,17 +26,16 @@ final class IngestServer: @unchecked Sendable {
     private(set) var isRunning = false
     private(set) var boundPort: UInt16 = 0
 
-    init(port: UInt16, store: SubjectStore) {
+    init(port: UInt16, store: JobStore, settingsProvider: @escaping () -> SettingsStore? = { nil }) {
         self.port = NWEndpoint.Port(rawValue: port) ?? 17890
         self.store = store
+        self.settingsProvider = settingsProvider
     }
 
     func start() {
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
-            // Restrict to loopback via accept filter in receive path; NWListener binds all interfaces
-            // so we reject non-loopback peers.
             let listener = try NWListener(using: params, on: port)
             self.listener = listener
             listener.stateUpdateHandler = { [weak self] state in
@@ -114,9 +114,6 @@ final class IngestServer: @unchecked Sendable {
             }
             var buf = body
             if let data { buf.append(data) }
-            if buf.count >= remaining + body.count - body.count {
-                // simplified: we wanted `remaining` more bytes from empty start — fix properly
-            }
             let need = Self.parseContentLength(header) ?? 0
             if buf.count >= need {
                 self.respond(connection: connection, header: header, body: Data(buf.prefix(need)))
@@ -129,7 +126,6 @@ final class IngestServer: @unchecked Sendable {
     }
 
     private func respond(connection: NWConnection, header: String, body: Data) {
-        // Loopback check
         if let ep = connection.currentPath?.remoteEndpoint, case .hostPort(let host, _) = ep {
             switch host {
             case .ipv4(let addr):
@@ -171,45 +167,51 @@ final class IngestServer: @unchecked Sendable {
         case ("GET", "/v1/health"), ("GET", "/health"):
             return (200, #"{"ok":true,"service":"nerve","version":"0.1.0"}"#)
 
-        case ("GET", "/v1/subjects"):
-            let list = store.allSubjects
+        case ("GET", "/v1/jobs"), ("GET", "/v1/subjects"):
+            let list = store.allJobs
             let data = try encoder.encode(list)
             return (200, String(data: data, encoding: .utf8) ?? "[]")
 
         case ("GET", "/v1/actions/pending"):
-            let sourceId = query["sourceId"]
+            let producerId = query["producerId"] ?? query["sourceId"]
             let list = DispatchQueue.main.sync {
                 store.expireStalePendingActions()
-                return store.openPendingActions(forSource: sourceId)
+                return store.openPendingActions(forProducer: producerId)
             }
             let data = try encoder.encode(list)
             return (200, String(data: data, encoding: .utf8) ?? "[]")
 
         case ("POST", "/v1/actions/result"):
             let result = try decoder.decode(ActionResultBody.self, from: body)
-            let sourceId = query["sourceId"]
+            let producerId = query["producerId"] ?? query["sourceId"]
             let ok = DispatchQueue.main.sync {
                 store.completePendingAction(
                     id: result.id,
                     state: result.state,
                     message: result.message,
-                    sourceId: sourceId
+                    producerId: producerId
                 )
             }
             if ok {
                 return (200, #"{"ok":true}"#)
             }
-            return (404, #"{"error":"pending action not found or source mismatch"}"#)
+            return (404, #"{"error":"pending action not found or producer mismatch"}"#)
 
         case ("POST", "/v1/events"):
-            let envelope = try decodeEnvelope(body)
+            var envelope = try decodeEnvelope(body)
+            if let err = validateAndNormalize(&envelope) {
+                return err
+            }
             let n = DispatchQueue.main.sync {
                 store.apply(envelope: envelope)
             }
             return (200, "{\"applied\":\(n)}")
 
         case ("POST", "/v1/snapshot"):
-            let envelope = try decodeSnapshot(body)
+            var envelope = try decodeSnapshot(body)
+            if let err = validateAndNormalize(&envelope) {
+                return err
+            }
             let n = DispatchQueue.main.sync {
                 store.apply(envelope: envelope)
             }
@@ -227,18 +229,19 @@ final class IngestServer: @unchecked Sendable {
             }
             return (200, #"{"ok":true}"#)
 
-        /// Test/helper: enqueue a declared action as if the user clicked it (same validation).
         case ("POST", "/v1/actions/invoke"):
             struct InvokeBody: Codable {
-                var subjectId: String
+                var jobId: String?
+                var subjectId: String?
                 var actionId: String
                 var confirmed: Bool?
             }
             let inv = try decoder.decode(InvokeBody.self, from: body)
+            let jobId = inv.jobId ?? inv.subjectId ?? ""
             let msg = DispatchQueue.main.sync { () -> String in
                 let result = store.performAction(
                     actionId: inv.actionId,
-                    subjectId: inv.subjectId,
+                    jobId: jobId,
                     confirmed: inv.confirmed ?? true
                 )
                 switch result {
@@ -256,6 +259,26 @@ final class IngestServer: @unchecked Sendable {
         }
     }
 
+    /// Require a non-empty alias; keep the reported string as-is (no allow-list, no rename).
+    private func validateAndNormalize(_ envelope: inout IngestEnvelope) -> (Int, String)? {
+        let rawAlias = envelope.alias?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let fromJobs = envelope.jobs?.first(where: { !$0.alias.isEmpty })?.alias
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let reported = rawAlias.isEmpty ? fromJobs : rawAlias
+        if reported.isEmpty {
+            return (400, #"{"error":"alias required"}"#)
+        }
+        envelope.alias = reported
+        if var jobs = envelope.jobs {
+            for i in jobs.indices {
+                let jobAlias = jobs[i].alias.trimmingCharacters(in: .whitespacesAndNewlines)
+                jobs[i].alias = jobAlias.isEmpty ? reported : jobAlias
+            }
+            envelope.jobs = jobs
+        }
+        return nil
+    }
+
     private static func parseQuery(_ path: String) -> [String: String] {
         guard let qIndex = path.firstIndex(of: "?") else { return [:] }
         let q = path[path.index(after: qIndex)...]
@@ -271,15 +294,14 @@ final class IngestServer: @unchecked Sendable {
 
     private func decodeEnvelope(_ body: Data) throws -> IngestEnvelope {
         if body.isEmpty { return IngestEnvelope() }
-        // Accept either envelope or raw array of events
         if let env = try? decoder.decode(IngestEnvelope.self, from: body) {
             return env
         }
         if let events = try? decoder.decode([NerveEvent].self, from: body) {
-            return IngestEnvelope(events: events, subjects: nil, source: nil)
+            return IngestEnvelope(events: events)
         }
         if let event = try? decoder.decode(NerveEvent.self, from: body) {
-            return IngestEnvelope(events: [event], subjects: nil, source: nil)
+            return IngestEnvelope(events: [event])
         }
         throw IngestError.invalidJSON
     }
@@ -288,12 +310,6 @@ final class IngestServer: @unchecked Sendable {
         if body.isEmpty { return IngestEnvelope() }
         if let env = try? decoder.decode(IngestEnvelope.self, from: body) {
             return env
-        }
-        if let subjects = try? decoder.decode([Subject].self, from: body) {
-            return IngestEnvelope(events: nil, subjects: subjects, source: nil)
-        }
-        if let subject = try? decoder.decode(Subject.self, from: body) {
-            return IngestEnvelope(events: nil, subjects: [subject], source: nil)
         }
         throw IngestError.invalidJSON
     }

@@ -5,51 +5,56 @@ import SwiftUI
 @MainActor
 @Observable
 final class AppModel {
-    let store: SubjectStore
+    let store: JobStore
     let settings: SettingsStore
-    private var menuBar: MenuBarRibbonController?
+    let tunnels: MachineTunnelManager
     private var ingest: IngestServer?
     private var notifications: NotificationService?
     private var coach: FirstRunCoachController?
     private var expireTimer: Timer?
+    private var started = false
 
     init() {
         let settings = SettingsStore()
-        let store = SubjectStore()
+        let store = JobStore()
+        let tunnels = MachineTunnelManager()
         self.settings = settings
         self.store = store
+        self.tunnels = tunnels
         store.settingsProvider = { [weak self] in
             self?.settings ?? SettingsStore()
         }
+        tunnels.attach(settings: settings)
     }
 
     func start() {
+        guard !started else { return }
+        started = true
+
         let notifications = NotificationService(settings: settings)
         self.notifications = notifications
         notifications.requestAuthorizationIfNeeded()
-        notifications.onOpenSubject = { [weak self] subjectId in
-            self?.openSubjectFromNotification(subjectId)
+        notifications.onOpenJob = { [weak self] jobId in
+            self?.openJobFromNotification(jobId)
         }
 
         store.notificationSink = { [weak self] before, next in
             self?.notifications?.evaluate(previous: before, next: next)
         }
 
-        let menuBar = MenuBarRibbonController(store: store, settings: settings)
-        self.menuBar = menuBar
-        // Immediate ribbon redraw when subjects change (not only the 0.5s timer)
-        store.ribbonInvalidationSink = { [weak menuBar] in
-            menuBar?.refresh(force: true)
-        }
-        // Group mode / ribbon size / colors — independent of whether the panel is open
-        settings.ribbonAppearanceSink = { [weak menuBar] in
-            menuBar?.refresh(force: true)
-        }
-        menuBar.start()
+        // SwiftUI observes the store and settings directly for MenuBarExtra updates.
+        store.ribbonInvalidationSink = nil
+        settings.ribbonAppearanceSink = nil
 
-        let server = IngestServer(port: settings.ingestPort, store: store)
+        let server = IngestServer(
+            port: settings.ingestPort,
+            store: store,
+            settingsProvider: { [weak self] in self?.settings }
+        )
         self.ingest = server
         server.start()
+
+        tunnels.start()
 
         expireTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -57,7 +62,6 @@ final class AppModel {
             }
         }
 
-        // First-run coach (skippable). Demo only if user chooses or legacy empty first launch.
         if !settings.hasSeenCoachMarks {
             let coach = FirstRunCoachController()
             self.coach = coach
@@ -67,7 +71,6 @@ final class AppModel {
                 self.settings.hasCompletedFirstRun = true
                 if loadDemo {
                     self.store.loadDemo()
-                    self.menuBar?.refresh()
                 }
             }
         } else if !settings.hasCompletedFirstRun {
@@ -75,24 +78,22 @@ final class AppModel {
         }
     }
 
-    func openSubjectFromNotification(_ subjectId: String) {
-        store.focusSubject(id: subjectId)
-        menuBar?.showStatusPopover()
-        menuBar?.refresh()
+    func openJobFromNotification(_ jobId: String) {
+        store.focusJob(id: jobId)
     }
 
-    func togglePanel() {
-        menuBar?.toggleStatusPopover()
-    }
-
-    func refreshRibbon() {
-        menuBar?.refresh(force: true)
+    /// Call after Settings mutates the machine list.
+    func machinesDidChange() {
+        tunnels.syncConfig()
+        tunnels.reconnectAllEnabled()
     }
 
     func quit() {
+        guard started else { return }
+        started = false
         expireTimer?.invalidate()
         expireTimer = nil
+        tunnels.stopAll()
         ingest?.stop()
-        menuBar?.stop()
     }
 }

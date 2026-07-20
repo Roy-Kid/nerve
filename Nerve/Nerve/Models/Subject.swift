@@ -1,11 +1,14 @@
 import Foundation
 
-/// Independently tracked run object. Type is open-ended (`agent.session`, `custom.*`, …).
-struct Subject: Identifiable, Codable, Sendable, Hashable {
+/// A unit of work on a machine (session, build, test, deploy, …).
+/// Not an "agent" — producer is who reported it; `alias` is which machine.
+struct Job: Identifiable, Codable, Sendable, Hashable {
     var id: String
-    var type: String
+    /// Job shape: `session`, `build`, `test`, `deploy`, `custom.*`, …
+    var kind: String
     var name: String
-    var parentId: String?
+    /// Machine alias (SSH Host / Settings alias). Routing key.
+    var alias: String
 
     var lifecycle: Lifecycle
     var current: Current?
@@ -13,11 +16,12 @@ struct Subject: Identifiable, Codable, Sendable, Hashable {
     var health: Health
     var outcome: Outcome?
     var progress: Progress
-    var source: SourceInfo
+    /// Who produced this job (claude-code, codex, xcode, …) — not a machine.
+    var producer: ProducerInfo
     var context: ContextInfo?
     var location: LocationInfo?
     var capabilities: [String]
-    var actions: [SubjectAction]
+    var actions: [JobAction]
 
     var createdAt: Date
     var startedAt: Date?
@@ -46,75 +50,74 @@ struct Subject: Identifiable, Codable, Sendable, Hashable {
         return lifecycle.rawValue.capitalized
     }
 
-    /// Maps facets → one of six display statuses (Running / Waiting / Attention / Problem / Success / Inactive).
+    /// Maps **structured** facets → ribbon color.
+    /// Never inspects free-text summaries — only lifecycle / health / outcome /
+    /// attention.level / attention.reason codes / current.type vocabulary from hooks.
     var ribbonStatus: RibbonStatus {
-        // Problem — failed or cannot continue
         if outcome == .failure { return .problem }
         if health == .unresponsive { return .problem }
 
-        // Attention — needs the user (input / auth / decision)
+        // Controlled attention.reason codes (exact), written by the hook.
+        if attention.level >= .informational, let reason = attention.reason?.lowercased() {
+            switch reason {
+            case "input", "approval", "auth", "permission", "decision", "elicitation":
+                return .attention
+            case "resource", "dependency", "queue", "system", "lock", "throttle", "rate", "capacity":
+                return .waiting
+            case "failure":
+                return .waiting
+            default:
+                break
+            }
+        }
         if attention.level >= .required { return .attention }
-        if Self.looksLikeUserWait(attention) { return .attention }
 
-        // Ended outcomes
         if lifecycle == .ended {
             if outcome == .success || outcome == .partial { return .success }
             return .inactive
         }
-
-        // Waiting — system, resources, dependencies (not the user)
-        if Self.looksLikeSystemWait(attention) { return .waiting }
-        if attention.level >= .suggested { return .waiting }
-        if health == .degraded { return .waiting }
-        if lifecycle == .pending || lifecycle == .created { return .waiting }
-
-        // Inactive — paused / unknown
         if lifecycle == .suspended || lifecycle == .unknown { return .inactive }
+        if lifecycle == .pending || lifecycle == .created { return .waiting }
+        if health == .degraded { return .waiting }
 
-        // Running — actively executing
+        // Controlled current.type vocabulary from hooks.
+        switch current?.type.lowercased() {
+        case "subagent", "tool", "thinking", "starting", "info":
+            if lifecycle == .active { return .running }
+        case "waiting":
+            return attention.level >= .informational ? .attention : .waiting
+        case "idle":
+            // Stop / idle_prompt set idle + reason=input (already handled). Bare idle → inactive.
+            return .inactive
+        default:
+            break
+        }
+
         if lifecycle == .active { return .running }
-
         return .inactive
-    }
-
-    private static func looksLikeUserWait(_ attention: Attention) -> Bool {
-        guard attention.level >= .informational else { return false }
-        let blob = [attention.reason, attention.title, attention.summary]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-        let keys = ["input", "approval", "approve", "decision", "auth", "permission", "confirm", "user"]
-        return keys.contains { blob.contains($0) }
-    }
-
-    private static func looksLikeSystemWait(_ attention: Attention) -> Bool {
-        guard attention.level >= .informational else { return false }
-        let blob = [attention.reason, attention.title, attention.summary]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-        let keys = ["resource", "depend", "queue", "system", "lock", "throttle", "rate", "capacity"]
-        return keys.contains { blob.contains($0) }
     }
 
     static func make(
         id: String,
-        type: String = "custom.unknown",
+        kind: String = "session",
         name: String,
-        source: SourceInfo,
+        alias: String,
+        producer: ProducerInfo,
         lifecycle: Lifecycle = .active,
         now: Date = .now
-    ) -> Subject {
-        Subject(
+    ) -> Job {
+        Job(
             id: id,
-            type: type,
+            kind: kind,
             name: name,
-            parentId: nil,
+            alias: alias,
             lifecycle: lifecycle,
             current: nil,
             attention: .none,
             health: .ok,
             outcome: nil,
             progress: .none,
-            source: source,
+            producer: producer,
             context: nil,
             location: nil,
             capabilities: [],
