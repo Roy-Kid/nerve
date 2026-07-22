@@ -236,12 +236,12 @@ struct JobAction: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-// MARK: - Visual status bucket for ribbon / panel
+// MARK: - Job status (model)
 
-/// Six display statuses for the continuous ribbon and status-grouped list.
-/// Not a product facet — derived from attention / health / outcome / lifecycle.
-/// `allCases` order = ribbon / panel-by-status section order (priority first).
-enum RibbonStatus: String, Sendable, Hashable, CaseIterable, Comparable {
+/// Derived display status of a job — one value for all views (ribbon, panel, counts).
+/// Not an ingest facet; computed from lifecycle / health / outcome / attention / current.
+/// `allCases` order = priority when grouping or painting segments.
+enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     /// Red — failed or cannot continue.
     case problem
     /// Orange — needs user input, authorization, or decision.
@@ -266,22 +266,11 @@ enum RibbonStatus: String, Sendable, Hashable, CaseIterable, Comparable {
         }
     }
 
-    static func < (lhs: RibbonStatus, rhs: RibbonStatus) -> Bool {
+    static func < (lhs: Status, rhs: Status) -> Bool {
         lhs.order < rhs.order
     }
 
-    /// High-priority statuses get a guaranteed minimum ribbon width.
-    var isHighPriority: Bool {
-        switch self {
-        case .problem, .attention:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// Section title when the status panel is grouped by ribbon status.
-    var panelTitle: String {
+    var title: String {
         switch self {
         case .running: return "Running"
         case .waiting: return "Waiting"
@@ -291,19 +280,84 @@ enum RibbonStatus: String, Sendable, Hashable, CaseIterable, Comparable {
         case .inactive: return "Inactive"
         }
     }
+
+    /// problem / attention get a minimum segment weight when painting the ribbon.
+    var isHighPriority: Bool {
+        switch self {
+        case .problem, .attention: return true
+        default: return false
+        }
+    }
 }
 
-// MARK: - Status panel grouping
+// MARK: - Panel row columns (view preference)
+
+/// Configurable text columns in a status-panel row (dot + chevron are fixed chrome).
+enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashable {
+    case name
+    case summary
+    case producer
+    case machine
+    case status
+    case updated
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .name: return "Name"
+        case .summary: return "Activity"
+        case .producer: return "Producer"
+        case .machine: return "Machine"
+        case .status: return "Status"
+        case .updated: return "Updated"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .name: return "Job title (usually project name)"
+        case .summary: return "What it is doing, or attention title"
+        case .producer: return "Who reported it (Claude Code, Grok, …)"
+        case .machine: return "Machine alias"
+        case .status: return "Derived status label"
+        case .updated: return "Relative time (hidden while the row is hovered)"
+        }
+    }
+
+    /// Flexible columns absorb leftover width so rows stay aligned.
+    var isFlexible: Bool {
+        switch self {
+        case .summary: return true
+        default: return false
+        }
+    }
+
+    /// Fixed width for non-flexible columns — same across every row.
+    var width: CGFloat {
+        switch self {
+        case .name: return 108
+        case .summary: return 0 // flexible
+        case .producer: return 72
+        case .machine: return 72
+        case .status: return 72
+        case .updated: return 56
+        }
+    }
+
+    static let defaultColumns: [PanelColumn] = [.name, .summary, .updated]
+}
+
+// MARK: - Panel grouping (view preference)
 
 /// How the status panel buckets jobs into sections.
-/// This is **grouping** (section headers), not sort order — within a section
-/// jobs still follow the default priority sort (attention → health → …).
+/// Grouping only — within a section, jobs still sort by attention → health → …
 enum PanelGroupMode: String, Codable, CaseIterable, Identifiable, Sendable, Hashable {
     /// Bucket by reported machine alias (default).
     case machine
-    /// Attention / Active / Recent.
+    /// Attention / Active / Recent (from `Status`).
     case priority
-    /// Bucket by ribbon status.
+    /// One section per `Status`.
     case status
 
     init(from decoder: Decoder) throws {
@@ -339,23 +393,9 @@ struct StatusSection: Identifiable, Hashable {
     var title: String
     var jobs: [Job]
 
-    /// Compatibility for call sites still using `.subjects`.
-    var subjects: [Job] {
-        get { jobs }
-        set { jobs = newValue }
-    }
-
     init(id: String, title: String, jobs: [Job]) {
         self.id = id
         self.title = title
         self.jobs = jobs
     }
-
-    init(id: String, title: String, subjects: [Job]) {
-        self.id = id
-        self.title = title
-        self.jobs = subjects
-    }
 }
-
-// failure = clear red; success = clear green (distinct from urgent coral / active cyan)

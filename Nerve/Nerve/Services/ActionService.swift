@@ -50,7 +50,8 @@ enum ActionService {
             return openLocation(subject)
 
         case "copy", "copy_summary", "copysummary":
-            let text = "\(subject.name) — \(subject.displaySummary)"
+            let detail = subject.current?.summary ?? subject.current?.name ?? subject.attention.title
+            let text = detail.map { "\(subject.name) — \($0)" } ?? subject.name
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
             return .succeeded("Copied summary")

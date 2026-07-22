@@ -60,10 +60,34 @@ final class JobStore {
         jobs.values.filter { $0.lifecycle != .ended }.sorted(by: sortComparator)
     }
 
+    /// Open jobs (not ended). Length of the work set — not a ribbon color.
     var activeCount: Int { activeJobs.count }
 
+    // MARK: Status counts (single source of truth = `Job.status`)
+
+    /// Open jobs with `status == .running`. Same number the ribbon/panel paint blue.
+    var runningCount: Int {
+        countOpen(where: { $0.status == .running })
+    }
+
+    /// Open jobs with `status == .attention`. Same number painted orange.
     var attentionCount: Int {
-        jobs.values.filter { $0.lifecycle != .ended && $0.attention.level >= .suggested }.count
+        countOpen(where: { $0.status == .attention })
+    }
+
+    private func countOpen(where pred: (Job) -> Bool) -> Int {
+        jobs.values.reduce(into: 0) { n, job in
+            if job.lifecycle != .ended, pred(job) { n += 1 }
+        }
+    }
+
+    /// Priority-mode bucket for a status (Attention / Active / Recent). View grouping only.
+    private func priorityGroup(for status: Status) -> PanelGroup {
+        switch status {
+        case .problem, .attention, .waiting: return .attention
+        case .running, .inactive: return .active
+        case .success: return .recent
+        }
     }
 
     var knownProducers: [ProducerInfo] {
@@ -88,19 +112,19 @@ final class JobStore {
 
     /// Flat list for keyboard navigation under a chosen grouping mode.
     func flatStatusJobs(mode: PanelGroupMode) -> [Job] {
-        statusSections(mode: mode).flatMap(\.subjects)
+        statusSections(mode: mode).flatMap(\.jobs)
     }
 
     /// Sections for the status panel. Empty sections are omitted.
-    /// Grouping changes section headers only; within each section, subjects
+    /// Grouping changes section headers only; within each section, jobs
     /// use the default sort (attention → health → outcome → recency).
     func statusSections(mode: PanelGroupMode) -> [StatusSection] {
         switch mode {
         case .priority:
             return PanelGroup.allCases.compactMap { group in
-                let items = subjects(in: group)
+                let items = jobsInPriorityGroup(group)
                 guard !items.isEmpty else { return nil }
-                return StatusSection(id: group.id, title: group.title, subjects: items)
+                return StatusSection(id: group.id, title: group.title, jobs: items)
             }
         case .status:
             return statusGroupedSections()
@@ -119,20 +143,12 @@ final class JobStore {
         }
     }
 
-    func subjects(in group: PanelGroup) -> [Job] {
+    /// Priority sections — bucketed only by `Job.status` (no second ruleset).
+    func jobsInPriorityGroup(_ group: PanelGroup) -> [Job] {
         switch group {
-        case .attention:
+        case .attention, .active:
             return jobs.values
-                .filter { $0.lifecycle != .ended && $0.attention.level >= .informational }
-                .sorted(by: sortComparator)
-        case .active:
-            return jobs.values
-                .filter {
-                    $0.lifecycle != .ended
-                        && $0.attention.level < .informational
-                        && ($0.lifecycle == .active || $0.lifecycle == .pending
-                            || $0.lifecycle == .created || $0.lifecycle == .suspended)
-                }
+                .filter { $0.lifecycle != .ended && priorityGroup(for: $0.status) == group }
                 .sorted(by: sortComparator)
         case .recent:
             // Session close removes the job immediately — no Recent linger.
@@ -140,22 +156,21 @@ final class JobStore {
         }
     }
 
-    /// Subjects eligible for the status list: open sessions only.
-    /// `SessionEnd` / ended lifecycle drops the job from the store (see `applySnapshot`).
+    /// Open jobs eligible for the status list.
     private func panelListJobs() -> [Job] {
         Array(jobs.values.filter { $0.lifecycle != .ended })
     }
 
     private func statusGroupedSections() -> [StatusSection] {
         let list = panelListJobs()
-        var buckets: [RibbonStatus: [Job]] = [:]
-        for s in list {
-            buckets[s.ribbonStatus, default: []].append(s)
+        var buckets: [Status: [Job]] = [:]
+        for job in list {
+            buckets[job.status, default: []].append(job)
         }
-        return RibbonStatus.allCases.compactMap { status in
+        return Status.allCases.compactMap { status in
             guard var items = buckets[status], !items.isEmpty else { return nil }
             items.sort(by: sortComparator)
-            return StatusSection(id: "status:\(status.rawValue)", title: status.panelTitle, subjects: items)
+            return StatusSection(id: "status:\(status.rawValue)", title: status.title, jobs: items)
         }
     }
 
@@ -204,7 +219,7 @@ final class JobStore {
     /// `status` is the color key (worst / dominant status of the bucket).
     struct RibbonSegment: Identifiable, Equatable {
         var id: String
-        var status: RibbonStatus
+        var status: Status
         var count: Int
         var weight: CGFloat
     }
@@ -236,9 +251,9 @@ final class JobStore {
         guard !ordered.isEmpty else { return [] }
 
         // Merge adjacent same-status runs so the band stays continuous, not speckled.
-        var runs: [(status: RibbonStatus, count: Int)] = []
+        var runs: [(status: Status, count: Int)] = []
         for s in ordered {
-            let status = s.ribbonStatus
+            let status = s.status
             if let last = runs.last, last.status == status {
                 runs[runs.count - 1].count += 1
             } else {
@@ -251,7 +266,7 @@ final class JobStore {
 
     /// Proportional widths with minimum wedges for high-priority / success colors.
     private func weightedStatusRuns(
-        _ runs: [(status: RibbonStatus, count: Int)],
+        _ runs: [(status: Status, count: Int)],
         mode: PanelGroupMode
     ) -> [RibbonSegment] {
         guard !runs.isEmpty else { return [] }
@@ -753,7 +768,7 @@ final class JobStore {
         let alias = LocalMachine.alias
         let demo: [Job] = [
             {
-                var s = Job.make(id: "demo-1", kind: "session", name: "Claude Code — nerve", alias: alias, producer: src, now: now.addingTimeInterval(-3600))
+                var s = Job.make(id: "demo-1", kind: "session", name: "nerve", alias: alias, producer: src, now: now.addingTimeInterval(-3600))
                 s.current = Current(type: "editing", name: "Implement ribbon", summary: "Drawing menu-bar ribbon", startedAt: now.addingTimeInterval(-120))
                 s.actions = [
                     JobAction(id: "copy", title: "Copy", kind: "copy_summary"),

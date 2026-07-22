@@ -39,9 +39,12 @@ struct FirstRunCoachView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "waveform.path.ecg")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Color.accentColor)
+                Image("Logo")
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 22, height: 22)
+                    .accessibilityHidden(true)
 
                 Text("Nerve")
                     .font(.headline)

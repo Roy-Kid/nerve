@@ -35,7 +35,7 @@ struct RGBColor: Codable, Equatable, Sendable, Hashable {
     }
 }
 
-/// User-customizable mapping from ribbon status → color. Defaults follow macOS system colors.
+/// User-customizable mapping from job `Status` → color. Defaults follow macOS system colors.
 struct StatusColorMap: Codable, Equatable, Sendable {
     var problem: RGBColor
     var attention: RGBColor
@@ -63,7 +63,7 @@ struct StatusColorMap: Codable, Equatable, Sendable {
         inactive: RGBColor(r: 0.48, g: 0.52, b: 0.58)
     )
 
-    func color(for status: RibbonStatus) -> RGBColor {
+    func color(for status: Status) -> RGBColor {
         switch status {
         case .problem: return problem
         case .attention: return attention
@@ -74,7 +74,7 @@ struct StatusColorMap: Codable, Equatable, Sendable {
         }
     }
 
-    mutating func set(_ color: RGBColor, for status: RibbonStatus) {
+    mutating func set(_ color: RGBColor, for status: Status) {
         switch status {
         case .problem: problem = color
         case .attention: attention = color
@@ -142,7 +142,20 @@ final class SettingsStore {
         }
     }
 
-    /// Horizontal length scale for the menu-bar ribbon (0.5…2.0, default 1.0).
+    /// Ordered text columns shown in each status-panel row.
+    /// Dot + chevron stay fixed; this only configures the middle fields.
+    var panelColumns: [PanelColumn] {
+        didSet {
+            let normalized = Self.normalizePanelColumns(panelColumns)
+            if panelColumns != normalized {
+                panelColumns = normalized
+                return
+            }
+            persist()
+        }
+    }
+
+    /// Horizontal length scale for the menu-bar ribbon (0.5…4.0, default 1.0).
     var ribbonLengthScale: Double {
         didSet {
             let clamped = Self.clampRibbonLengthScale(ribbonLengthScale)
@@ -213,7 +226,7 @@ final class SettingsStore {
 
     static let defaultRibbonLengthScale: Double = 1.0
     static let defaultRibbonThickness: Double = 6.0
-    static let ribbonLengthScaleRange: ClosedRange<Double> = 0.5...2.0
+    static let ribbonLengthScaleRange: ClosedRange<Double> = 0.5...4.0
     static let ribbonThicknessRange: ClosedRange<Double> = 3...12
 
     static let defaultPanelWidth: Double = 340
@@ -235,6 +248,33 @@ final class SettingsStore {
 
     static func clampPanelHeight(_ v: Double) -> Double {
         min(panelHeightRange.upperBound, max(panelHeightRange.lowerBound, v))
+    }
+
+    /// Keep enum order, drop unknowns/dupes, guarantee at least `.name`.
+    static func normalizePanelColumns(_ cols: [PanelColumn]) -> [PanelColumn] {
+        var seen = Set<PanelColumn>()
+        var ordered: [PanelColumn] = []
+        for col in PanelColumn.allCases where cols.contains(col) {
+            if seen.insert(col).inserted {
+                ordered.append(col)
+            }
+        }
+        if ordered.isEmpty { return PanelColumn.defaultColumns }
+        return ordered
+    }
+
+    func isPanelColumnEnabled(_ col: PanelColumn) -> Bool {
+        panelColumns.contains(col)
+    }
+
+    func setPanelColumn(_ col: PanelColumn, enabled: Bool) {
+        var next = panelColumns
+        if enabled {
+            if !next.contains(col) { next.append(col) }
+        } else {
+            next.removeAll { $0 == col }
+        }
+        panelColumns = Self.normalizePanelColumns(next)
     }
 
     init() {
@@ -259,6 +299,7 @@ final class SettingsStore {
         hasCompletedFirstRun = false
         hasSeenCoachMarks = false
         panelGroupMode = .machine
+        panelColumns = PanelColumn.defaultColumns
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
         panelWidth = Self.defaultPanelWidth
@@ -311,6 +352,7 @@ final class SettingsStore {
         } else {
             panelGroupMode = .machine
         }
+        panelColumns = Self.normalizePanelColumns(p.panelColumns ?? PanelColumn.defaultColumns)
         ribbonLengthScale = Self.clampRibbonLengthScale(p.ribbonLengthScale ?? Self.defaultRibbonLengthScale)
         ribbonThickness = Self.clampRibbonThickness(p.ribbonThickness ?? Self.defaultRibbonThickness)
         panelWidth = Self.clampPanelWidth(p.panelWidth ?? Self.defaultPanelWidth)
@@ -339,6 +381,7 @@ final class SettingsStore {
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
         panelGroupMode = p.panelGroupMode ?? .machine
+        panelColumns = PanelColumn.defaultColumns
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
         panelWidth = Self.defaultPanelWidth
@@ -451,6 +494,7 @@ final class SettingsStore {
             hasCompletedFirstRun: hasCompletedFirstRun,
             hasSeenCoachMarks: hasSeenCoachMarks,
             panelGroupMode: panelGroupMode,
+            panelColumns: panelColumns,
             ribbonLengthScale: ribbonLengthScale,
             ribbonThickness: ribbonThickness,
             panelWidth: panelWidth,
@@ -484,6 +528,7 @@ final class SettingsStore {
         var hasCompletedFirstRun: Bool
         var hasSeenCoachMarks: Bool
         var panelGroupMode: PanelGroupMode?
+        var panelColumns: [PanelColumn]?
         var ribbonLengthScale: Double?
         var ribbonThickness: Double?
         var panelWidth: Double?

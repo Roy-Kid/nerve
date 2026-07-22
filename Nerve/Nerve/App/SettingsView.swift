@@ -185,9 +185,12 @@ struct PreferencesView: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
-                Image(systemName: "waveform.path.ecg")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(Color.accentColor)
+                Image("Logo")
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 18, height: 18)
+                    .accessibilityHidden(true)
 
                 Text("Nerve")
                     .font(.caption.weight(.medium))
@@ -253,6 +256,26 @@ struct PreferencesView: View {
                     Text("Status Panel")
                 } footer: {
                     Text("Default is Machine (by reported alias). Ribbon uses the same grouping.")
+                }
+
+                Section {
+                    ForEach(PanelColumn.allCases) { column in
+                        Toggle(isOn: Binding(
+                            get: { settings.isPanelColumnEnabled(column) },
+                            set: { settings.setPanelColumn(column, enabled: $0) }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(column.title)
+                                Text(column.help)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Panel Columns")
+                } footer: {
+                    Text("Columns keep fixed widths so rows align. Hovering a row hides Updated and gives the space to Activity.")
                 }
 
                 Section {
@@ -458,7 +481,7 @@ struct PreferencesView: View {
                                 }
                             ),
                             in: SettingsStore.ribbonLengthScaleRange,
-                            step: 0.05
+                            step: 0.25
                         )
                         .accessibilityLabel("Ribbon length")
                         .accessibilityValue(ribbonLengthLabel)
@@ -513,7 +536,7 @@ struct PreferencesView: View {
                 }
 
                 Section {
-                    ForEach(RibbonStatus.allCases, id: \.self) { status in
+                    ForEach(Status.allCases, id: \.self) { status in
                         ColorPicker(
                             selection: Binding(
                                 get: { settings.statusColors.color(for: status).color },
@@ -533,7 +556,7 @@ struct PreferencesView: View {
                                     .frame(width: 18)
 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(status.panelTitle)
+                                    Text(status.title)
                                     Text(statusColorHint(status))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -654,17 +677,13 @@ struct PreferencesView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     VStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(Color.accentColor.gradient)
-                                .frame(width: 82, height: 82)
-                                .shadow(color: Color.accentColor.opacity(0.18), radius: 10, y: 5)
-
-                            Image(systemName: "waveform.path.ecg")
-                                .font(.system(size: 39, weight: .medium))
-                                .foregroundStyle(.white)
-                        }
-                        .accessibilityHidden(true)
+                        Image("Logo")
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 88, height: 88)
+                            .shadow(color: Color.accentColor.opacity(0.16), radius: 12, y: 4)
+                            .accessibilityHidden(true)
 
                         VStack(spacing: 3) {
                             Text("Nerve")
@@ -743,7 +762,7 @@ struct PreferencesView: View {
         )
     }
 
-    private func statusColorHint(_ status: RibbonStatus) -> String {
+    private func statusColorHint(_ status: Status) -> String {
         switch status {
         case .problem: return "Failed or unable to continue"
         case .attention: return "Needs input, authorization, or a decision"
@@ -754,7 +773,7 @@ struct PreferencesView: View {
         }
     }
 
-    private func statusSymbol(_ status: RibbonStatus) -> String {
+    private func statusSymbol(_ status: Status) -> String {
         switch status {
         case .problem: return "xmark.circle.fill"
         case .attention: return "exclamationmark.circle.fill"

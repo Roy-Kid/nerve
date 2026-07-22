@@ -7,6 +7,7 @@
     "email": "lijichen365@gmail.com"
   },
   "homepage": "https://github.com/Roy-Kid/nerve/tree/main/plugins/nerve",
+  "icon": "./icon.png",
   "keywords": [
     "nerve",
     "status",

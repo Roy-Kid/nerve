@@ -20,6 +20,7 @@ private enum PanelConfirmation: Identifiable {
 struct StatusPanelView: View {
     @Environment(JobStore.self) private var store
     @Environment(SettingsStore.self) private var settings
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @FocusState private var listFocused: Bool
     @State private var expandedId: String?
@@ -36,6 +37,9 @@ struct StatusPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if let confirmation {
+                confirmationBar(confirmation)
+            }
             thinDivider
             statusBody
         }
@@ -83,12 +87,12 @@ struct StatusPanelView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Nerve status panel")
-        .alert(item: $confirmation) { item in
-            confirmationAlert(item)
-        }
+        // Inline confirmation only — SwiftUI `.alert` / `.confirmationDialog` often fail
+        // to present (or stick) inside MenuBarExtra `.window`, so the trash button looked dead.
         .onAppear { store.panelOpen = true }
         .onDisappear {
             store.panelOpen = false
+            confirmation = nil
             resizeAnchor.endResize()
             resizeOrigin = nil
             livePanelSize = nil
@@ -198,15 +202,24 @@ struct StatusPanelView: View {
     }
 
     private var clearButton: some View {
-        headerIconButton(
-            systemName: "trash",
-            help: "Clear all jobs from memory",
-            accessibilityLabel: "Clear all",
-            accessibilityHint: "Removes all jobs from the panel"
+        let isArmed = {
+            if case .clearAll = confirmation { return true }
+            return false
+        }()
+        return headerIconButton(
+            systemName: isArmed ? "trash.fill" : "trash",
+            help: isArmed
+                ? "Confirm clear — use the bar below, or click again to cancel"
+                : "Clear all jobs from memory",
+            accessibilityLabel: isArmed ? "Clear all (confirming)" : "Clear all",
+            accessibilityHint: isArmed
+                ? "Confirmation bar is open below the header"
+                : "Removes all jobs from the panel",
+            emphasized: isArmed
         ) {
             confirmClearAll()
         }
-        .disabled(store.allJobs.isEmpty)
+        .disabled(store.jobs.isEmpty)
     }
 
     private func headerIconButton(
@@ -214,18 +227,19 @@ struct StatusPanelView: View {
         help: String,
         accessibilityLabel: String,
         accessibilityHint: String,
+        emphasized: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 11, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+                .foregroundStyle(emphasized ? Color.red.opacity(0.9) : Color.secondary)
+                .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
+        // `.plain` is more reliable than `.borderless` for icon hits in MenuBarExtra.
+        .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
@@ -251,25 +265,112 @@ struct StatusPanelView: View {
     }
 
     private func confirmClearAll() {
+        // Toggle: second click cancels if the bar is already open for clear-all.
+        if case .clearAll = confirmation {
+            confirmation = nil
+            return
+        }
         confirmation = .clearAll
     }
 
-    /// Twin metric chips on the left (same glyph family); icon-only actions on the right.
+    /// Confirmation lives in the panel — system alerts are unreliable in MenuBarExtra windows.
+    @ViewBuilder
+    private func confirmationBar(_ item: PanelConfirmation) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(confirmationTitle(item))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(confirmationMessage(item))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button("Cancel") {
+                confirmation = nil
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+            .keyboardShortcut(.cancelAction)
+
+            Button(confirmationConfirmLabel(item), role: .destructive) {
+                performConfirmed(item)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.mini)
+            .tint(.red)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.05))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(confirmationTitle(item))
+    }
+
+    private func confirmationTitle(_ item: PanelConfirmation) -> String {
+        switch item {
+        case .clearAll:
+            return "Clear all jobs?"
+        case let .destructiveAction(_, _, title, _):
+            return title
+        }
+    }
+
+    private func confirmationMessage(_ item: PanelConfirmation) -> String {
+        switch item {
+        case .clearAll:
+            return "Removes every job and timeline from memory."
+        case let .destructiveAction(_, _, title, producer):
+            return "Run “\(title)”? Provided by \(producer)."
+        }
+    }
+
+    private func confirmationConfirmLabel(_ item: PanelConfirmation) -> String {
+        switch item {
+        case .clearAll:
+            return "Clear"
+        case .destructiveAction:
+            return "Confirm"
+        }
+    }
+
+    private func performConfirmed(_ item: PanelConfirmation) {
+        switch item {
+        case .clearAll:
+            expandedId = nil
+            store.clearAll()
+        case let .destructiveAction(actionId, jobId, _, _):
+            _ = store.performAction(actionId: actionId, jobId: jobId, confirmed: true)
+        }
+        confirmation = nil
+    }
+
+    /// Twin metric chips — counts and colors both from `Job.status`
+    /// (same source as ribbon bands and row dots). Not raw active/attention facets.
     private var header: some View {
         HStack(spacing: 10) {
             headerMetric(
                 systemName: "play.circle.fill",
-                count: store.activeCount,
-                color: .blue,
-                help: "\(store.activeCount) running",
-                accessibilityLabel: "\(store.activeCount) running"
+                count: store.runningCount,
+                status: .running,
+                help: "\(store.runningCount) running",
+                accessibilityLabel: "\(store.runningCount) running"
             )
 
             if store.attentionCount > 0 {
                 headerMetric(
                     systemName: "exclamationmark.circle.fill",
                     count: store.attentionCount,
-                    color: .orange,
+                    status: .attention,
                     help: "\(store.attentionCount) need attention",
                     accessibilityLabel: "\(store.attentionCount) attention"
                 )
@@ -292,14 +393,20 @@ struct StatusPanelView: View {
     }
 
     /// Shared chip: filled-circle SF Symbol + monospaced count.
+    /// Color comes from the same status palette as the ribbon / row dots.
     private func headerMetric(
         systemName: String,
         count: Int,
-        color: Color,
+        status: Status,
         help: String,
         accessibilityLabel: String
     ) -> some View {
-        HStack(spacing: 4) {
+        let color = RibbonPalette.color(
+            for: status,
+            scheme: colorScheme,
+            map: settings.statusColors
+        )
+        return HStack(spacing: 4) {
             Image(systemName: systemName)
                 .font(.system(size: 12, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
@@ -323,27 +430,27 @@ struct StatusPanelView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(sections) { section in
                         sectionHeader(section.title)
-                        ForEach(section.subjects) { subject in
+                        ForEach(section.jobs) { job in
                             ExpandableSubjectRow(
-                                subject: subject,
-                                isExpanded: expandedId == subject.id,
-                                isKeyboardFocused: store.selectedJobId == subject.id,
-                                timeline: store.timeline(for: subject.id),
+                                subject: job,
+                                isExpanded: expandedId == job.id,
+                                isKeyboardFocused: store.selectedJobId == job.id,
+                                timeline: store.timeline(for: job.id),
                                 onToggle: {
                                     withAnimation(animate ? .easeInOut(duration: 0.14) : nil) {
-                                        if expandedId == subject.id {
+                                        if expandedId == job.id {
                                             expandedId = nil
                                         } else {
-                                            expandedId = subject.id
-                                            store.selectedJobId = subject.id
-                                            if let idx = listedSubjects.firstIndex(where: { $0.id == subject.id }) {
+                                            expandedId = job.id
+                                            store.selectedJobId = job.id
+                                            if let idx = listedSubjects.firstIndex(where: { $0.id == job.id }) {
                                                 store.focusedListIndex = idx
                                             }
                                         }
                                     }
                                 },
                                 onAction: { actionId in
-                                    handleAction(actionId: actionId, subject: subject)
+                                    handleAction(actionId: actionId, subject: job)
                                 }
                             )
                             rowDivider
@@ -400,31 +507,6 @@ struct StatusPanelView: View {
             )
         } else {
             _ = store.performAction(actionId: actionId, jobId: subject.id, confirmed: true)
-        }
-    }
-
-    private func confirmationAlert(_ item: PanelConfirmation) -> Alert {
-        switch item {
-        case .clearAll:
-            return Alert(
-                title: Text("Clear all jobs?"),
-                message: Text("Removes every job, timeline, and pending action from memory. Incoming snapshots can repopulate the list."),
-                primaryButton: .destructive(Text("Clear")) {
-                    expandedId = nil
-                    store.clearAll()
-                },
-                secondaryButton: .cancel()
-            )
-
-        case let .destructiveAction(actionId, jobId, title, producer):
-            return Alert(
-                title: Text(title),
-                message: Text("Run “\(title)” on this job? This is provided by \(producer)."),
-                primaryButton: .destructive(Text("Confirm")) {
-                    _ = store.performAction(actionId: actionId, jobId: jobId, confirmed: true)
-                },
-                secondaryButton: .cancel()
-            )
         }
     }
 }
@@ -544,13 +626,18 @@ private final class PanelResizeBridgeView: NSView {
         // After MenuBarExtra reflows content size it recenters; pull origin back.
         anchor?.reassertPinIfNeeded()
     }
+
+    /// Window-discovery only — never intercept clicks meant for SwiftUI controls.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
 }
 
 // MARK: - Status color dot
 
 /// Native semantic status marker with the standard delayed help tip.
 private struct StatusColorDot: View {
-    let status: RibbonStatus
+    let status: Status
     let color: Color
 
     var body: some View {
@@ -564,8 +651,8 @@ private struct StatusColorDot: View {
             // Keep the native help target comfortable without enlarging the dot.
             .frame(width: 16, height: 16)
             .contentShape(Rectangle())
-            .help(status.panelTitle)
-            .accessibilityLabel(status.panelTitle)
+            .help(status.title)
+            .accessibilityLabel(status.title)
             .accessibilityAddTraits(.isStaticText)
     }
 }
@@ -584,13 +671,22 @@ struct ExpandableSubjectRow: View {
     @Environment(SettingsStore.self) private var settings
     @State private var hovered = false
 
+    /// Columns for this paint — hide `.updated` on hover so primary fields get the width.
+    private var visibleColumns: [PanelColumn] {
+        let cols = settings.panelColumns
+        if hovered {
+            return cols.filter { $0 != .updated }
+        }
+        return cols
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 StatusColorDot(
-                    status: subject.ribbonStatus,
+                    status: subject.status,
                     color: RibbonPalette.color(
-                        for: subject.ribbonStatus,
+                        for: subject.status,
                         scheme: colorScheme,
                         map: settings.statusColors
                     )
@@ -598,27 +694,16 @@ struct ExpandableSubjectRow: View {
 
                 Button(action: onToggle) {
                     HStack(spacing: 8) {
-                        Text(subject.name)
-                            .font(.body.weight(.medium))
-                            .lineLimit(1)
-                            .layoutPriority(1)
-
-                        Text(subject.displaySummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text(timeLabel)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .fixedSize()
+                        ForEach(visibleColumns) { column in
+                            columnCell(column)
+                        }
 
                         Image(systemName: "chevron.right")
                             .font(.caption2.weight(.semibold))
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.quaternary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 12, alignment: .trailing)
                             .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
@@ -629,8 +714,9 @@ struct ExpandableSubjectRow: View {
             .padding(.vertical, 7)
             .background { rowSelectionBackground }
             .onHover { hovered = $0 }
+            .animation(nil, value: hovered)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(subject.name), \(subject.displaySummary), \(subject.ribbonStatus.panelTitle)")
+            .accessibilityLabel(accessibilityRowLabel)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(isExpanded ? "Collapse details" : "Expand details")
             .accessibilityAddTraits(isExpanded ? [.isSelected] : [])
@@ -644,6 +730,66 @@ struct ExpandableSubjectRow: View {
                     .transition(.opacity)
             }
         }
+    }
+
+    @ViewBuilder
+    private func columnCell(_ column: PanelColumn) -> some View {
+        let text = text(for: column)
+        Text(text)
+            .font(columnFont(column))
+            .foregroundStyle(column == .name ? Color.primary : Color.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(
+                minWidth: column.isFlexible ? 40 : column.width,
+                idealWidth: column.isFlexible ? nil : column.width,
+                maxWidth: column.isFlexible ? .infinity : column.width,
+                alignment: .leading
+            )
+            .layoutPriority(column.isFlexible ? 0 : 1)
+            .help(text)
+            .opacity(text.isEmpty ? 0.35 : 1)
+    }
+
+    private func columnFont(_ column: PanelColumn) -> Font {
+        switch column {
+        case .name: return .body.weight(.medium)
+        case .updated: return .caption2.monospacedDigit()
+        default: return .caption
+        }
+    }
+
+    private var accessibilityRowLabel: String {
+        visibleColumns
+            .map { text(for: $0) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    private func text(for column: PanelColumn) -> String {
+        switch column {
+        case .name:
+            return subject.name
+        case .summary:
+            return activityText
+        case .producer:
+            return subject.producer.name ?? subject.producer.id
+        case .machine:
+            return subject.alias
+        case .status:
+            return subject.status.title
+        case .updated:
+            return timeLabel
+        }
+    }
+
+    private var activityText: String {
+        if subject.attention.level >= .suggested, let title = subject.attention.title, !title.isEmpty {
+            return title
+        }
+        if let s = subject.current?.summary, !s.isEmpty { return s }
+        if let n = subject.current?.name, !n.isEmpty { return n }
+        return ""
     }
 
     @ViewBuilder
@@ -665,11 +811,15 @@ struct ExpandableSubjectRow: View {
     private var detailBlock: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 4) {
-                meta("Status", subject.ribbonStatus.panelTitle)
+                meta("Status", subject.status.title)
                 if let summary = subject.current?.summary ?? subject.current?.name, !summary.isEmpty {
                     meta("Doing", summary)
                 }
-                if let project = subject.context?.project, !project.isEmpty {
+                let producerLabel = subject.producer.name ?? subject.producer.id
+                if !producerLabel.isEmpty {
+                    meta("Producer", producerLabel)
+                }
+                if let project = subject.context?.project, !project.isEmpty, project != subject.name {
                     meta("Project", project)
                 }
                 if !subject.alias.isEmpty {
@@ -826,7 +976,7 @@ struct MenuBarRibbonLabel: View {
             return max(14, (22 * CGFloat(settings.ribbonLengthScale)).rounded())
         }
         let base = 28 + (100 - 28) * store.ribbonLengthFactor()
-        return min(220, max(16, base * CGFloat(settings.ribbonLengthScale))).rounded()
+        return min(400, max(16, base * CGFloat(settings.ribbonLengthScale))).rounded()
     }
 
     private var visualSignature: String {
@@ -869,7 +1019,7 @@ struct MenuBarRibbonLabel: View {
         return stops
     }
 
-    private func statusColor(_ status: RibbonStatus) -> Color {
+    private func statusColor(_ status: Status) -> Color {
         let rgb = settings.statusColors.color(for: status)
         let lift = colorScheme == .dark ? 0.04 : 0
         return Color(

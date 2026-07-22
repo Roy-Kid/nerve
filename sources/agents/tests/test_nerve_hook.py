@@ -4,10 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 HOOK_PATH = ROOT / "nerve_hook.py"
@@ -59,11 +57,13 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(job["kind"], "session")
         self.assertEqual(job["lifecycle"], "active")
         self.assertEqual(job["producer"]["id"], "claude-code")
-        self.assertIn("nerve", job["name"].lower())
+        self.assertEqual(job["name"], "nerve")  # project (cwd basename), not "Claude Code — …"
+        self.assertEqual(job["producer"]["name"], "Claude Code")
         self.assertTrue(job["alias"])
         self.assertEqual(len(self._posted), 1)
         self.assertEqual(self._posted[0]["alias"], job["alias"])
         self.assertIn("jobs", self._posted[0])
+        self.assertEqual(len(self._posted[0]["jobs"]), 1)
 
     def test_permission_sets_attention(self):
         payload = {
@@ -162,19 +162,110 @@ class NerveHookTests(unittest.TestCase):
         assert perm is not None
         self.assertEqual(perm["attention"]["reason"], "approval")
 
-    def test_subagent_start_is_running_facets(self):
+    def test_subagent_start_updates_main_session_only(self):
         job = self.mod.process(
             {
                 "hook_event_name": "SubagentStart",
                 "session_id": "s4",
                 "cwd": "/tmp/y",
+                "agent_id": "agent-abc123",
                 "agent_type": "Explore",
             }
         )
         assert job is not None
+        self.assertEqual(job["id"], "claude-code:s4")
         self.assertEqual(job["lifecycle"], "active")
         self.assertEqual(job["current"]["type"], "subagent")
+        self.assertEqual(job["current"]["name"], "Explore")
         self.assertEqual(job["attention"]["level"], "none")
+        self.assertEqual(job["extensions"].get("agentType"), "Explore")
+        self.assertEqual(job["extensions"].get("agentId"), "agent-abc123")
+        # Single main-session job — no child rows.
+        self.assertEqual(len(self._posted[-1]["jobs"]), 1)
+        self.assertNotIn("parentJobId", job.get("extensions", {}))
+        self.assertNotIn("paintRibbon", job.get("extensions", {}))
+
+    def test_subagent_stop_main_continues_thinking(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "SubagentStop",
+                "session_id": "s5",
+                "cwd": "/tmp/y",
+                "agent_id": "agent-def",
+                "agent_type": "Plan",
+                "background_tasks": [],
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["id"], "claude-code:s5")
+        self.assertEqual(job["lifecycle"], "active")
+        self.assertEqual(job["current"]["type"], "thinking")
+        self.assertEqual(job["attention"]["level"], "none")
+        self.assertEqual(len(self._posted[-1]["jobs"]), 1)
+
+    def test_subagent_stop_with_remaining_background_stays_running(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "SubagentStop",
+                "session_id": "s5b",
+                "cwd": "/tmp/y",
+                "agent_id": "agent-1",
+                "agent_type": "Explore",
+                "background_tasks": [
+                    {"id": "t2", "type": "subagent", "status": "running", "description": "other"}
+                ],
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "subagent")
+        self.assertEqual(job["attention"]["level"], "none")
+
+    def test_tool_events_inside_subagent_are_ignored(self):
+        """PreToolUse with agent_id must not thrash the main session."""
+        job = self.mod.process(
+            {
+                "hook_event_name": "PreToolUse",
+                "session_id": "s6",
+                "cwd": "/tmp/y",
+                "agent_id": "agent-xyz",
+                "agent_type": "Explore",
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            }
+        )
+        self.assertIsNone(job)
+        self.assertEqual(self._posted, [])
+
+    def test_permission_inside_subagent_still_updates_main(self):
+        """Approval needed in a child should surface on the main session row."""
+        job = self.mod.process(
+            {
+                "hook_event_name": "PermissionRequest",
+                "session_id": "s7",
+                "cwd": "/tmp/y",
+                "agent_id": "agent-xyz",
+                "agent_type": "Explore",
+                "tool_name": "Bash",
+                "tool_input": {"command": "rm x"},
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["id"], "claude-code:s7")
+        self.assertEqual(job["attention"]["reason"], "approval")
+
+    def test_agent_pretool_on_main_sets_subagent_facet(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "PreToolUse",
+                "session_id": "s8",
+                "cwd": "/tmp/y",
+                "tool_name": "Agent",
+                "tool_input": {"subagent_type": "Explore", "prompt": "scan"},
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "subagent")
+        self.assertIn("Explore", job["current"]["summary"])
 
     def test_session_end_success(self):
         job = self.mod.process(

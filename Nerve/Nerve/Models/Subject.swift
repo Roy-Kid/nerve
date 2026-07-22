@@ -1,13 +1,13 @@
 import Foundation
 
 /// A unit of work on a machine (session, build, test, deploy, …).
-/// Not an "agent" — producer is who reported it; `alias` is which machine.
+/// Producer is who reported it; `alias` is which machine.
 struct Job: Identifiable, Codable, Sendable, Hashable {
     var id: String
-    /// Job shape: `session`, `build`, `test`, `deploy`, `custom.*`, …
+    /// `session`, `build`, `test`, `deploy`, `custom.*`, …
     var kind: String
     var name: String
-    /// Machine alias (SSH Host / Settings alias). Routing key.
+    /// Machine alias (SSH Host / Settings alias).
     var alias: String
 
     var lifecycle: Lifecycle
@@ -16,7 +16,6 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
     var health: Health
     var outcome: Outcome?
     var progress: Progress
-    /// Who produced this job (claude-code, codex, xcode, …) — not a machine.
     var producer: ProducerInfo
     var context: ContextInfo?
     var location: LocationInfo?
@@ -29,48 +28,42 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
     var updatedAt: Date
     var version: UInt64
 
-    /// Unknown extension fields retained for forward compatibility.
+    /// Forward-compatible open fields from producers.
     var extensions: [String: JSONValue]
 
-    var isActive: Bool {
-        lifecycle != .ended
-    }
+    // MARK: Derived (not stored / not ingested)
 
-    var isEnded: Bool {
-        lifecycle == .ended
-    }
-
-    var displaySummary: String {
-        if let title = attention.title, attention.level >= .suggested {
-            return title
-        }
-        if let s = current?.summary, !s.isEmpty { return s }
-        if let n = current?.name, !n.isEmpty { return n }
-        if let o = outcome { return o.rawValue.capitalized }
-        return lifecycle.rawValue.capitalized
-    }
-
-    /// Maps **structured** facets → ribbon color.
-    /// Never inspects free-text summaries — only lifecycle / health / outcome /
-    /// attention.level / attention.reason codes / current.type vocabulary from hooks.
-    var ribbonStatus: RibbonStatus {
+    /// Single display status for every view (ribbon, panel, header counts).
+    /// Derived only from structured facets — never free-text.
+    var status: Status {
         if outcome == .failure { return .problem }
         if health == .unresponsive { return .problem }
 
-        // Controlled attention.reason codes (exact), written by the hook.
+        // Elevated attention → attention or waiting, never running.
+        if attention.level >= .suggested {
+            if let reason = attention.reason?.lowercased() {
+                switch reason {
+                case "resource", "dependency", "queue", "system", "lock",
+                     "throttle", "rate", "capacity", "failure":
+                    return .waiting
+                default:
+                    return .attention
+                }
+            }
+            return .attention
+        }
+
         if attention.level >= .informational, let reason = attention.reason?.lowercased() {
             switch reason {
             case "input", "approval", "auth", "permission", "decision", "elicitation":
                 return .attention
-            case "resource", "dependency", "queue", "system", "lock", "throttle", "rate", "capacity":
-                return .waiting
-            case "failure":
+            case "resource", "dependency", "queue", "system", "lock",
+                 "throttle", "rate", "capacity", "failure":
                 return .waiting
             default:
                 break
             }
         }
-        if attention.level >= .required { return .attention }
 
         if lifecycle == .ended {
             if outcome == .success || outcome == .partial { return .success }
@@ -80,14 +73,12 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         if lifecycle == .pending || lifecycle == .created { return .waiting }
         if health == .degraded { return .waiting }
 
-        // Controlled current.type vocabulary from hooks.
         switch current?.type.lowercased() {
         case "subagent", "tool", "thinking", "starting", "info":
             if lifecycle == .active { return .running }
         case "waiting":
-            return attention.level >= .informational ? .attention : .waiting
+            return .waiting
         case "idle":
-            // Stop / idle_prompt set idle + reason=input (already handled). Bare idle → inactive.
             return .inactive
         default:
             break

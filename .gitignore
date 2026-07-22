@@ -28,3 +28,8 @@ Nerve/build/
 *.egg-info/
 .venv/
 
+# Index page (Rsbuild)
+index-page/node_modules/
+index-page/dist/
+index-page/.rsbuild/
+

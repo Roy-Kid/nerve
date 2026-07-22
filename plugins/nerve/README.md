@@ -1,5 +1,9 @@
 # nerve (job status plugin)
 
+<p align="center">
+  <img src="icon.png" alt="Nerve" width="96" />
+</p>
+
 Reports agent session lifecycle to the **Nerve** menu-bar hub as **jobs**.
 
 - Fail-open: if Nerve is down, hooks exit `0` and never block the agent.
@@ -36,21 +40,26 @@ On the remote, install this plugin and run sessions as usual — hooks post to `
 
 ## What it reports
 
-| Hook (structured) | Facets | Ribbon |
-|-------------------|--------|--------|
+**One job per conversation** (`{producer}:{session_id}`). Subagents are not separate panel rows — they only refine the main session’s `current` facet.
+
+| Hook (structured) | Main session facets | Ribbon |
+|-------------------|---------------------|--------|
 | `SessionStart` | `active` + `starting` | Running |
-| `UserPromptSubmit` / `PreToolUse` / `PostToolUse` | `active` + `thinking`/`tool` | Running |
-| `SubagentStart` | `active` + `subagent` | Running |
-| `SubagentStop` | still `active` | Running |
-| `PermissionRequest` / `Notification` `permission_prompt` | `attention.reason=approval` | Attention |
-| `Stop` with empty `background_tasks` / `idle_prompt` | `attention.reason=input` | Attention |
-| `Stop` with non-empty `background_tasks` / `SubagentStart` | `current.type=subagent` | Running |
-| `SessionEnd` | `ended` + success | **Leaves panel** (no Success linger) |
-| Other `Notification` (no type) | `active` + `info` (message is display-only) | Running |
+| `UserPromptSubmit` | `active` + `thinking` | Running |
+| `PreToolUse` / `PostToolUse` (main thread) | `active` + `tool` / `subagent` | Running |
+| `SubagentStart` | `active` + `current.type=subagent` | Running |
+| `SubagentStop` (no other bg work) | `active` + `thinking` | Running |
+| `Stop` + non-empty `background_tasks` | `current.type=subagent` | Running |
+| `Stop` empty bg / `idle_prompt` | `attention.reason=input` | Attention |
+| `PermissionRequest` / `permission_prompt` | `attention.reason=approval` | Attention |
+| `SessionEnd` | `ended` + success | **Leaves panel** |
+| Other `Notification` (no type) | `active` + `info` | Running |
 
-Status is **never** inferred from free-text titles/messages — only event name + fields like `notification_type`.
+**Noise control:** hooks that fire *inside* a subagent (`agent_id` set) for `PreToolUse` / `PostToolUse` / `UserPromptSubmit` are **ignored**. SubagentStart/Stop brackets and Permission still update the main row.
 
-Job ids: `{producer}:{session_id}` e.g. `claude-code:…`, `codex:…`, `grok:…`.
+Status is **never** inferred from free-text titles/messages — only event name + structured fields (`notification_type`, `background_tasks`, …).
+
+Job ids: `claude-code:…`, `codex:…`, `grok:…`.
 
 ## Development
 

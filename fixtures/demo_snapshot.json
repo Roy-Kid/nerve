@@ -5,7 +5,7 @@
     {
       "id": "demo-agent-1",
       "kind": "session",
-      "name": "Claude Code — nerve",
+      "name": "nerve",
       "alias": "local",
       "lifecycle": "active",
       "current": {
@@ -14,10 +14,18 @@
         "summary": "Writing continuous ribbon view",
         "startedAt": "2026-07-19T08:00:00Z"
       },
-      "attention": { "level": "none" },
+      "attention": {
+        "level": "none"
+      },
       "health": "ok",
-      "progress": { "kind": "none" },
-      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
+      "progress": {
+        "kind": "none"
+      },
+      "producer": {
+        "id": "demo",
+        "name": "Demo",
+        "kind": "demo"
+      },
       "capabilities": [],
       "actions": [
         {
@@ -33,7 +41,9 @@
       "startedAt": "2026-07-19T07:00:00Z",
       "updatedAt": "2026-07-19T08:10:00Z",
       "version": 3,
-      "extensions": { "demo": true }
+      "extensions": {
+        "demo": true
+      }
     },
     {
       "id": "demo-build-1",
@@ -46,10 +56,19 @@
         "summary": "Compiling 42 files",
         "startedAt": "2026-07-19T08:05:00Z"
       },
-      "attention": { "level": "none" },
+      "attention": {
+        "level": "none"
+      },
       "health": "ok",
-      "progress": { "kind": "indeterminate", "label": "Building" },
-      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
+      "progress": {
+        "kind": "indeterminate",
+        "label": "Building"
+      },
+      "producer": {
+        "id": "demo",
+        "name": "Demo",
+        "kind": "demo"
+      },
       "capabilities": [],
       "actions": [],
       "createdAt": "2026-07-19T08:00:00Z",

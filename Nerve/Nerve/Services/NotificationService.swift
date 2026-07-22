@@ -48,14 +48,14 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                         subject: next,
                         kind: "attention.urgent",
                         title: next.attention.title ?? "Urgent: \(next.name)",
-                        body: next.attention.summary ?? next.displaySummary
+                        body: next.attention.summary ?? next.current?.summary ?? ""
                     )
                 } else if next.attention.level == .required, settings.notifyRequired {
                     notify(
                         subject: next,
                         kind: "attention.required",
                         title: next.attention.title ?? "Needs you: \(next.name)",
-                        body: next.attention.summary ?? next.displaySummary
+                        body: next.attention.summary ?? next.current?.summary ?? ""
                     )
                 }
             }
@@ -68,7 +68,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 subject: next,
                 kind: "outcome.failure",
                 title: "Failed: \(next.name)",
-                body: next.displaySummary
+                body: next.current?.summary ?? next.outcome?.rawValue ?? ""
             )
         }
 
@@ -94,7 +94,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     subject: next,
                     kind: "outcome.long_success",
                     title: "Completed: \(next.name)",
-                    body: next.displaySummary
+                    body: next.current?.summary ?? ""
                 )
             }
         }

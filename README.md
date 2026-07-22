@@ -1,10 +1,14 @@
+<p align="center">
+  <img src="assets/logo-512.png" alt="Nerve" width="160" />
+</p>
+
 # Nerve for macOS
 
 Lightweight **menu-bar** status hub for long-running work: sessions, builds, tests, jobs — all modeled as **Jobs** on **Machines**.
 
 Nerve does **not** run your agents. It aggregates status they push over a local HTTP ingest API into one continuous ribbon.
 
-Implementation status: [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md)
+Product signal model (lifecycle, privacy, scope): the site’s **[Signal](./index-page/)** section — run `cd index-page && npm run dev`.
 
 ## Quick start
 
@@ -44,6 +48,8 @@ Push live sessions as **jobs** from **one GitHub marketplace**. Hooks are fail-o
 | **Claude Code** | `/plugin marketplace add Roy-Kid/nerve` then `/plugin install nerve@nerve` |
 | **Codex** | `codex plugin marketplace add Roy-Kid/nerve` then `codex plugin add nerve@nerve` |
 | **Grok** | Same Claude-compatible marketplace / plugin |
+
+**One job per conversation.** Subagents only refine the main session’s `current` facet (not separate panel rows). Tool noise inside subagents is ignored.
 
 Full plugin docs: [`plugins/nerve/README.md`](./plugins/nerve/README.md)
 
@@ -85,10 +91,11 @@ Loopback: `http://127.0.0.1:17890`
     {
       "id": "claude-code:sess_1",
       "kind": "session",
-      "name": "Claude Code — nerve",
+      "name": "nerve",
       "alias": "gpu-box",
       "producer": { "id": "claude-code", "name": "Claude Code", "kind": "agent.claude" },
       "lifecycle": "active",
+      "current": { "type": "thinking", "summary": "…" },
       "attention": { "level": "none" },
       "health": "ok",
       "progress": { "kind": "none" },
@@ -103,10 +110,11 @@ Loopback: `http://127.0.0.1:17890`
 - **`alias`** — free-form machine label shown in the panel (any string; Settings → Machines is only for SSH tunnels).
 - **`kind`** — job shape (`session`, `build`, `test`, …), not “agent”.
 - **`producer`** — who reported the job.
+- **`name`** — typically project basename (`cwd`); status lives in `current` / `attention`.
 
 Wire sample: [`fixtures/demo_snapshot.json`](./fixtures/demo_snapshot.json).
 
-## Ribbon statuses (default colors)
+## Job status (default colors)
 
 | Status | Default | Meaning |
 |--------|---------|---------|
@@ -126,6 +134,16 @@ Open agent sessions stay on the panel while `lifecycle` is active. On **`Session
 - Python 3 (agent hook plugin only)
 - OpenSSH client (for remote machines)
 
+## Website
+
+Marketing site (Rsbuild + React) lives in [`index-page/`](./index-page/):
+
+```bash
+cd index-page && npm install && npm run dev
+```
+
+Production build: `npm run build` → `index-page/dist/`. App Store / GitHub URLs: `index-page/src/config.ts`.
+
 ## Layout
 
 ```
@@ -139,9 +157,10 @@ Nerve/Nerve/
   Services/              Notifications, Actions, SSH + tunnels
   Ingest/                Loopback HTTP
   UI/…                   Ribbon, panel, coach
+index-page/              Marketing site (Rsbuild) — Signal / Sources / Privacy
 fixtures/                Demo snapshot JSON
 scripts/                 run / inject_demo / verify_loop
-docs/                    Implementation status
+assets/                  Brand marks
 ```
 
 ## License

@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """Nerve hook — push Claude Code / Grok / Codex lifecycle into Nerve as jobs.
 
-Reads one JSON hook event from stdin, maps it to a Job snapshot with machine
-alias, and POSTs to the fixed local ingest URL. Always exit 0 (observability
-must never block the agent).
+Reads one JSON hook event from stdin, maps it to a single **main-session** Job
+snapshot (id = {producer}:{session_id}), and POSTs to the fixed local ingest
+URL. Always exit 0 (observability must never block the agent).
+
+Design (one job per conversation)
+---------------------------------
+- Only the main session is a Nerve job. Subagents are **not** separate rows.
+- SubagentStart / SubagentStop / background_tasks only refine the main session's
+  `current` facet (Running vs Attention).
+- Hooks that fire *inside* a subagent (payload has agent_id) are ignored for
+  tool chatter (Pre/PostToolUse…), so the panel is not flooded. Permission and
+  lifecycle brackets still update the main session when they matter.
 
 No environment variables. No on-disk state. Alias is a free-form machine
 label (prefer stable Bonjour LocalHostName on macOS). Nerve shows whatever
@@ -38,6 +47,17 @@ PRODUCER_META: dict[str, dict[str, str]] = {
     "grok": {"id": "grok", "name": "Grok", "kind": "agent.grok"},
     "codex": {"id": "codex", "name": "Codex", "kind": "agent.codex"},
 }
+
+# High-frequency tool events that fire inside subagents — skip so the main
+# session row stays a clean lifecycle, not a mirror of every child tool call.
+_SUBAGENT_INTERNAL_NOISE = frozenset(
+    {
+        "pretooluse",
+        "posttooluse",
+        "posttoolusefailure",
+        "userpromptsubmit",
+    }
+)
 
 
 def _now_iso() -> str:
@@ -175,6 +195,23 @@ def _session_id(payload: dict[str, Any]) -> str:
     return f"anon-{abs(hash(str(cwd))) % 10_000_000}"
 
 
+def _agent_id(payload: dict[str, Any]) -> str | None:
+    """Present when the hook fires inside a subagent (Claude Code)."""
+    raw = _get(payload, "agent_id", "agentId", default=None)
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
+
+
+def _agent_type(payload: dict[str, Any]) -> str | None:
+    raw = _get(payload, "agent_type", "agentType", default=None)
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
+
+
 def _cwd(payload: dict[str, Any]) -> str:
     cwd = _get(payload, "cwd", "working_directory", default=None)
     if cwd:
@@ -214,8 +251,8 @@ def _notification_type(payload: dict[str, Any]) -> str:
 def _background_tasks(payload: dict[str, Any]) -> list[Any]:
     """In-flight background work from Stop / SubagentStop (Claude Code ≥ 2.1.145).
 
-    Empty or missing ⇒ none. Non-empty ⇒ parent is paused on background agents/shells,
-    not waiting for the human. Do not infer this from free-text UI strings.
+    Empty or missing ⇒ none. Non-empty ⇒ main session is paused on background
+    agents/shells, not waiting for the human. Do not infer from free-text.
     """
     raw = payload.get("background_tasks")
     if raw is None:
@@ -231,7 +268,12 @@ def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[s
     first = tasks[0] if tasks else None
     if isinstance(first, dict):
         label = str(first.get("type") or first.get("kind") or "subagent")
-        desc = first.get("description") or first.get("name")
+        desc = (
+            first.get("description")
+            or first.get("name")
+            or first.get("agent_type")
+            or first.get("agentType")
+        )
     summary = f"{n} background task(s)"
     if desc:
         summary = f"{summary}: {_truncate(str(desc), 100)}"
@@ -249,7 +291,7 @@ def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[s
 
 
 def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Map hook **event type** (+ structured fields) → job facets.
+    """Map hook **event type** (+ structured fields) → main-session job facets.
 
     Status is never inferred from free-text titles/messages. Controlled vocabulary:
       current.type: starting | thinking | tool | subagent | waiting | idle | info
@@ -292,19 +334,33 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
     if event == "pretooluse":
         tool = str(_get(payload, "tool_name", "toolName", default="tool"))
-        # Structured tool names for “parent blocked on child agent output”.
+        # Main agent spawning / waiting on a subagent tool → Running (subagent).
         if tool in (
             "spawn_subagent",
             "get_command_or_subagent_output",
             "Task",
             "Agent",
         ):
+            tool_input = payload.get("tool_input") or payload.get("toolInput") or {}
+            if not isinstance(tool_input, dict):
+                tool_input = {}
+            sub_type = _get(
+                tool_input,
+                "subagent_type",
+                "subagentType",
+                "description",
+                default=None,
+            )
+            name = str(sub_type or tool)
+            summary = f"Using {tool}"
+            if sub_type:
+                summary = f"Using {tool} ({sub_type})"
             return {
                 "lifecycle": "active",
                 "current": {
                     "type": "subagent",
-                    "name": tool,
-                    "summary": f"Using {tool}",
+                    "name": name,
+                    "summary": summary,
                     "startedAt": _now_iso(),
                 },
                 "attention": {"level": "none"},
@@ -324,6 +380,34 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
     if event == "posttooluse":
         tool = str(_get(payload, "tool_name", "toolName", default="tool"))
+        # Background Agent launch returns early; keep main session as subagent work.
+        if tool in ("Agent", "Task", "spawn_subagent"):
+            tool_response = payload.get("tool_response") or payload.get("toolResponse") or {}
+            if not isinstance(tool_response, dict):
+                tool_response = {}
+            status = str(tool_response.get("status") or "").lower()
+            if status in ("async_launched", "running", "in_progress"):
+                name = str(
+                    tool_response.get("description")
+                    or _get(
+                        payload.get("tool_input") or payload.get("toolInput") or {},
+                        "subagent_type",
+                        "subagentType",
+                        "description",
+                        default=tool,
+                    )
+                )
+                return {
+                    "lifecycle": "active",
+                    "current": {
+                        "type": "subagent",
+                        "name": name,
+                        "summary": f"Background: {name}",
+                        "startedAt": _now_iso(),
+                    },
+                    "attention": {"level": "none"},
+                    "health": "ok",
+                }
         return {
             "lifecycle": "active",
             "current": {
@@ -337,8 +421,8 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "subagentstart":
-        # Structured event: a child agent is running → Running.
-        name = str(_get(payload, "agent_type", "agentType", "description", default="subagent"))
+        # Bracket: main session is running / waiting on a subagent → Running.
+        name = str(_agent_type(payload) or _get(payload, "description", default="subagent"))
         return {
             "lifecycle": "active",
             "current": {
@@ -352,22 +436,19 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "subagentstop":
-        # Subagent finished; parent session still active (more work or later Stop).
+        # One child finished. If other background work remains → still Running;
+        # otherwise main is continuing (thinking), not human-idle yet.
         name = str(
-            _get(
-                payload,
-                "agent_type",
-                "agentType",
-                "tool_name",
-                "toolName",
-                "description",
-                default="subagent",
-            )
+            _agent_type(payload)
+            or _get(payload, "tool_name", "toolName", "description", default="subagent")
         )
+        bg = _background_tasks(payload)
+        if bg:
+            return _background_work_facets(payload, bg)
         return {
             "lifecycle": "active",
             "current": {
-                "type": "tool",
+                "type": "thinking",
                 "name": name,
                 "summary": f"Subagent finished: {name}",
                 "startedAt": _now_iso(),
@@ -378,17 +459,21 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
     if event in ("posttoolusefailure", "stopfailure"):
         tool = str(_get(payload, "tool_name", "toolName", default="tool"))
+        err = _get(payload, "error", default=None)
+        summary = f"Failed: {tool}"
+        if err and event == "stopfailure":
+            summary = _truncate(str(err), 120) or summary
         return {
             "lifecycle": "active",
             "current": {
                 "type": "tool",
                 "name": tool,
-                "summary": f"Failed: {tool}",
+                "summary": summary,
             },
             "attention": {
                 "level": "informational",
                 "reason": "failure",
-                "title": f"{tool} failed",
+                "title": f"{tool} failed" if event != "stopfailure" else "Turn failed",
             },
             "health": "degraded",
         }
@@ -470,8 +555,7 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "stop":
-        # Claude Code Stop carries background_tasks[] (structured). Non-empty means
-        # the main agent paused on background work — still Running, not Attention.
+        # Non-empty background_tasks ⇒ still Running (paused on bg work), not Attention.
         bg = _background_tasks(payload)
         if bg:
             return _background_work_facets(payload, bg)
@@ -502,15 +586,30 @@ def _build_job(
     )
     cwd = _cwd(payload)
     project = _project_name(cwd)
-    display = f"{meta['name']} — {project}"
+    # Job title = project (cwd basename). Producer is its own field — do not
+    # bake "Claude Code — nerve" into the name; the panel already has status +
+    # current.summary for what is happening.
     now = _now_iso()
     alias = _machine_alias()
     job_id = f"{meta['id']}:{session_id}"
 
+    extensions: dict[str, Any] = {
+        "hookEvent": _get(payload, "hook_event_name", "hookEventName", "event", default=""),
+        "sessionId": session_id,
+        "model": _get(payload, "model", default=None),
+    }
+    # Optional breadcrumbs when the main-session update came from a subagent bracket.
+    at = _agent_type(payload)
+    aid = _agent_id(payload)
+    if at:
+        extensions["agentType"] = at
+    if aid and _event_name(payload) in ("subagentstart", "subagentstop"):
+        extensions["agentId"] = aid
+
     job: dict[str, Any] = {
         "id": job_id,
         "kind": "session",
-        "name": display,
+        "name": project,
         "alias": alias,
         "lifecycle": facets["lifecycle"],
         "current": facets.get("current"),
@@ -547,11 +646,7 @@ def _build_job(
         "startedAt": now,
         "updatedAt": now,
         "version": _version_ms(),
-        "extensions": {
-            "hookEvent": _get(payload, "hook_event_name", "hookEventName", "event", default=""),
-            "sessionId": session_id,
-            "model": _get(payload, "model", default=None),
-        },
+        "extensions": {k: v for k, v in extensions.items() if v is not None},
     }
 
     if facets.get("outcome"):
@@ -583,7 +678,7 @@ def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "nerve-hook/0.2",
+            "User-Agent": "nerve-hook/0.3",
         },
     )
     try:
@@ -606,6 +701,7 @@ def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:
 
 
 def process(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Map one hook event → a single main-session job snapshot (or None to skip)."""
     event = _event_name(payload)
     if not event:
         return None
@@ -626,6 +722,12 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
     }:
         return None
 
+    # Inside a subagent: ignore tool chatter so the main session row is not
+    # rewritten on every Bash/Read. SubagentStart/Stop and Permission still apply
+    # to the main session (those events either bracket work or need Attention).
+    if _agent_id(payload) and event in _SUBAGENT_INTERNAL_NOISE:
+        return None
+
     facets = _map_event(event, payload)
     if facets is None:
         return None
@@ -633,8 +735,7 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
     producer_key = _detect_producer(payload)
     session_id = _session_id(payload)
     job = _build_job(payload, producer_key, session_id, facets)
-    alias = job["alias"]
-    _post_snapshot(alias, _machine_kind(), job)
+    _post_snapshot(job["alias"], _machine_kind(), job)
     return job
 
 

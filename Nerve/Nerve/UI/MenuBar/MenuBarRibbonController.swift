@@ -24,7 +24,7 @@ final class MenuBarExtraContextMenuBridge: NSObject {
             matching: [.rightMouseDown, .leftMouseDown]
         ) { [weak self] event in
             guard let self else { return event }
-            guard self.isRibbonStatusItemEvent(event) else { return event }
+            guard self.isMenuBarItemEvent(event) else { return event }
 
             let secondary =
                 event.type == .rightMouseDown
@@ -75,7 +75,7 @@ final class MenuBarExtraContextMenuBridge: NSObject {
     }
 
     /// MenuBarExtra’s status item lives in a private status-bar window owned by this process.
-    private func isRibbonStatusItemEvent(_ event: NSEvent) -> Bool {
+    private func isMenuBarItemEvent(_ event: NSEvent) -> Bool {
         if let window = event.window {
             let name = NSStringFromClass(type(of: window))
             if name.contains("StatusBar") || name.contains("StatusItem") {
@@ -837,8 +837,8 @@ enum RibbonRenderer {
         let maxW: CGFloat = 100
         let base = minW + (maxW - minW) * factor
         let scaled = base * CGFloat(settings.ribbonLengthScale)
-        // Hard caps so extreme scales still fit the menu bar.
-        return min(220, max(16, scaled)).rounded()
+        // Cap matches ~100pt base × 4.0 scale (Appearance max 400%).
+        return min(400, max(16, scaled)).rounded()
     }
 
     static func image(
@@ -911,7 +911,7 @@ enum RibbonRenderer {
     ) -> NSGradient? {
         guard !segments.isEmpty else { return nil }
 
-        func resolved(_ status: RibbonStatus) -> NSColor {
+        func resolved(_ status: Status) -> NSColor {
             let base = RibbonPalette.nsColor(for: status, dark: isDark, map: map)
             return base.blended(withFraction: isDark ? 0.04 : 0, of: .white) ?? base
         }

@@ -8,6 +8,7 @@
   },
   "homepage": "https://github.com/Roy-Kid/nerve/tree/main/plugins/nerve",
   "repository": "https://github.com/Roy-Kid/nerve",
+  "icon": "./icon.png",
   "keywords": [
     "nerve",
     "status",
