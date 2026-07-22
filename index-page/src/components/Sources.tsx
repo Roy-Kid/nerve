@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
 import { sources } from '../config';
 
 export function Sources() {
@@ -45,6 +46,9 @@ export function Sources() {
           <p className="lede lede--tight">
             One marketplace plugin covers Claude Code, Codex, and Grok. Hooks are
             fail-open and stateless — if Nerve is down, agents keep working.
+          </p>
+          <p className="sources-more">
+            <Link to="/docs/plugin">Plugin install &amp; hook map →</Link>
           </p>
         </div>
 

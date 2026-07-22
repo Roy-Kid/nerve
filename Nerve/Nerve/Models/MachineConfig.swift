@@ -1,20 +1,20 @@
 import Foundation
 
-/// A machine the host tracks for **SSH reverse tunnels only**.
-/// Job display uses whatever `alias` the producer reports — not this registry.
+/// A remote tunnel row in Settings — sourced from the user's `~/.ssh/config` Hosts.
+/// Job display uses whatever `alias` the producer reports; this list is tunnels only.
 struct MachineConfig: Identifiable, Codable, Hashable, Sendable {
     var id: UUID
-    /// SSH `Host` token (and a convenient label in Settings).
+    /// SSH `Host` token (`ssh <alias>`).
     var alias: String
-    /// DNS name or IP (`HostName` in ssh config).
+    /// `HostName` from the user's config (display).
     var hostName: String
     var user: String
     var sshPort: UInt16
-    /// Absolute path to identity file; nil uses the ssh agent / default keys.
+    /// Absolute path when set in the user's config (display).
     var identityFile: String?
     var enabled: Bool
     var autoConnect: Bool
-    /// Port forwarded on the remote loopback to this host's Nerve ingest.
+    /// Port forwarded on the remote loopback to this Mac's Nerve ingest.
     var remoteIngestPort: UInt16
 
     init(
@@ -39,16 +39,48 @@ struct MachineConfig: Identifiable, Codable, Hashable, Sendable {
         self.remoteIngestPort = remoteIngestPort
     }
 
-    /// SSH Host tokens: letters, digits, `.`, `-`, `_`.
+    enum CodingKeys: String, CodingKey {
+        case id, alias, hostName, user, sshPort, identityFile
+        case enabled, autoConnect, remoteIngestPort
+        // Legacy key ignored on decode.
+        case usesExistingSSHHost
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        alias = try c.decode(String.self, forKey: .alias)
+        hostName = try c.decode(String.self, forKey: .hostName)
+        user = try c.decode(String.self, forKey: .user)
+        sshPort = try c.decode(UInt16.self, forKey: .sshPort)
+        identityFile = try c.decodeIfPresent(String.self, forKey: .identityFile)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        autoConnect = try c.decode(Bool.self, forKey: .autoConnect)
+        remoteIngestPort = try c.decode(UInt16.self, forKey: .remoteIngestPort)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(alias, forKey: .alias)
+        try c.encode(hostName, forKey: .hostName)
+        try c.encode(user, forKey: .user)
+        try c.encode(sshPort, forKey: .sshPort)
+        try c.encodeIfPresent(identityFile, forKey: .identityFile)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(autoConnect, forKey: .autoConnect)
+        try c.encode(remoteIngestPort, forKey: .remoteIngestPort)
+    }
+
+    /// SSH Host tokens: letters, digits, `.`, `-`, `_`. Empty input stays empty.
     static func sanitizeAlias(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_"))
-        let filtered = String(trimmed.unicodeScalars.filter { allowed.contains($0) })
-        return filtered.isEmpty ? "machine" : filtered
+        return String(trimmed.unicodeScalars.filter { allowed.contains($0) })
     }
 }
 
-/// Runtime connection status for a configured remote machine (not persisted).
+/// Runtime connection status for a tunnel (not persisted).
 enum MachineLinkState: String, Sendable, Hashable {
     case idle
     case connecting
@@ -59,16 +91,8 @@ enum MachineLinkState: String, Sendable, Hashable {
 /// This Mac — labels for Settings / demo data only. Ingest jobs keep their own alias.
 enum LocalMachine {
     /// Stable Bonjour name when available; otherwise process hostname short form.
-    static var alias: String {
-        if let local = bonjourLocalHostName, !local.isEmpty {
-            return MachineConfig.sanitizeAlias(local)
-        }
-        let host = ProcessInfo.processInfo.hostName
-        if let short = host.split(separator: ".").first.map(String.init), !short.isEmpty {
-            return MachineConfig.sanitizeAlias(short)
-        }
-        return "local"
-    }
+    /// Cached once: `scutil` is a subprocess and must not run on every SwiftUI body eval.
+    static let alias: String = resolveAlias()
 
     static var kind: String {
         #if os(macOS)
@@ -78,7 +102,18 @@ enum LocalMachine {
         #endif
     }
 
-    private static var bonjourLocalHostName: String? {
+    private static func resolveAlias() -> String {
+        if let local = bonjourLocalHostName(), !local.isEmpty {
+            return MachineConfig.sanitizeAlias(local)
+        }
+        let host = ProcessInfo.processInfo.hostName
+        if let short = host.split(separator: ".").first.map(String.init), !short.isEmpty {
+            return MachineConfig.sanitizeAlias(short)
+        }
+        return "local"
+    }
+
+    private static func bonjourLocalHostName() -> String? {
         #if os(macOS)
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")

@@ -48,5 +48,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // SPA: /docs/* falls back to index during local dev.
+    historyApiFallback: true,
   },
 });

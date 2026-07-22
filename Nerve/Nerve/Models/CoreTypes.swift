@@ -250,9 +250,9 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     case waiting
     /// Blue — actively executing.
     case running
-    /// Green — recently completed successfully.
+    /// Green — partial complete (e.g. monitor waiting for feedback) or ended success.
     case success
-    /// Gray — paused, idle, or unknown.
+    /// Gray — ready (no turn yet), paused, or unknown. Not “dead”.
     case inactive
 
     private var order: Int {

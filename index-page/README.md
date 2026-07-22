@@ -1,35 +1,34 @@
-# Nerve index page
+# Nerve website
 
-Marketing site for [Nerve](https://github.com/Roy-Kid/nerve) — Rsbuild + React + TypeScript.
+Marketing landing + **product handbook** (SPA under `/docs/*`).
 
-## Scripts
+## Commands
 
 ```bash
-cd index-page
 npm install
 npm run dev      # http://localhost:3000
-npm run build    # static output → dist/
-npm run preview  # preview production build
-npm test         # rstest
+npm run build    # → dist/
+npm test
 ```
 
-## Links
+## Routes
 
-Edit `src/config.ts`:
+| Path | Page |
+|------|------|
+| `/` | Landing (Story, Signal, Sources, Privacy, Get) |
+| `/docs` | Docs hub |
+| `/docs/get-started` | Get started |
+| `/docs/plugin` | Agent plugins |
+| `/docs/machines` | Machines & remotes |
+| `/docs/status` | Status & lifecycle |
+| `/docs/ingest` | Ingest API |
+| `/docs/privacy` | Privacy |
 
-| Field | Purpose |
-|-------|---------|
-| `github` | Repository URL |
-| `appStore` | App Store product URL |
-| `appStoreReady` | `true` when the listing is live (enables the button) |
+Handbook body: [`src/docs/content.ts`](./src/docs/content.ts).  
+UI: `src/pages/` · `src/components/docs/`.
 
-When the App Store page is published, set:
-
-```ts
-appStore: 'https://apps.apple.com/app/idXXXXXXXX',
-appStoreReady: true,
-```
+This is the **only** public docs surface for the monorepo (no top-level `docs/`).
 
 ## Deploy
 
-`npm run build` emits a static site in `dist/`. Host on GitHub Pages, Cloudflare Pages, Netlify, or any static host. `output.assetPrefix` is `./` so relative paths work from a subpath or file server.
+`npm run build` → `dist/`. Hosts need SPA fallback (`/* → index.html`); `public/_redirects` covers Netlify/Cloudflare-style. Product URLs: `src/config.ts`.

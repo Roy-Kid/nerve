@@ -73,12 +73,23 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         if lifecycle == .pending || lifecycle == .created { return .waiting }
         if health == .degraded { return .waiting }
 
+        // Open session, partial outcome (monitor waiting for feedback) → Success.
+        if lifecycle == .active, outcome == .partial {
+            return .success
+        }
+
         switch current?.type.lowercased() {
-        case "subagent", "tool", "thinking", "starting", "info":
+        case "subagent", "tool", "thinking", "info":
+            // Shell / subagent still running → Running (never Attention).
             if lifecycle == .active { return .running }
+        case "monitor":
+            // Monitor open: phase complete, waiting on stream feedback → green.
+            return .success
         case "waiting":
             return .waiting
-        case "idle":
+        // starting = Ready (session open, no turn yet). idle = your_turn facet
+        // without elevated attention (rare). Never paint Running for these.
+        case "idle", "starting", "booting":
             return .inactive
         default:
             break
@@ -86,6 +97,32 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
 
         if lifecycle == .active { return .running }
         return .inactive
+    }
+
+    // MARK: Conversation job (panel / ribbon)
+
+    /// Whether this row is a first-class conversation job.
+    ///
+    /// Invariant: **one job per conversation** (`{producer}:{session_id}`).
+    /// Older hooks briefly posted per-subagent rows with `role=subagent`,
+    /// `parentJobId`, `paintRibbon=false`, or a three-segment id
+    /// `{producer}:{session}:{agentId}`. Those must not appear in the panel
+    /// or ribbon and must not accumulate.
+    var isConversationJob: Bool {
+        if case .string(let role) = extensions["role"], role.lowercased() == "subagent" {
+            return false
+        }
+        if extensions["parentJobId"] != nil {
+            return false
+        }
+        if case .bool(false) = extensions["paintRibbon"] {
+            return false
+        }
+        // `{producer}:{session}` has one `:`; legacy child ids have two+.
+        if id.filter({ $0 == ":" }).count >= 2 {
+            return false
+        }
+        return true
     }
 
     static func make(

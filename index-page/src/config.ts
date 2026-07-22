@@ -9,8 +9,9 @@ export const site = {
   /** Replace with the live App Store product URL when published. */
   appStore: 'https://apps.apple.com/app/nerve',
   appStoreReady: false,
-  docs: 'https://github.com/Roy-Kid/nerve#readme',
-  pluginDocs: 'https://github.com/Roy-Kid/nerve/tree/main/plugins/nerve',
+  /** In-site documentation hub (subpages under /docs). */
+  docs: '/docs',
+  pluginDocs: '/docs/plugin',
   requirements: {
     macos: 'macOS 14+',
     xcode: 'Xcode 15+',
@@ -35,8 +36,8 @@ export const statusMeta: Record<
   attention: { label: 'Attention', color: '#ff9500', hint: 'Needs you' },
   waiting: { label: 'Waiting', color: '#af52de', hint: 'System / deps' },
   running: { label: 'Running', color: '#007aff', hint: 'In flight' },
-  success: { label: 'Success', color: '#34c759', hint: 'Done (sessions leave)' },
-  inactive: { label: 'Inactive', color: '#8e8e93', hint: 'Idle / unknown' },
+  success: { label: 'Success', color: '#34c759', hint: 'Monitor wait / done' },
+  inactive: { label: 'Inactive', color: '#8e8e93', hint: 'Ready / unknown' },
 };
 
 export const truths = [
@@ -69,8 +70,8 @@ export const lifecycle = [
   {
     phase: 'Start',
     facet: 'starting',
-    ribbon: 'running' as const,
-    note: 'Session opens. One job id per conversation.',
+    ribbon: 'inactive' as const,
+    note: 'Session opens — Ready. Running only after the first prompt.',
   },
   {
     phase: 'Work',
@@ -86,15 +87,21 @@ export const lifecycle = [
   },
   {
     phase: 'Background',
-    facet: 'subagent',
+    facet: 'subagent · shell',
     ribbon: 'running' as const,
-    note: 'Still working — background tasks or SubagentStart, not human idle.',
+    note: 'Shell / subagent still running — Running, never Attention.',
+  },
+  {
+    phase: 'Monitor',
+    facet: 'monitor',
+    ribbon: 'success' as const,
+    note: 'Monitor open: phase done, waiting for stream feedback (green).',
   },
   {
     phase: 'End',
     facet: 'ended',
     ribbon: 'inactive' as const,
-    note: 'SessionEnd removes the job immediately. No Success linger.',
+    note: 'SessionEnd removes the job immediately.',
   },
 ] as const;
 

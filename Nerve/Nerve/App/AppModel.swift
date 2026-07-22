@@ -54,11 +54,15 @@ final class AppModel {
         self.ingest = server
         server.start()
 
+        // Drop any leftover per-subagent rows from older hooks still in memory.
+        store.purgeAllLegacyChildJobs()
+
         tunnels.start()
 
-        expireTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // 5s: pending-action expiry + local PID reaping (closed terminal / kill).
+        expireTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.store.expireStalePendingActions()
+                self?.store.runMaintenanceTick()
             }
         }
 

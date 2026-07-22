@@ -15,7 +15,7 @@
       },
       "category": "productivity",
       "source": "./plugins/nerve",
-      "homepage": "https://github.com/Roy-Kid/nerve/tree/main/plugins/nerve",
+      "homepage": "https://github.com/Roy-Kid/nerve#documentation-website",
       "icon": "./assets/logo-512.png"
     }
   ]

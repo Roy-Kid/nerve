@@ -121,8 +121,9 @@ struct PreferencesView: View {
 
     @State private var tab: PreferencesTab? = .general
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var editingMachine: MachineConfig?
-    @State private var showEditor = false
+    /// Drives the machine editor sheet. Prefer `sheet(item:)` over `isPresented` + optional —
+    /// an empty sheet body freezes the Settings window on macOS.
+    @State private var isRefreshingSSH = false
 
     private var selectedTab: PreferencesTab { tab ?? .general }
 
@@ -157,28 +158,6 @@ struct PreferencesView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 660, idealWidth: 700, minHeight: 500, idealHeight: 540)
-        .sheet(isPresented: $showEditor) {
-            if let draft = editingMachine {
-                MachineEditorSheet(
-                    machine: draft,
-                    onSave: { saved in
-                        settings.upsertMachine(saved)
-                        tunnels.syncConfig()
-                        if saved.enabled {
-                            tunnels.connect(id: saved.id)
-                        } else {
-                            tunnels.disconnect(id: saved.id, clearError: true)
-                        }
-                        showEditor = false
-                        editingMachine = nil
-                    },
-                    onCancel: {
-                        showEditor = false
-                        editingMachine = nil
-                    }
-                )
-            }
-        }
     }
 
     private var sidebarFooter: some View {
@@ -329,7 +308,7 @@ struct PreferencesView: View {
 
                 Section {
                     if settings.machines.isEmpty {
-                        Text("No remote tunnels yet. Add a machine only if you need SSH reverse-forward so a remote can reach this Mac’s ingest at 127.0.0.1.")
+                        Text("No Host entries in ~/.ssh/config. Add a Host there, then hit refresh.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 4)
@@ -337,34 +316,45 @@ struct PreferencesView: View {
                         ForEach(settings.machines) { machine in
                             machineRow(machine)
                         }
-                        .onDelete { indexSet in
-                            for i in indexSet {
-                                let id = settings.machines[i].id
-                                tunnels.disconnect(id: id, clearError: true)
-                                settings.removeMachine(id: id)
-                            }
-                            tunnels.syncConfig()
-                        }
-                    }
-
-                    Button {
-                        editingMachine = MachineConfig(
-                            alias: "",
-                            hostName: "",
-                            user: NSUserName()
-                        )
-                        showEditor = true
-                    } label: {
-                        Label("Add Machine…", systemImage: "plus.circle.fill")
                     }
                 } header: {
-                    Text("Remote Tunnels")
+                    HStack {
+                        Text("Remote Tunnels")
+                        Spacer()
+                        Button {
+                            refreshSSHHosts()
+                        } label: {
+                            if isRefreshingSSH {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isRefreshingSSH)
+                        .help("Reload Hosts from ~/.ssh/config")
+                        .accessibilityLabel("Refresh SSH hosts")
+                    }
                 } footer: {
-                    Text("Optional. Jobs do not need to be registered here — ingest shows whatever alias arrives. Configure a remote only to open SSH reverse-forward and optionally normalize its name variants.")
+                    Text("Loaded from ~/.ssh/config + known_hosts. Enable a host, then Connect. OTP/captcha: `ssh <alias>` in Terminal first so ControlMaster is up.")
                 }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
+            .onAppear {
+                if settings.machines.isEmpty {
+                    refreshSSHHosts()
+                }
+            }
+        }
+    }
+
+    private func refreshSSHHosts() {
+        isRefreshingSSH = true
+        Task { @MainActor in
+            tunnels.refreshFromLocalSSH()
+            isRefreshingSSH = false
         }
     }
 
@@ -376,7 +366,9 @@ struct PreferencesView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(machine.alias.isEmpty ? "Untitled" : machine.alias)
                         .font(.body.weight(.semibold))
-                    Text("\(machine.user)@\(machine.hostName):\(machine.sshPort)")
+                    Text(machine.user.isEmpty
+                         ? machine.hostName
+                         : "\(machine.user)@\(machine.hostName)")
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                 }
@@ -388,7 +380,7 @@ struct PreferencesView: View {
                 Text(err)
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .systemRed))
-                    .lineLimit(3)
+                    .lineLimit(4)
             }
 
             HStack(spacing: 12) {
@@ -415,12 +407,8 @@ struct PreferencesView: View {
                 Spacer()
 
                 Button("Connect") { tunnels.connect(id: machine.id) }
-                    .disabled(!machine.enabled)
+                    .disabled(!machine.enabled || state == .connecting)
                 Button("Disconnect") { tunnels.disconnect(id: machine.id, clearError: true) }
-                Button("Edit…") {
-                    editingMachine = machine
-                    showEditor = true
-                }
             }
             .buttonStyle(.borderless)
         }
@@ -768,8 +756,8 @@ struct PreferencesView: View {
         case .attention: return "Needs input, authorization, or a decision"
         case .waiting: return "Waiting for resources or dependencies"
         case .running: return "Actively executing"
-        case .success: return "Completed successfully"
-        case .inactive: return "Paused, idle, or unknown"
+        case .success: return "Done / monitor waiting for feedback"
+        case .inactive: return "Ready (no turn yet), paused, or unknown"
         }
     }
 
@@ -782,90 +770,6 @@ struct PreferencesView: View {
         case .success: return "checkmark.circle.fill"
         case .inactive: return "pause.circle.fill"
         }
-    }
-}
-
-// MARK: - Machine editor
-
-private struct MachineEditorSheet: View {
-    @State private var draft: MachineConfig
-    var onSave: (MachineConfig) -> Void
-    var onCancel: () -> Void
-
-    init(machine: MachineConfig, onSave: @escaping (MachineConfig) -> Void, onCancel: @escaping () -> Void) {
-        _draft = State(initialValue: machine)
-        self.onSave = onSave
-        self.onCancel = onCancel
-    }
-
-    private var canSave: Bool {
-        !MachineConfig.sanitizeAlias(draft.alias).isEmpty
-            && !draft.hostName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !draft.user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(draft.alias.isEmpty ? "New Machine" : "Edit Machine")
-                    .font(.headline)
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    var m = draft
-                    m.alias = MachineConfig.sanitizeAlias(m.alias)
-                    m.hostName = m.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    m.user = m.user.trimmingCharacters(in: .whitespacesAndNewlines)
-                    onSave(m)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
-            }
-            .padding()
-
-            Divider()
-
-            Form {
-                Section {
-                    TextField("Alias (hostname short name)", text: $draft.alias)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Host (IP or DNS)", text: $draft.hostName)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("SSH user", text: $draft.user)
-                        .textFieldStyle(.roundedBorder)
-                    HStack {
-                        Text("SSH port")
-                        Spacer()
-                        TextField("", value: $draft.sshPort, format: .number)
-                            .frame(width: 72)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    HStack {
-                        Text("Remote Nerve port")
-                        Spacer()
-                        TextField("", value: $draft.remoteIngestPort, format: .number)
-                            .frame(width: 72)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    TextField("Identity file (optional)", text: Binding(
-                        get: { draft.identityFile ?? "" },
-                        set: { draft.identityFile = $0.isEmpty ? nil : $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                } footer: {
-                    Text("Alias should match the short hostname on the remote machine. Nerve will open an SSH reverse tunnel so remote jobs can reach this Mac at 127.0.0.1:\(draft.remoteIngestPort).")
-                }
-
-                Section {
-                    Toggle("Enabled", isOn: $draft.enabled)
-                    Toggle("Connect when Nerve starts", isOn: $draft.autoConnect)
-                }
-            }
-            .formStyle(.grouped)
-            .padding(.bottom, 12)
-        }
-        .frame(width: 440, height: 480)
     }
 }
 

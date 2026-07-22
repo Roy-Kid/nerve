@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { site } from '../config';
 
 export function Footer() {
@@ -5,21 +6,17 @@ export function Footer() {
   return (
     <footer className="site-footer">
       <div className="footer-row">
-        <a className="nav-brand" href="#top">
+        <Link className="nav-brand" to="/">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" width={22} height={22} />
           <span>{site.name}</span>
-        </a>
+        </Link>
         <nav className="footer-nav" aria-label="Footer">
           <a href={site.github} target="_blank" rel="noreferrer">
             GitHub
           </a>
-          <a href={site.docs} target="_blank" rel="noreferrer">
-            Docs
-          </a>
-          <a href={site.pluginDocs} target="_blank" rel="noreferrer">
-            Plugins
-          </a>
-          <a href="#get">Download</a>
+          <Link to="/docs">Docs</Link>
+          <Link to="/docs/plugin">Plugins</Link>
+          <Link to="/#get">Download</Link>
         </nav>
       </div>
       <p className="footer-copy">

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { designNotes, lifecycle, statusMeta } from '../config';
 
 export function Signal() {
@@ -36,6 +37,9 @@ export function Signal() {
           <p className="lede lede--tight">
             Plugins push a single job per conversation. Subagents and background
             work only change that row’s facet — they never spawn noise in the panel.
+          </p>
+          <p className="sources-more">
+            <Link to="/docs/status">Full status handbook →</Link>
           </p>
         </header>
 

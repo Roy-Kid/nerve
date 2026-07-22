@@ -466,6 +466,25 @@ final class SettingsStore {
         machines.first { $0.id == id }
     }
 
+    /// Replace the tunnel list from concrete Hosts in `~/.ssh/config`.
+    /// Keeps enabled / autoConnect / remoteIngestPort / id when the alias is unchanged.
+    func refreshMachinesFromLocalSSH() {
+        let hosts = SSHConfigWriter.loadLocalHosts()
+        let previous = Dictionary(uniqueKeysWithValues: machines.map { ($0.alias, $0) })
+        machines = hosts.map { host in
+            if let old = previous[host.alias] {
+                var m = host.asMachineConfig(
+                    remoteIngestPort: old.remoteIngestPort,
+                    enabled: old.enabled,
+                    autoConnect: old.autoConnect
+                )
+                m.id = old.id
+                return m
+            }
+            return host.asMachineConfig(remoteIngestPort: ingestPort, enabled: false, autoConnect: false)
+        }
+    }
+
     var effectiveAnimationsEnabled: Bool {
         animationsEnabled && !reduceMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }

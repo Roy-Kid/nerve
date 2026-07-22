@@ -219,7 +219,7 @@ struct StatusPanelView: View {
         ) {
             confirmClearAll()
         }
-        .disabled(store.jobs.isEmpty)
+        .disabled(store.activeJobs.isEmpty)
     }
 
     private func headerIconButton(
@@ -260,7 +260,7 @@ struct StatusPanelView: View {
     }
 
     private func refreshPresentation() {
-        store.expireStalePendingActions()
+        store.runMaintenanceTick()
         store.ribbonInvalidationSink?()
     }
 

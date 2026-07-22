@@ -34,4 +34,9 @@ describe('site config', () => {
     expect(designNotes.length).toBeGreaterThanOrEqual(3);
     expect(lifecycle.some((s) => s.phase === 'End')).toBe(true);
   });
+
+  it('points docs links at in-site subpages', () => {
+    expect(site.docs).toBe('/docs');
+    expect(site.pluginDocs).toBe('/docs/plugin');
+  });
 });

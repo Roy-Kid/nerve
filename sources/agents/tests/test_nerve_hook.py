@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,20 +24,32 @@ def load_hook():
 class NerveHookTests(unittest.TestCase):
     def setUp(self):
         # Host harness env must not leak into offline unit tests.
-        import os
-
         for key in list(os.environ):
             if key.startswith(("GROK_", "CLAUDE_PLUGIN_", "PLUGIN_ROOT", "CODEX_")):
                 os.environ.pop(key, None)
 
         self.mod = load_hook()
         self._posted: list = []
+        # Isolate slot state so supersede tests don't touch the real temp dir.
+        self._state_dir = Path(tempfile.mkdtemp(prefix="nerve-hook-test-"))
+        self.mod._STATE_DIR_OVERRIDE = self._state_dir
+        # Stable terminal slot so pid-walk noise doesn't split keys mid-test.
+        os.environ["TERM_SESSION_ID"] = "test-term-slot-1"
 
         def capture(alias, machine_kind, job):
             self._posted.append({"alias": alias, "machineKind": machine_kind, "jobs": [job]})
             return True
 
         self.mod._post_snapshot = capture
+
+    def tearDown(self):
+        import shutil
+
+        try:
+            shutil.rmtree(self._state_dir, ignore_errors=True)
+        except Exception:
+            pass
+        os.environ.pop("TERM_SESSION_ID", None)
 
     def test_event_name_normalization(self):
         m = self.mod
@@ -56,10 +70,21 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(job["id"], "claude-code:sess-abc")
         self.assertEqual(job["kind"], "session")
         self.assertEqual(job["lifecycle"], "active")
+        # Ready (starting) — not Running until UserPromptSubmit / tools.
+        # Distinct from idle your_turn (Stop / idle_prompt).
+        self.assertEqual(job["current"]["type"], "starting")
+        self.assertEqual(job["current"]["summary"], "Ready")
+        self.assertEqual(job["attention"]["level"], "none")
         self.assertEqual(job["producer"]["id"], "claude-code")
         self.assertEqual(job["name"], "nerve")  # project (cwd basename), not "Claude Code — …"
         self.assertEqual(job["producer"]["name"], "Claude Code")
         self.assertTrue(job["alias"])
+        # Liveness helpers for the app (PID reaping + slot supersede).
+        self.assertIn("slot", job["extensions"])
+        self.assertTrue(job["extensions"]["slot"])
+        action_kinds = {a["kind"] for a in job["actions"]}
+        self.assertIn("copy_summary", action_kinds)
+        self.assertIn("dismiss", action_kinds)
         self.assertEqual(len(self._posted), 1)
         self.assertEqual(self._posted[0]["alias"], job["alias"])
         self.assertIn("jobs", self._posted[0])
@@ -124,7 +149,7 @@ class NerveHookTests(unittest.TestCase):
         self.assertNotEqual(job["attention"].get("reason"), "input")
 
     def test_notification_uses_structured_type_not_message_text(self):
-        # Free-text alone must not drive status.
+        # Free-text alone must not drive status (except known harness bg-wait toast).
         free = self.mod.process(
             {
                 "hook_event_name": "Notification",
@@ -135,7 +160,8 @@ class NerveHookTests(unittest.TestCase):
         )
         assert free is not None
         self.assertEqual(free["attention"]["level"], "none")
-        self.assertEqual(free["current"]["type"], "info")  # active → Running
+        # Known Claude toast → Running (subagent facet), not Attention.
+        self.assertEqual(free["current"]["type"], "subagent")
 
         idle = self.mod.process(
             {
@@ -161,6 +187,118 @@ class NerveHookTests(unittest.TestCase):
         )
         assert perm is not None
         self.assertEqual(perm["attention"]["reason"], "approval")
+
+    def test_idle_prompt_background_wait_is_running_not_attention(self):
+        """Claude often fires idle_prompt + bg-wait toast without background_tasks."""
+        for msg in (
+            "Waiting for 1 background agent to finish",
+            "Waiting for 2 background agents to finish",
+            "Waiting for 3 agents",
+            "1 shell still running",
+            "1 shell/monitor still running",
+            "2 shells still running",
+        ):
+            with self.subTest(msg=msg):
+                job = self.mod.process(
+                    {
+                        "hook_event_name": "Notification",
+                        "session_id": "s3bg",
+                        "cwd": "/tmp/y",
+                        "notification_type": "idle_prompt",
+                        "message": msg,
+                        "background_tasks": [],
+                    }
+                )
+                assert job is not None
+                self.assertEqual(job["lifecycle"], "active")
+                self.assertEqual(job["attention"]["level"], "none")
+                self.assertNotEqual(job["attention"].get("reason"), "input")
+                self.assertEqual(job["current"]["type"], "subagent")
+
+    def test_idle_prompt_monitor_wait_is_success_not_attention(self):
+        """Monitor-only toast → Success (green), not Attention or Running."""
+        for msg in (
+            "1 monitor still running",
+            "Waiting for monitor",
+            "2 monitors still running",
+        ):
+            with self.subTest(msg=msg):
+                job = self.mod.process(
+                    {
+                        "hook_event_name": "Notification",
+                        "session_id": "s3mon",
+                        "cwd": "/tmp/y",
+                        "notification_type": "idle_prompt",
+                        "message": msg,
+                        "background_tasks": [],
+                    }
+                )
+                assert job is not None
+                self.assertEqual(job["lifecycle"], "active")
+                self.assertEqual(job["attention"]["level"], "none")
+                self.assertNotEqual(job["attention"].get("reason"), "input")
+                self.assertEqual(job["current"]["type"], "monitor")
+                self.assertEqual(job["outcome"], "partial")
+
+    def test_stop_with_shell_background_is_running(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "s2shell",
+                "cwd": "/tmp/y",
+                "background_tasks": [
+                    {
+                        "id": "sh1",
+                        "type": "shell",
+                        "status": "running",
+                        "description": "npm test",
+                    }
+                ],
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "subagent")
+        self.assertEqual(job["attention"]["level"], "none")
+        self.assertNotIn("outcome", job)
+
+    def test_stop_with_monitor_only_background_is_success(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "s2mon",
+                "cwd": "/tmp/y",
+                "background_tasks": [
+                    {
+                        "id": "m1",
+                        "type": "monitor",
+                        "status": "running",
+                        "description": "tail logs",
+                    }
+                ],
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "monitor")
+        self.assertEqual(job["outcome"], "partial")
+        self.assertEqual(job["attention"]["level"], "none")
+
+    def test_stop_with_mixed_shell_and_monitor_is_running(self):
+        """Shell (or subagent) + monitor → Running; only pure monitor is green."""
+        job = self.mod.process(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "s2mix",
+                "cwd": "/tmp/y",
+                "background_tasks": [
+                    {"id": "sh1", "type": "shell", "status": "running"},
+                    {"id": "m1", "type": "monitor", "status": "running"},
+                ],
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "subagent")
+        self.assertEqual(job["attention"]["level"], "none")
+        self.assertNotIn("outcome", job)
 
     def test_subagent_start_updates_main_session_only(self):
         job = self.mod.process(
@@ -278,6 +416,141 @@ class NerveHookTests(unittest.TestCase):
         assert job is not None
         self.assertEqual(job["lifecycle"], "ended")
         self.assertEqual(job["outcome"], "success")
+
+    def test_session_end_clear_is_cancelled_with_reason(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "SessionEnd",
+                "session_id": "end-clear",
+                "cwd": "/tmp/z",
+                "reason": "clear",
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["lifecycle"], "ended")
+        self.assertEqual(job["outcome"], "cancelled")
+        self.assertEqual(job["extensions"].get("endReason"), "clear")
+
+    def test_session_start_after_prior_session_supersedes_without_session_end(self):
+        """/new (and similar) often fire SessionStart only — previous id must leave."""
+        first = self.mod.process(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "sess-old",
+                "cwd": "/tmp/proj",
+                "source": "startup",
+            }
+        )
+        assert first is not None
+        self.assertEqual(first["id"], "claude-code:sess-old")
+        self.assertEqual(len(self._posted), 1)
+
+        # Simulate /new: new session_id, no SessionEnd for sess-old.
+        second = self.mod.process(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "sess-new",
+                "cwd": "/tmp/proj",
+                "source": "clear",
+            }
+        )
+        assert second is not None
+        self.assertEqual(second["id"], "claude-code:sess-new")
+        self.assertEqual(second["lifecycle"], "active")
+
+        # First POST of the second turn is the superseded end for the old session.
+        self.assertEqual(len(self._posted), 3)
+        ended = self._posted[1]["jobs"][0]
+        started = self._posted[2]["jobs"][0]
+        self.assertEqual(ended["id"], "claude-code:sess-old")
+        self.assertEqual(ended["lifecycle"], "ended")
+        self.assertEqual(ended["extensions"].get("endReason"), "superseded")
+        self.assertEqual(started["id"], "claude-code:sess-new")
+        self.assertEqual(started["lifecycle"], "active")
+
+    def test_session_end_then_start_does_not_double_end(self):
+        """When SessionEnd fires properly, the next SessionStart must not re-end it."""
+        self.mod.process(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "s-a",
+                "cwd": "/tmp/p",
+            }
+        )
+        self.mod.process(
+            {
+                "hook_event_name": "SessionEnd",
+                "session_id": "s-a",
+                "cwd": "/tmp/p",
+                "reason": "clear",
+            }
+        )
+        n = len(self._posted)
+        self.mod.process(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "s-b",
+                "cwd": "/tmp/p",
+                "source": "clear",
+            }
+        )
+        # Only the new SessionStart — no extra superseded end for s-a.
+        self.assertEqual(len(self._posted), n + 1)
+        self.assertEqual(self._posted[-1]["jobs"][0]["id"], "claude-code:s-b")
+        self.assertEqual(self._posted[-1]["jobs"][0]["lifecycle"], "active")
+
+    def test_new_session_after_stop_without_end_still_supersedes(self):
+        """Stop leaves the row active; a later SessionStart must still close it."""
+        self.mod.process(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "live-1",
+                "cwd": "/tmp/q",
+                "prompt": "hello",
+            }
+        )
+        self.mod.process(
+            {
+                "hook_event_name": "Stop",
+                "session_id": "live-1",
+                "cwd": "/tmp/q",
+                "background_tasks": [],
+            }
+        )
+        self._posted.clear()
+        self.mod.process(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "live-2",
+                "cwd": "/tmp/q",
+                "source": "startup",
+            }
+        )
+        ids = [p["jobs"][0]["id"] for p in self._posted]
+        lifecycles = [p["jobs"][0]["lifecycle"] for p in self._posted]
+        self.assertEqual(ids, ["claude-code:live-1", "claude-code:live-2"])
+        self.assertEqual(lifecycles, ["ended", "active"])
+
+    def test_job_id_never_includes_agent_id(self):
+        """Orthogonality: subagent events still target the main conversation id."""
+        job = self.mod.process(
+            {
+                "hook_event_name": "SubagentStart",
+                "session_id": "main-sess",
+                "cwd": "/tmp/y",
+                "agent_id": "child-aaaa",
+                "agent_type": "mol:spec-writer",
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["id"], "claude-code:main-sess")
+        self.assertEqual(job["id"].count(":"), 1)
+        self.assertNotIn("child-aaaa", job["id"])
+        self.assertEqual(job["name"], "y")  # project basename, not agent type
+        self.assertNotEqual(job["name"], "mol:spec-writer")
+        self.assertNotIn("parentJobId", job.get("extensions", {}))
+        self.assertNotIn("paintRibbon", job.get("extensions", {}))
+        self.assertNotEqual(job.get("extensions", {}).get("role"), "subagent")
 
     def test_no_env_required(self):
         """Hook must not read NERVE_* environment variables."""

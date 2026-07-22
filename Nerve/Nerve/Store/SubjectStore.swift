@@ -54,14 +54,22 @@ final class JobStore {
 
     // MARK: - Queries
 
-    var allJobs: [Job] { Array(jobs.values) }
+    /// Public job list (API + debug). Conversation jobs only — no legacy children.
+    var allJobs: [Job] { conversationJobs }
 
     var activeJobs: [Job] {
-        jobs.values.filter { $0.lifecycle != .ended }.sorted(by: sortComparator)
+        conversationJobs
+            .filter { $0.lifecycle != .ended }
+            .sorted(by: sortComparator)
     }
 
-    /// Open jobs (not ended). Length of the work set — not a ribbon color.
+    /// Open conversation jobs only (legacy subagent child rows excluded).
     var activeCount: Int { activeJobs.count }
+
+    /// All stored conversation-level jobs (excludes legacy child/subagent rows).
+    private var conversationJobs: [Job] {
+        jobs.values.filter(\.isConversationJob)
+    }
 
     // MARK: Status counts (single source of truth = `Job.status`)
 
@@ -76,17 +84,18 @@ final class JobStore {
     }
 
     private func countOpen(where pred: (Job) -> Bool) -> Int {
-        jobs.values.reduce(into: 0) { n, job in
+        conversationJobs.reduce(into: 0) { n, job in
             if job.lifecycle != .ended, pred(job) { n += 1 }
         }
     }
 
     /// Priority-mode bucket for a status (Attention / Active / Recent). View grouping only.
+    /// Open Success (monitor waiting for feedback) stays Active — Recent is unused
+    /// because SessionEnd removes the row immediately.
     private func priorityGroup(for status: Status) -> PanelGroup {
         switch status {
         case .problem, .attention, .waiting: return .attention
-        case .running, .inactive: return .active
-        case .success: return .recent
+        case .running, .inactive, .success: return .active
         }
     }
 
@@ -147,7 +156,7 @@ final class JobStore {
     func jobsInPriorityGroup(_ group: PanelGroup) -> [Job] {
         switch group {
         case .attention, .active:
-            return jobs.values
+            return conversationJobs
                 .filter { $0.lifecycle != .ended && priorityGroup(for: $0.status) == group }
                 .sorted(by: sortComparator)
         case .recent:
@@ -156,9 +165,9 @@ final class JobStore {
         }
     }
 
-    /// Open jobs eligible for the status list.
+    /// Open conversation jobs eligible for the status list (no legacy child rows).
     private func panelListJobs() -> [Job] {
-        Array(jobs.values.filter { $0.lifecycle != .ended })
+        conversationJobs.filter { $0.lifecycle != .ended }
     }
 
     private func statusGroupedSections() -> [StatusSection] {
@@ -462,6 +471,11 @@ final class JobStore {
     }
 
     func applySnapshot(_ job: Job) {
+        // Legacy per-subagent rows are not conversation jobs — drop and ignore.
+        if !job.isConversationJob {
+            dropLegacyChild(job.id)
+            return
+        }
         let before = jobs[job.id]
         if let existing = before, job.version < existing.version {
             return
@@ -480,12 +494,125 @@ final class JobStore {
             return
         }
         commit(before: before, next: job)
+        // Parent updates also scrub any leftover child rows for this session.
+        if purgeLegacyChildren(of: job.id) {
+            bumpRevision()
+        }
+    }
+
+    /// Ensure Copy + Dismiss exist on every open conversation row (demo / older hooks).
+    private func ensureLocalActions(_ job: Job) -> Job {
+        guard job.isConversationJob, job.lifecycle != .ended else { return job }
+        var j = job
+        if !j.actions.contains(where: { $0.kind.lowercased() == "copy_summary" || $0.kind.lowercased() == "copy" }) {
+            j.actions.insert(
+                JobAction(id: "copy", title: "Copy", kind: "copy_summary"),
+                at: 0
+            )
+        }
+        if !j.actions.contains(where: {
+            let k = $0.kind.lowercased()
+            return k == "dismiss" || k == "dismiss_job" || k == "dismissjob"
+        }) {
+            j.actions.append(
+                JobAction(id: "dismiss", title: "Dismiss", kind: "dismiss")
+            )
+        }
+        return j
+    }
+
+    /// User or local policy closes a row (Dismiss button, dead PID, …).
+    @MainActor
+    func endJobLocally(
+        id: String,
+        reason: String,
+        summary: String? = nil,
+        outcome: Outcome = .cancelled
+    ) {
+        guard var job = jobs[id], job.lifecycle != .ended else { return }
+        let before = job
+        let now = clock()
+        job.lifecycle = .ended
+        job.outcome = outcome
+        job.endedAt = now
+        job.updatedAt = now
+        job.version += 1
+        job.attention = .none
+        job.health = .ok
+        job.current = Current(
+            type: "idle",
+            summary: summary ?? "Session ended (\(reason))"
+        )
+        job.extensions["endReason"] = .string(reason)
+        evictEnded(before: before, ended: job)
+    }
+
+    /// Dismiss one open job from the panel (local only — does not signal the agent).
+    @MainActor
+    @discardableResult
+    func dismissJob(id: String) -> Bool {
+        guard jobs[id] != nil, jobs[id]?.lifecycle != .ended else { return false }
+        endJobLocally(id: id, reason: "dismissed", summary: "Dismissed")
+        return true
+    }
+
+    /// Reap local sessions whose producer PID is gone (closed terminal / kill).
+    /// Remote aliases are skipped — their PIDs are not visible on this Mac.
+    @MainActor
+    func reapDeadLocalProducers() {
+        let localAlias = LocalMachine.alias
+        let now = clock()
+        // Avoid thrashing brand-new rows (PID may not be ready / race on spawn).
+        let minAge: TimeInterval = 3
+        var toEnd: [(id: String, summary: String)] = []
+        for job in jobs.values {
+            guard job.lifecycle != .ended else { continue }
+            guard job.isConversationJob else { continue }
+            // Only local machine snapshots — remote PIDs are meaningless here.
+            guard job.alias == localAlias else { continue }
+            guard now.timeIntervalSince(job.createdAt) >= minAge else { continue }
+            guard let pid = producerPID(from: job) else { continue }
+            if !processIsAlive(pid) {
+                toEnd.append((job.id, "Process gone (pid \(pid))"))
+            }
+        }
+        for item in toEnd {
+            endJobLocally(
+                id: item.id,
+                reason: "process_gone",
+                summary: item.summary,
+                outcome: .cancelled
+            )
+        }
+    }
+
+    private func producerPID(from job: Job) -> Int32? {
+        switch job.extensions["pid"] {
+        case .number(let n):
+            let v = Int32(n)
+            return v > 1 ? v : nil
+        case .string(let s):
+            guard let v = Int32(s), v > 1 else { return nil }
+            return v
+        default:
+            return nil
+        }
+    }
+
+    /// Best-effort: `kill(pid, 0)` — exists (or EPERM) vs gone (ESRCH).
+    private func processIsAlive(_ pid: Int32) -> Bool {
+        if pid <= 1 { return false }
+        let rc = kill(pid, 0)
+        if rc == 0 { return true }
+        // EPERM: process exists but we cannot signal it — still alive.
+        return errno == EPERM
     }
 
     private func commit(before: Job?, next: Job) {
-        jobs[next.id] = next
+        let stored = next.lifecycle == .ended ? next : ensureLocalActions(next)
+        jobs[stored.id] = stored
         bumpRevision()
-        notificationSink?(before, next)
+        notificationSink?(before, stored)
     }
 
     /// Session closed (`lifecycle == ended`): fire outcome notifications, then drop from panel/store.
@@ -493,13 +620,62 @@ final class JobStore {
     private func evictEnded(before: Job?, ended: Job) {
         notificationSink?(before, ended)
         let id = ended.id
+        var changed = false
         if jobs.removeValue(forKey: id) != nil || before != nil {
             timelines.removeValue(forKey: id)
             if selectedJobId == id {
                 selectedJobId = nil
             }
+            changed = true
+        }
+        // Children of this conversation (legacy hooks) leave with the parent.
+        if purgeLegacyChildren(of: id) {
+            changed = true
+        }
+        if changed {
             bumpRevision()
         }
+    }
+
+    /// Drop a single non-conversation row (legacy subagent child).
+    private func dropLegacyChild(_ id: String) {
+        guard jobs[id] != nil || timelines[id] != nil else { return }
+        jobs.removeValue(forKey: id)
+        timelines.removeValue(forKey: id)
+        if selectedJobId == id { selectedJobId = nil }
+        bumpRevision()
+    }
+
+    /// Remove leftover child rows for `parentId` (`parentJobId` or id prefix).
+    @discardableResult
+    private func purgeLegacyChildren(of parentId: String) -> Bool {
+        let childIds = jobs.keys.filter { id in
+            guard let job = jobs[id], !job.isConversationJob else { return false }
+            if case .string(let pid) = job.extensions["parentJobId"], pid == parentId {
+                return true
+            }
+            // Legacy id shape: `{parentId}:{agentId}`
+            return id.hasPrefix(parentId + ":")
+        }
+        guard !childIds.isEmpty else { return false }
+        for id in childIds {
+            jobs.removeValue(forKey: id)
+            timelines.removeValue(forKey: id)
+            if selectedJobId == id { selectedJobId = nil }
+        }
+        return true
+    }
+
+    /// Drop every non-conversation row still in memory (one-shot hygiene).
+    func purgeAllLegacyChildJobs() {
+        let ids = jobs.keys.filter { jobs[$0].map { !$0.isConversationJob } ?? false }
+        guard !ids.isEmpty else { return }
+        for id in ids {
+            jobs.removeValue(forKey: id)
+            timelines.removeValue(forKey: id)
+            if selectedJobId == id { selectedJobId = nil }
+        }
+        bumpRevision()
     }
 
     private func beginRibbonBatch() {
@@ -628,6 +804,13 @@ final class JobStore {
             return .denied("Confirmation required")
         }
 
+        // Dismiss is store-local eviction (no agent signal).
+        let kind = action.kind.lowercased()
+        if kind == "dismiss" || kind == "dismiss_job" || kind == "dismissjob" {
+            let ok = dismissJob(id: jobId)
+            return ok ? .succeeded("Dismissed") : .failed("Job not found")
+        }
+
         let klass = ActionService.classify(action: action)
         switch klass {
         case .local:
@@ -745,6 +928,13 @@ final class JobStore {
             }
         }
         if changed { bumpRevision() }
+    }
+
+    /// Periodic maintenance: expire pending actions + reap dead local producer PIDs.
+    @MainActor
+    func runMaintenanceTick() {
+        expireStalePendingActions()
+        reapDeadLocalProducers()
     }
 
 

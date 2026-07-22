@@ -8,15 +8,46 @@ URL. Always exit 0 (observability must never block the agent).
 Design (one job per conversation)
 ---------------------------------
 - Only the main session is a Nerve job. Subagents are **not** separate rows.
+- Job id is **always** ``{producer}:{session_id}`` — never append agent_id.
 - SubagentStart / SubagentStop / background_tasks only refine the main session's
-  `current` facet (Running vs Attention).
+  ``current`` facet (Running vs Attention).
 - Hooks that fire *inside* a subagent (payload has agent_id) are ignored for
   tool chatter (Pre/PostToolUse…), so the panel is not flooded. Permission and
   lifecycle brackets still update the main session when they matter.
 
-No environment variables. No on-disk state. Alias is a free-form machine
-label (prefer stable Bonjour LocalHostName on macOS). Nerve shows whatever
-alias arrives — no allow-list.
+Orthogonal event → facet map (no free-text status inference)
+------------------------------------------------------------
++----------------------+------------------+------------------+---------------+
+| Event                | lifecycle        | current.type     | attention     |
++----------------------+------------------+------------------+---------------+
+| SessionStart         | active           | starting         | none          |
+| UserPromptSubmit     | active           | thinking         | none          |
+| Pre/PostToolUse      | active           | tool | subagent  | none          |
+|   (main thread)      |                  |                  |               |
+| Pre/PostToolUse      | (skip — no POST) |                  |               |
+|   (agent_id set)     |                  |                  |               |
+| SubagentStart        | active           | subagent         | none          |
+| SubagentStop + bg    | active           | subagent         | none          |
+| SubagentStop no bg   | active           | thinking         | none          |
+| Stop + shell/subagent bg | active      | subagent         | none (Running)|
+| Stop + monitor-only bg   | active      | monitor + partial| none (Success)|
+| Stop empty bg        | active           | idle             | input         |
+| idle_prompt (no bg)  | active           | idle             | input         |
+| idle_prompt + shell/agent toast | active | subagent     | none (Running)|
+| idle_prompt + monitor toast     | active | monitor      | none (Success)|
+| Permission*          | active           | waiting          | approval      |
+| SessionEnd           | ended + success  | idle             | none          |
++----------------------+------------------+------------------+---------------+
+Stop / idle ≠ leave panel. Only SessionEnd (or a superseding SessionStart
+from the same UI slot after /new · /clear · fork) removes the row.
+
+Hosts sometimes skip SessionEnd when the user starts a fresh conversation in
+the same terminal/process. The hook keeps a tiny temp-dir slot map so the
+previous session_id is closed when a new SessionStart arrives for that slot.
+
+No NERVE_* config env. Alias is a free-form machine label (prefer stable
+Bonjour LocalHostName on macOS). Nerve shows whatever alias arrives — no
+allow-list.
 
 Install (GitHub marketplace — repo root)
 ----------------------------------------
@@ -28,10 +59,13 @@ Install (GitHub marketplace — repo root)
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import platform
 import socket
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -58,6 +92,12 @@ _SUBAGENT_INTERNAL_NOISE = frozenset(
         "userpromptsubmit",
     }
 )
+
+# Ephemeral per-slot memory (temp dir only). Hosts often fire SessionStart for
+# /new · /clear · fork without SessionEnd for the previous conversation id.
+# We remember the last session_id per UI/process slot and emit an ended job for
+# the previous id when a new one starts. Tests may override this path.
+_STATE_DIR_OVERRIDE: Path | None = None
 
 
 def _now_iso() -> str:
@@ -252,7 +292,7 @@ def _background_tasks(payload: dict[str, Any]) -> list[Any]:
     """In-flight background work from Stop / SubagentStop (Claude Code ≥ 2.1.145).
 
     Empty or missing ⇒ none. Non-empty ⇒ main session is paused on background
-    agents/shells, not waiting for the human. Do not infer from free-text.
+    agents/shells, not waiting for the human. Prefer this over free-text.
     """
     raw = payload.get("background_tasks")
     if raw is None:
@@ -260,9 +300,139 @@ def _background_tasks(payload: dict[str, Any]) -> list[Any]:
     return raw if isinstance(raw, list) else []
 
 
+def _normalize_toast(text: str) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def _is_harness_background_wait_toast(text: str) -> bool:
+    """True for harness toasts that mean *bg work still in flight*, not human idle.
+
+    Preferred signal is non-empty ``background_tasks``. Some Notification paths
+    (often ``idle_prompt``) still emit only the UI string, e.g.
+    ``Waiting for 1 background agent to finish``, ``1 shell/monitor still running``.
+    Those must never become Attention.
+    """
+    return _classify_bg_wait_toast(text) is not None
+
+
+def _classify_bg_wait_toast(text: str) -> str | None:
+    """Classify known bg-wait toasts → ``\"running\"`` | ``\"monitor\"`` | None.
+
+    - shell / subagent / agent still in flight → Running (blue)
+    - monitor-only waiting for feedback → Success (green, partial complete)
+    - shell/monitor combined → Running (shell is active work)
+    Unknown free text → None (do not invent Attention from arbitrary strings).
+    """
+    s = _normalize_toast(text)
+    if not s:
+        return None
+
+    has_shell = "shell" in s
+    has_monitor = "monitor" in s
+    has_agent = "agent" in s
+    still = "still running" in s or "still run" in s
+    waiting = "waiting" in s or "finish" in s or "running" in s
+
+    # "1 shell/monitor still running", "2 shells still running"
+    if still and (has_shell or has_monitor):
+        if has_monitor and not has_shell and not has_agent:
+            return "monitor"
+        return "running"
+
+    # "Waiting for N background agent(s) to finish" / "Waiting for N agents"
+    if has_agent and waiting and (
+        "background" in s or "waiting for" in s or "finish" in s
+    ):
+        return "running"
+    if "waiting for" in s and "background" in s and "task" in s:
+        return "running"
+
+    # "Waiting for monitor" / pure monitor feedback wait
+    if has_monitor and waiting and not has_shell and not has_agent:
+        return "monitor"
+    if has_shell and waiting:
+        return "running"
+
+    return None
+
+
+def _task_work_kind(task: Any) -> str:
+    """Map one background_tasks entry → ``monitor`` | ``shell`` | ``subagent``."""
+    if not isinstance(task, dict):
+        return "subagent"
+    raw = str(task.get("type") or task.get("kind") or "").strip().lower()
+    if not raw:
+        # Fall back on description hints when type is missing.
+        desc = str(
+            task.get("description")
+            or task.get("name")
+            or task.get("agent_type")
+            or task.get("agentType")
+            or ""
+        ).lower()
+        if "monitor" in desc:
+            return "monitor"
+        if "shell" in desc or "bash" in desc:
+            return "shell"
+        return "subagent"
+    if "monitor" in raw:
+        return "monitor"
+    if raw in ("shell", "bash", "command", "local_shell", "powershell") or "shell" in raw:
+        return "shell"
+    return "subagent"
+
+
+def _running_background_facets(summary: str, *, name: str = "background") -> dict[str, Any]:
+    """Main session still working (bg agents/shells) → Running, not Attention."""
+    return {
+        "lifecycle": "active",
+        "current": {
+            "type": "subagent",
+            "name": name,
+            "summary": summary,
+            "startedAt": _now_iso(),
+        },
+        "attention": {"level": "none"},
+        "health": "ok",
+    }
+
+
+def _monitor_wait_facets(summary: str, *, name: str = "monitor") -> dict[str, Any]:
+    """Monitor waiting for feedback — partial phase done → Success (green).
+
+    Not Attention: nothing needs the human yet; a background monitor is open.
+    Not Running: main turn is idle while the monitor holds the stream.
+    """
+    return {
+        "lifecycle": "active",
+        "outcome": "partial",
+        "current": {
+            "type": "monitor",
+            "name": name,
+            "summary": summary,
+            "startedAt": _now_iso(),
+        },
+        "attention": {"level": "none"},
+        "health": "ok",
+    }
+
+
+def _facets_for_bg_wait_toast(summary: str) -> dict[str, Any]:
+    """Map a known harness bg-wait toast string → Running or Success facets."""
+    kind = _classify_bg_wait_toast(summary)
+    if kind == "monitor":
+        return _monitor_wait_facets(summary)
+    return _running_background_facets(summary)
+
+
 def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[str, Any]:
-    """Structured facets while background_tasks is non-empty → Running."""
+    """Structured facets while background_tasks is non-empty.
+
+    - Any shell / subagent still running → Running (blue)
+    - Monitor-only → Success green (partial complete, waiting for feedback)
+    """
     n = len(tasks)
+    kinds = {_task_work_kind(t) for t in tasks}
     label = "subagent"
     desc = None
     first = tasks[0] if tasks else None
@@ -277,32 +447,30 @@ def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[s
     summary = f"{n} background task(s)"
     if desc:
         summary = f"{summary}: {_truncate(str(desc), 100)}"
-    return {
-        "lifecycle": "active",
-        "current": {
-            "type": "subagent",
-            "name": label,
-            "summary": summary,
-            "startedAt": _now_iso(),
-        },
-        "attention": {"level": "none"},
-        "health": "ok",
-    }
+
+    # Pure monitor queue → green Success; mix with shell/subagent → Running.
+    if kinds and kinds <= {"monitor"}:
+        return _monitor_wait_facets(summary, name=str(label or "monitor"))
+    if "shell" in kinds and "subagent" not in kinds:
+        return _running_background_facets(summary, name=str(label or "shell"))
+    return _running_background_facets(summary, name=label)
 
 
 def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     """Map hook **event type** (+ structured fields) → main-session job facets.
 
     Status is never inferred from free-text titles/messages. Controlled vocabulary:
-      current.type: starting | thinking | tool | subagent | waiting | idle | info
+      current.type: thinking | tool | subagent | monitor | waiting | idle | starting | info
       attention.reason: input | approval | failure | (none)
     """
     if event == "sessionstart":
+        # Open but not working yet — first UserPromptSubmit is when work starts.
+        # "starting" (Ready) ≠ idle your_turn: nothing is in flight, not waiting on you.
         return {
             "lifecycle": "active",
             "current": {
                 "type": "starting",
-                "summary": "Session started",
+                "summary": "Ready",
                 "startedAt": _now_iso(),
             },
             "attention": {"level": "none"},
@@ -310,14 +478,34 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "sessionend":
-        return {
+        reason = str(_get(payload, "reason", "source", default="") or "").strip()
+        summary = "Session ended"
+        if reason:
+            summary = f"Session ended ({reason})"
+        # Intentional leave vs clean completion — both leave the panel; reason is for logs.
+        cancelled = {
+            "clear",
+            "logout",
+            "prompt_input_exit",
+            "bypass_permissions_disabled",
+            "resume",
+            "superseded",
+            "process_gone",
+            "aborted",
+            "dismissed",
+        }
+        outcome = "cancelled" if reason.lower() in cancelled else "success"
+        facets: dict[str, Any] = {
             "lifecycle": "ended",
-            "outcome": "success",
-            "current": {"type": "idle", "summary": "Session ended"},
+            "outcome": outcome,
+            "current": {"type": "idle", "summary": summary},
             "attention": {"level": "none"},
             "health": "ok",
             "ended": True,
         }
+        if reason:
+            facets["end_reason"] = reason
+        return facets
 
     if event == "userpromptsubmit":
         prompt = _truncate(_get(payload, "prompt", "user_prompt", default=""), 120)
@@ -519,10 +707,15 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
                 "health": "ok",
             }
 
-        # idle_prompt only means “human’s turn” when no background work remains.
+        # idle_prompt = human’s turn only when no bg work remains *and* the toast
+        # is not a harness shell / monitor / background-agent wait line.
         if ntype in ("idle_prompt", "agent_needs_input", "elicitation_dialog"):
             if bg:
                 return _background_work_facets(payload, bg)
+            # agent_needs_input: a (background) agent needs the human → Attention.
+            # idle_prompt + bg-wait toast: shell/subagent → Running; monitor → Success.
+            if ntype == "idle_prompt" and _is_harness_background_wait_toast(summary):
+                return _facets_for_bg_wait_toast(summary)
             return {
                 "lifecycle": "active",
                 "current": {"type": "idle", "summary": summary},
@@ -547,6 +740,8 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         # Do not invent Attention from free-text. Real idle is Stop / idle_prompt.
         if bg:
             return _background_work_facets(payload, bg)
+        if _is_harness_background_wait_toast(summary):
+            return _facets_for_bg_wait_toast(summary)
         return {
             "lifecycle": "active",
             "current": {"type": "info", "summary": summary},
@@ -555,7 +750,8 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "stop":
-        # Non-empty background_tasks ⇒ still Running (paused on bg work), not Attention.
+        # Non-empty background_tasks ⇒ still in flight (Running or monitor Success),
+        # never Attention. Empty queue ⇒ waiting for human input.
         bg = _background_tasks(payload)
         if bg:
             return _background_work_facets(payload, bg)
@@ -597,7 +793,12 @@ def _build_job(
         "hookEvent": _get(payload, "hook_event_name", "hookEventName", "event", default=""),
         "sessionId": session_id,
         "model": _get(payload, "model", default=None),
+        # UI slot + producer PID so Nerve can supersede ghosts and reap dead locals.
+        "slot": _slot_id(producer_key, payload),
     }
+    agent_pid = _agent_process_pid()
+    if agent_pid:
+        extensions["pid"] = agent_pid
     # Optional breadcrumbs when the main-session update came from a subagent bracket.
     at = _agent_type(payload)
     aid = _agent_id(payload)
@@ -605,6 +806,8 @@ def _build_job(
         extensions["agentType"] = at
     if aid and _event_name(payload) in ("subagentstart", "subagentstop"):
         extensions["agentId"] = aid
+    if facets.get("end_reason"):
+        extensions["endReason"] = facets["end_reason"]
 
     job: dict[str, Any] = {
         "id": job_id,
@@ -640,7 +843,15 @@ def _build_job(
                 "state": "available",
                 "destructive": False,
                 "confirmationRequired": False,
-            }
+            },
+            {
+                "id": "dismiss",
+                "title": "Dismiss",
+                "kind": "dismiss",
+                "state": "available",
+                "destructive": False,
+                "confirmationRequired": False,
+            },
         ],
         "createdAt": now,
         "startedAt": now,
@@ -678,7 +889,7 @@ def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "nerve-hook/0.3",
+            "User-Agent": "nerve-hook/0.4",
         },
     )
     try:
@@ -700,8 +911,217 @@ def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Session-slot memory — close previous conversation when hosts skip SessionEnd
+# ---------------------------------------------------------------------------
+
+_SHELL_NAMES = frozenset(
+    {
+        "bash",
+        "sh",
+        "zsh",
+        "fish",
+        "dash",
+        "python",
+        "python3",
+        "python3.11",
+        "python3.12",
+        "python3.13",
+        "run.sh",
+    }
+)
+
+
+def _state_dir() -> Path:
+    if _STATE_DIR_OVERRIDE is not None:
+        return _STATE_DIR_OVERRIDE
+    d = Path(tempfile.gettempdir()) / "nerve-hook"
+    try:
+        d.mkdir(mode=0o700, exist_ok=True)
+    except Exception:
+        pass
+    return d
+
+
+def _proc_ppid_and_name(pid: int) -> tuple[int | None, str | None]:
+    """Best-effort parent pid + command name (macOS / Linux)."""
+    try:
+        import subprocess
+
+        out = subprocess.check_output(
+            ["ps", "-p", str(pid), "-o", "ppid=,comm="],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=0.4,
+        ).strip()
+        if not out:
+            return None, None
+        parts = out.split(None, 1)
+        ppid = int(parts[0]) if parts else None
+        name = parts[1].strip() if len(parts) > 1 else None
+        if name:
+            name = Path(name).name
+        return ppid, name
+    except Exception:
+        return None, None
+
+
+def _agent_process_pid() -> int | None:
+    """Climb past shell/python wrappers to the agent host PID for this slot."""
+    try:
+        pid = os.getppid()
+    except Exception:
+        return None
+    last = pid
+    for _ in range(6):
+        if pid is None or pid <= 1:
+            return last if last and last > 1 else None
+        ppid, name = _proc_ppid_and_name(pid)
+        base = (name or "").lower()
+        if base and base not in _SHELL_NAMES and not base.endswith(".sh"):
+            return pid
+        last = pid
+        if ppid is None or ppid == pid:
+            return last
+        pid = ppid
+    return last
+
+
+def _host_slot_token() -> str:
+    """Identify the UI/terminal/process that owns this conversation.
+
+    Prefer terminal session env (stable across /new in the same tab). Fall back
+    to the agent host PID so two concurrent windows do not thrash each other.
+    """
+    for key in (
+        "TERM_SESSION_ID",
+        "ITERM_SESSION_ID",
+        "WEZTERM_PANE",
+        "KITTY_WINDOW_ID",
+        "TMUX_PANE",
+    ):
+        val = os.environ.get(key)
+        if val:
+            return f"{key}:{val}"
+    agent_pid = _agent_process_pid()
+    if agent_pid:
+        return f"pid:{agent_pid}"
+    return "default"
+
+
+def _slot_id(producer_key: str, payload: dict[str, Any]) -> str:
+    alias = _machine_alias()
+    # cwd is NOT part of the key: /new often keeps the same project dir.
+    raw = f"{producer_key}\0{alias}\0{_host_slot_token()}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def _slot_path(slot_id: str) -> Path:
+    return _state_dir() / f"{slot_id}.json"
+
+
+def _slot_read(slot_id: str) -> str | None:
+    path = _slot_path(slot_id)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        sid = data.get("session_id")
+        return str(sid) if sid else None
+    except Exception:
+        return None
+
+
+def _slot_write(slot_id: str, session_id: str) -> None:
+    path = _slot_path(slot_id)
+    try:
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"session_id": session_id, "ts": _now_iso()}),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
+    except Exception:
+        pass
+
+
+def _slot_clear(slot_id: str, session_id: str | None = None) -> None:
+    path = _slot_path(slot_id)
+    try:
+        if session_id is not None:
+            current = _slot_read(slot_id)
+            if current is not None and current != session_id:
+                return
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _ended_facets(
+    *,
+    summary: str = "Session ended",
+    reason: str | None = None,
+    outcome: str = "cancelled",
+) -> dict[str, Any]:
+    facets: dict[str, Any] = {
+        "lifecycle": "ended",
+        "outcome": outcome,
+        "current": {"type": "idle", "summary": summary},
+        "attention": {"level": "none"},
+        "health": "ok",
+        "ended": True,
+    }
+    if reason:
+        facets["end_reason"] = reason
+    return facets
+
+
+def _post_ended_session(
+    payload: dict[str, Any],
+    producer_key: str,
+    session_id: str,
+    *,
+    summary: str,
+    reason: str,
+) -> dict[str, Any] | None:
+    facets = _ended_facets(summary=summary, reason=reason)
+    job = _build_job(payload, producer_key, session_id, facets)
+    if str(job.get("id", "")).count(":") >= 2:
+        return None
+    ext = job.setdefault("extensions", {})
+    ext["endReason"] = reason
+    _post_snapshot(job["alias"], _machine_kind(), job)
+    return job
+
+
+def _supersede_previous_if_needed(
+    payload: dict[str, Any],
+    producer_key: str,
+    session_id: str,
+) -> dict[str, Any] | None:
+    """If this UI slot already had a different session, close it.
+
+    Covers /new, /clear, fork, and hosts that omit SessionEnd.
+    """
+    slot = _slot_id(producer_key, payload)
+    previous = _slot_read(slot)
+    if previous and previous != session_id:
+        return _post_ended_session(
+            payload,
+            producer_key,
+            previous,
+            summary="Session replaced",
+            reason="superseded",
+        )
+    return None
+
+
 def process(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Map one hook event → a single main-session job snapshot (or None to skip)."""
+    """Map one hook event → a single main-session job snapshot (or None to skip).
+
+    Always one conversation job. Never emits parentJobId / paintRibbon / child ids.
+    On SessionStart, may also POST an ended snapshot for the previous session in
+    the same UI slot when the host skipped SessionEnd (e.g. /new).
+    """
     event = _event_name(payload)
     if not event:
         return None
@@ -734,8 +1154,30 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
 
     producer_key = _detect_producer(payload)
     session_id = _session_id(payload)
+    slot = _slot_id(producer_key, payload)
+
+    # /new · /clear · fork: new SessionStart often arrives without SessionEnd.
+    if event == "sessionstart":
+        _supersede_previous_if_needed(payload, producer_key, session_id)
+
+    # Guard: session_id must never be the subagent id alone when both exist.
+    # Job id is always {producer}:{session_id} with exactly one colon separator
+    # between producer id and session (producer id may itself contain hyphens).
     job = _build_job(payload, producer_key, session_id, facets)
+    # Hard invariant — refuse to post accidental child-shaped ids.
+    if str(job.get("id", "")).count(":") >= 2:
+        return None
+    if "parentJobId" in (job.get("extensions") or {}):
+        return None
+
     _post_snapshot(job["alias"], _machine_kind(), job)
+
+    if event == "sessionend":
+        _slot_clear(slot, session_id)
+    else:
+        # Remember the live conversation for this UI slot.
+        _slot_write(slot, session_id)
+
     return job
 
 

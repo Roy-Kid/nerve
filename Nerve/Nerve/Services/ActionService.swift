@@ -16,6 +16,7 @@ enum ActionService {
         "open", "focus", "open_url", "openurl",
         "copy", "copy_summary", "copysummary",
         "open_logs", "openlogs", "hide", "mute",
+        "dismiss", "dismiss_job", "dismissjob",
     ]
 
     /// Kinds that must be delivered to the owning producer.
@@ -69,6 +70,10 @@ enum ActionService {
 
         case "hide", "mute":
             return .succeeded("Acknowledged (\(action.kind))")
+
+        case "dismiss", "dismiss_job", "dismissjob":
+            // Handled in JobStore.performAction (evicts the row). Not reached for store path.
+            return .succeeded("Dismissed")
 
         default:
             if subject.location?.openURL != nil {
