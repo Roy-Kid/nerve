@@ -8,6 +8,7 @@
 	16EC4511B04E9F97E1606C06 /* HubFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1AF2CCC5DE1AA2359B94E8 /* HubFrame.swift */; };
 	DC406972BD2273B276CE049A /* FrameDiffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A8B961485FF3DB2B2AD0BD /* FrameDiffer.swift */; };
 	4479DCF1BBF8430D9E5E038E /* HubClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A92FA07D5E8AF609062386 /* HubClient.swift */; };
+	E86A0846FA169B127A920068 /* HubProcessManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA677E6F2DC27392AD2B18A5 /* HubProcessManager.swift */; };
 	2BB3B10CCACC4ED1AC3EED84 /* CoreTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */; };
 	1762374C51B54AB2A110E1AA /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8A447C6505E4DC9B3F67A0D /* History.swift */; };
 	63D6C93FAAE249EE976322AA /* PendingAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED745B89E56A4725BB143D1E /* PendingAction.swift */; };
@@ -35,6 +36,7 @@
 	2C1AF2CCC5DE1AA2359B94E8 /* HubFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/HubFrame.swift"; sourceTree = "<group>"; };
 	81A8B961485FF3DB2B2AD0BD /* FrameDiffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/FrameDiffer.swift"; sourceTree = "<group>"; };
 	93A92FA07D5E8AF609062386 /* HubClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/HubClient.swift"; sourceTree = "<group>"; };
+	EA677E6F2DC27392AD2B18A5 /* HubProcessManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/HubProcessManager.swift"; sourceTree = "<group>"; };
 	4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/CoreTypes.swift"; sourceTree = "<group>"; };
 	F8A447C6505E4DC9B3F67A0D /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/History.swift"; sourceTree = "<group>"; };
 	ED745B89E56A4725BB143D1E /* PendingAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/PendingAction.swift"; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 		2C1AF2CCC5DE1AA2359B94E8 /* HubFrame.swift */,
 		81A8B961485FF3DB2B2AD0BD /* FrameDiffer.swift */,
 		93A92FA07D5E8AF609062386 /* HubClient.swift */,
+		EA677E6F2DC27392AD2B18A5 /* HubProcessManager.swift */,
 		4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */,
 		F8A447C6505E4DC9B3F67A0D /* History.swift */,
 		ED745B89E56A4725BB143D1E /* PendingAction.swift */,
@@ -95,6 +98,7 @@
 		16EC4511B04E9F97E1606C06 /* HubFrame.swift in Sources */,
 		DC406972BD2273B276CE049A /* FrameDiffer.swift in Sources */,
 		4479DCF1BBF8430D9E5E038E /* HubClient.swift in Sources */,
+		E86A0846FA169B127A920068 /* HubProcessManager.swift in Sources */,
 		2BB3B10CCACC4ED1AC3EED84 /* CoreTypes.swift in Sources */,
 		1762374C51B54AB2A110E1AA /* History.swift in Sources */,
 		63D6C93FAAE249EE976322AA /* PendingAction.swift in Sources */,

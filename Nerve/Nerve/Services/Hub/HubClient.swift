@@ -8,8 +8,9 @@ import Foundation
 /// order the in-process store used when it owned state.
 ///
 /// Knows a store and an endpoint and nothing else: no view, no settings, no
-/// process management. Dev mode in this cut — `nerve-hub serve` has to be
-/// running already; spawning it belongs to `nerve-macos-surface-02-launch`.
+/// process management. When the stream drops it reports that through
+/// ``onStreamEnded`` and keeps retrying; whether a hub needs starting again is
+/// somebody else's judgement (`HubProcessManager`), not this client's.
 @MainActor
 final class HubClient {
     /// First reconnect wait, and the floor every successful attach resets to.
@@ -33,6 +34,12 @@ final class HubClient {
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+
+    /// Called on the main actor each time an attach attempt ends and before the
+    /// backoff sleep — a losing connection is the only crash signal this app
+    /// gets. Never called after ``disconnect()``: a quitting app must not be the
+    /// reason a hub comes back.
+    var onStreamEnded: (() -> Void)?
 
     private var differ = FrameDiffer()
     private var stream: Task<Void, Never>?
@@ -121,6 +128,8 @@ final class HubClient {
                 NSLog("[Nerve] hub stream ended: %@", "\(error)")
             }
             guard !Task.isCancelled else { return }
+            // After the cancellation guard, so `disconnect()` never fires it.
+            onStreamEnded?()
 
             let delay = retryDelay
             retryDelay = min(Self.maxRetryDelay, retryDelay * 2)

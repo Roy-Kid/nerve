@@ -9,6 +9,7 @@ final class AppModel {
     let settings: SettingsStore
     let tunnels: MachineTunnelManager
     private let hubClient: HubClient
+    private let hubProcessManager: HubProcessManager
     private var notifications: NotificationService?
     private var coach: FirstRunCoachController?
     private var started = false
@@ -21,6 +22,7 @@ final class AppModel {
         self.store = store
         self.tunnels = tunnels
         self.hubClient = HubClient(store: store)
+        self.hubProcessManager = HubProcessManager()
         store.settingsProvider = { [weak self] in
             self?.settings ?? SettingsStore()
         }
@@ -58,10 +60,22 @@ final class AppModel {
         store.ribbonInvalidationSink = nil
         settings.ribbonAppearanceSink = nil
 
-        // State lives in `nerve-hub`; this app only paints its frames. Dev mode:
-        // the hub has to be running (`nerve-hub serve`) — spawning it is
-        // `nerve-macos-surface-02-launch`.
-        hubClient.connect()
+        // A stream that ends is the only sign this app gets that a hub died.
+        // Re-probe, and spawn again only if nothing answers — the manager holds
+        // the health check and the 10s throttle that keep that from storming.
+        hubClient.onStreamEnded = { [weak self] in
+            guard let self else { return }
+            Task { await self.hubProcessManager.ensureRunning() }
+        }
+
+        // State lives in `nerve-hub`; this app only paints its frames. Make sure
+        // one is up — reusing whichever hub already owns the port — before
+        // attaching, so a cold launch has something to attach to.
+        Task { [weak self] in
+            guard let self else { return }
+            await self.hubProcessManager.ensureRunning()
+            self.hubClient.connect()
+        }
 
         tunnels.start()
 
