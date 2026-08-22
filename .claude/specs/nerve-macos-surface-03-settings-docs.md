@@ -1,5 +1,5 @@
 ---
-status: approved
+status: code-complete
 slug: nerve-macos-surface-03-settings-docs
 depends: nerve-macos-surface-02-launch
 revised: 2026-08-22
@@ -56,16 +56,18 @@ hook 侧本就硬编码),全部引用改 `NerveEndpoint` 常量;公开文档写�
 
 ## Tasks
 
-- [ ] **T1** Replace `settings.ingestPort` with `NerveEndpoint`(`SettingsStore.swift:135/330/381/420/539/563/601/634`、
+- [x] **T1** Replace `settings.ingestPort` with `NerveEndpoint`(`SettingsStore.swift:135/330/381/420/539/563/601/634`、
       `SettingsView.swift:318/757`、`StatusPanelView.swift:498`、`MachineTunnelManager.swift:22/26/61/87/145/276`);
       历史 Settings 文件解码兼容(持久化 struct 字段删除、解码忽略)。
-- [ ] **T2** Update public docs in `index-page/src/docs/content.ts`(`/docs/ingest`、`/docs/status`:
+- [x] **T2** Update public docs in `index-page/src/docs/content.ts`(`/docs/ingest`、`/docs/status`:
       hub daemon、固定端口、surface 架构、无端口设置项)。
-- [ ] **T3** Add `scripts/verify_surface.sh` and run the manual regression matrix
+- [x] **T3** Add `scripts/verify_surface.sh` and run the manual regression matrix
       (通知三场景含 departed 路径、hub 生命周期、bind 冲突、隧道逐字回归)。
-- [ ] **T4** Run full check + test suite(`scripts/test_swift_units.sh`、`./scripts/run.sh` 构建、
+- [x] **T4** Run full check + test suite(`scripts/test_swift_units.sh`、`./scripts/run.sh` 构建、
       `python3 sources/agents/tests/test_nerve_hook.py`、hub 运行时 `scripts/verify_loop.sh`、
       `cd index-page && npm test && npm run build`)。
+
+- [x] **Hygiene** `/mol:simplify` ran (abbreviated: prose terminology fix, trio gate green; two full janitor passes already covered this area this session)
 
 ## Testing
 

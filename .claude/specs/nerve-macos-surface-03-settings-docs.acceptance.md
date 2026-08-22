@@ -1,3 +1,11 @@
+---
+criteria:
+  - { id: A1, type: manual, status: pending }
+  - { id: A2, type: review, status: pending }
+  - { id: A3, type: review, status: pending }
+  - { id: A4, type: runtime, status: verified, last_checked: 2026-08-22 }
+---
+
 # nerve-macos-surface-03-settings-docs — Acceptance
 
 Binding contract for `.claude/specs/nerve-macos-surface-03-settings-docs.md`. All items must pass before spec close.
@@ -15,7 +23,7 @@ Settings 不再出现 ingest 端口输入项,文案显示 `127.0.0.1:17890`;历�
 **type:** review
 
 `rg -n "ingestPort" Nerve/` 仅命中 `remoteIngestPort`(远端字段,保留);
-端点字面量只存在于 `NerveEndpoint`。
+端点字面量(本机侧)只存在于 `NerveEndpoint`;RemoteForward **远端**参数默认值(`MachineConfig.swift`/`SSHConfigWriter.swift`/`MachineTunnelManager` fallback 的 17890)语义为远端端口、恰好同值,刻意保留分离。
 
 ## A3 — Docs describe the hub architecture
 

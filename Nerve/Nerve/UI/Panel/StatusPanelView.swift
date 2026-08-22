@@ -496,7 +496,7 @@ struct StatusPanelView: View {
         } description: {
             Text("Send snapshots to the local ingest API, or POST /v1/demo for sample data. State lives in memory only.")
         } actions: {
-            Text("POST 127.0.0.1:\(settings.ingestPort)/v1/snapshot")
+            Text("POST \(NerveEndpoint.host):\(NerveEndpoint.port)/v1/snapshot")
                 .font(.caption2.monospaced())
                 .foregroundStyle(.tertiary)
                 .textSelection(.enabled)

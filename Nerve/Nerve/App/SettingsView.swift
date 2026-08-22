@@ -315,7 +315,7 @@ struct PreferencesView: View {
 
                 Section {
                     LabeledContent("Endpoint") {
-                        Text("127.0.0.1:\(settings.ingestPort)")
+                        Text("\(NerveEndpoint.host):\(NerveEndpoint.port)")
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -323,7 +323,7 @@ struct PreferencesView: View {
                 } header: {
                     Text("Local Endpoint")
                 } footer: {
-                    Text("Loopback only. Jobs live in memory and clear when Nerve quits. Remotes reach this port via Machines tunnels.")
+                    Text("Fixed and loopback only — the port is not configurable, because binding it is what keeps a single nerve-hub running. Jobs live in that hub's memory and clear when it exits. Remotes reach this port via Machines tunnels.")
                 }
             }
             .formStyle(.grouped)
@@ -754,7 +754,7 @@ struct PreferencesView: View {
 
                         AboutInfoRow(
                             title: "Local endpoint",
-                            detail: "http://127.0.0.1:\(settings.ingestPort)/v1/snapshot",
+                            detail: "\(NerveEndpoint.baseURL.absoluteString)/v1/snapshot",
                             systemImage: "network",
                             tint: Color(nsColor: .systemBlue),
                             monospacedDetail: true

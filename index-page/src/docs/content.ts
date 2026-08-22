@@ -251,6 +251,20 @@ codex plugin add nerve@nerve`,
     title: 'Status & lifecycle',
     lede: 'Display status is derived from structured facets only. One continuous ribbon; sessions leave on SessionEnd.',
     blocks: [
+      { type: 'h2', text: 'Where status lives' },
+      {
+        type: 'p',
+        text: 'The authority is nerve-hub, a small local daemon on fixed loopback 127.0.0.1:17890. Producers POST there; it holds every job and its timeline in memory and fans the whole set out to surfaces over SSE. The menu-bar app is a pure surface — it paints what the hub streams and derives no truth of its own, so the jobs outlive any single window.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The port is fixed and not configurable: binding 17890 is itself the single-instance lock, so there is no port field in Settings (only the endpoint, shown for copying) and no NERVE_* env to set.',
+          'The app auto-spawns the nerve-hub binary bundled inside Nerve.app when nothing answers on the port, and attaches to the running hub otherwise.',
+          'Surfaces are reference-counted. When the last SSE subscriber disconnects, the hub waits out a grace period (30s by default) and exits on its own. Producer POSTs do not keep it alive.',
+          'Every surface — menu bar, tmux plugin, plain curl — reads the same frames, so status never depends on which one you have open.',
+        ],
+      },
       { type: 'h2', text: 'Display statuses' },
       {
         type: 'table',
@@ -321,6 +335,13 @@ codex plugin add nerve@nerve`,
       {
         type: 'p',
         text: 'This contract belongs to nerve-hub, a small local daemon that holds the jobs. Producers POST into it; the menu-bar app and the tmux plugin are surfaces that read from it. Any alias is accepted — there is no allow-list.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The port is not a setting. 17890 is fixed because binding it is the single-instance lock, so producers can hard-code the address and there is no NERVE_* env to read. The macOS app shows the endpoint under Settings → Local Endpoint but offers no port field to change.',
+          'You do not start the hub by hand. The menu-bar app spawns the nerve-hub binary bundled inside Nerve.app when nothing answers on the port, and attaches to the already-running hub otherwise.',
+        ],
       },
       { type: 'h2', text: 'Endpoints' },
       {
@@ -402,12 +423,12 @@ codex plugin add nerve@nerve`,
         title: 'The stream is the lifecycle',
         text: 'An open subscription is a surface being present. nerve-hub counts them: when the last one disconnects it waits out a grace period (30s by default) and exits. Producer POSTs do not keep it alive.',
       },
-      { type: 'h2', text: 'Action protocol (sources poll themselves)' },
+      { type: 'h2', text: 'Action protocol (producers poll themselves)' },
       {
         type: 'code',
         lang: 'bash',
-        code: `curl -s 'http://127.0.0.1:17890/v1/actions/pending?sourceId=my-source'
-curl -s -X POST 'http://127.0.0.1:17890/v1/actions/result?sourceId=my-source' \\
+        code: `curl -s 'http://127.0.0.1:17890/v1/actions/pending?producerId=my-producer'
+curl -s -X POST 'http://127.0.0.1:17890/v1/actions/result?producerId=my-producer' \\
   -H 'Content-Type: application/json' \\
   -d '{"id":"<pending-id>","state":"succeeded","message":"ok"}'`,
       },

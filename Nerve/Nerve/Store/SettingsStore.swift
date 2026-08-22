@@ -132,8 +132,6 @@ final class SettingsStore {
             notifyRibbonAppearance()
         }
     }
-    var ingestPort: UInt16 { didSet { persist() } }
-
     /// Per-status ribbon / panel colors.
     var statusColors: StatusColorMap {
         didSet {
@@ -327,7 +325,6 @@ final class SettingsStore {
         animationsEnabled = true
         respectSystemReduceMotion = true
         ribbonMotionStyle = .transitionsOnly
-        ingestPort = 17890
         statusColors = .default
         notificationsPaused = false
         notifyRequired = true
@@ -378,7 +375,6 @@ final class SettingsStore {
         // Default true for older prefs; only false when user explicitly opted out.
         respectSystemReduceMotion = p.respectSystemReduceMotion ?? true
         ribbonMotionStyle = p.ribbonMotionStyle ?? .transitionsOnly
-        ingestPort = p.ingestPort
         let savedColors = p.statusColors ?? .default
         statusColors = savedColors == .legacyDefault ? .default : savedColors
         notificationsPaused = p.notificationsPaused
@@ -417,7 +413,6 @@ final class SettingsStore {
         animationsEnabled = p.animationsEnabled
         respectSystemReduceMotion = true
         ribbonMotionStyle = .transitionsOnly
-        ingestPort = p.ingestPort
         notificationsPaused = p.notificationsPaused
         notifyRequired = p.notifyRequired
         notifyUrgent = p.notifyUrgent
@@ -536,7 +531,11 @@ final class SettingsStore {
                 m.id = old.id
                 return m
             }
-            return host.asMachineConfig(remoteIngestPort: ingestPort, enabled: false, autoConnect: false)
+            return host.asMachineConfig(
+                remoteIngestPort: NerveEndpoint.port,
+                enabled: false,
+                autoConnect: false
+            )
         }
     }
 
@@ -560,7 +559,6 @@ final class SettingsStore {
             animationsEnabled: animationsEnabled,
             respectSystemReduceMotion: respectSystemReduceMotion,
             ribbonMotionStyle: ribbonMotionStyle,
-            ingestPort: ingestPort,
             statusColors: statusColors,
             notificationsPaused: notificationsPaused,
             notifyRequired: notifyRequired,
@@ -592,13 +590,21 @@ final class SettingsStore {
         }
     }
 
+    /// Prefs written to `UserDefaults`.
+    ///
+    /// Older payloads carry a retired ingest-port key from when the endpoint
+    /// was a user knob. That field is gone (the port is fixed — see
+    /// `NerveEndpoint`), and because the synthesized `CodingKeys` names only
+    /// the properties below, the synthesized `Decodable` never looks for the
+    /// stale key and old prefs still load. Do **not** hand-write a
+    /// `CodingKeys` case for it: unknown keys are ignored precisely because
+    /// they are absent from the enum.
     private struct Persisted: Codable {
         var hideWhenIdle: Bool
         var reduceMotion: Bool
         var animationsEnabled: Bool
         var respectSystemReduceMotion: Bool?
         var ribbonMotionStyle: RibbonMotionStyle?
-        var ingestPort: UInt16
         var statusColors: StatusColorMap?
         var notificationsPaused: Bool
         var notifyRequired: Bool
@@ -626,12 +632,12 @@ final class SettingsStore {
         var machines: [MachineConfig]?
     }
 
-    /// Subset of v3 prefs we still care about (storage/privacy fields ignored).
+    /// Subset of v3 prefs we still care about (storage/privacy fields and the
+    /// retired ingest-port knob drop out the same way ``Persisted`` drops them).
     private struct PersistedV3: Codable {
         var hideWhenIdle: Bool
         var reduceMotion: Bool
         var animationsEnabled: Bool
-        var ingestPort: UInt16
         var notificationsPaused: Bool
         var notifyRequired: Bool
         var notifyUrgent: Bool
