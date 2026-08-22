@@ -19,7 +19,6 @@ enum ActionService {
         "open", "focus", "open_url", "openurl",
         "copy", "copy_summary", "copysummary",
         "open_logs", "openlogs", "hide", "mute",
-        "dismiss", "dismiss_job", "dismissjob",
     ]
 
     /// Former remote control kinds — kept for classification / UI filtering only.
@@ -115,10 +114,6 @@ enum ActionService {
 
         case "hide", "mute":
             return .succeeded("Acknowledged (\(action.kind))")
-
-        case "dismiss", "dismiss_job", "dismissjob":
-            // Handled in JobStore.performAction (evicts the row). Not reached for store path.
-            return .succeeded("Dismissed")
 
         default:
             if subject.location?.openURL != nil || subject.location?.focusHint != nil {

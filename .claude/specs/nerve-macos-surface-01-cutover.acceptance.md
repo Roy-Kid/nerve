@@ -1,3 +1,16 @@
+---
+criteria:
+  - { id: A1, type: code, status: verified, last_checked: 2026-08-22 }
+  - { id: A2, type: code, status: verified, last_checked: 2026-08-22 }
+  - { id: A3, type: code, status: verified, last_checked: 2026-08-22 }
+  - { id: A4, type: review, status: pending }
+  - { id: A5, type: review, status: pending }
+  - { id: A6, type: review, status: pending }
+  - { id: A7, type: manual, status: pending }
+  - { id: A8, type: manual, status: pending }
+  - { id: A9, type: runtime, status: verified, last_checked: 2026-08-22 }
+---
+
 # nerve-macos-surface-01-cutover — Acceptance
 
 Binding contract for `.claude/specs/nerve-macos-surface-01-cutover.md`. All items must pass before spec close.

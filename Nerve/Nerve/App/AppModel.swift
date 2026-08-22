@@ -8,10 +8,9 @@ final class AppModel {
     let store: JobStore
     let settings: SettingsStore
     let tunnels: MachineTunnelManager
-    private var ingest: IngestServer?
+    private let hubClient: HubClient
     private var notifications: NotificationService?
     private var coach: FirstRunCoachController?
-    private var expireTimer: Timer?
     private var started = false
 
     init() {
@@ -21,8 +20,17 @@ final class AppModel {
         self.settings = settings
         self.store = store
         self.tunnels = tunnels
+        self.hubClient = HubClient(store: store)
         store.settingsProvider = { [weak self] in
             self?.settings ?? SettingsStore()
+        }
+        // Panel Clear / demo are hub round-trips: the store is a cache, so a
+        // local edit would be overwritten by the next frame.
+        store.clearRequestSink = { [weak self] in
+            self?.hubClient.clearAll()
+        }
+        store.demoRequestSink = { [weak self] in
+            self?.hubClient.loadDemo()
         }
         tunnels.attach(settings: settings)
     }
@@ -50,25 +58,12 @@ final class AppModel {
         store.ribbonInvalidationSink = nil
         settings.ribbonAppearanceSink = nil
 
-        let server = IngestServer(
-            port: settings.ingestPort,
-            store: store,
-            settingsProvider: { [weak self] in self?.settings }
-        )
-        self.ingest = server
-        server.start()
-
-        // Drop any leftover per-subagent rows from older hooks still in memory.
-        store.purgeAllLegacyChildJobs()
+        // State lives in `nerve-hub`; this app only paints its frames. Dev mode:
+        // the hub has to be running (`nerve-hub serve`) — spawning it is
+        // `nerve-macos-surface-02-launch`.
+        hubClient.connect()
 
         tunnels.start()
-
-        // 5s: pending-action expiry + local PID reaping (closed terminal / kill).
-        expireTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.store.runMaintenanceTick()
-            }
-        }
 
         if !settings.hasSeenCoachMarks {
             let coach = FirstRunCoachController()
@@ -78,7 +73,7 @@ final class AppModel {
                 self.settings.hasSeenCoachMarks = true
                 self.settings.hasCompletedFirstRun = true
                 if loadDemo {
-                    self.store.loadDemo()
+                    self.hubClient.loadDemo()
                 }
             }
         } else if !settings.hasCompletedFirstRun {
@@ -150,9 +145,8 @@ final class AppModel {
     func quit() {
         guard started else { return }
         started = false
-        expireTimer?.invalidate()
-        expireTimer = nil
         tunnels.stopAll()
-        ingest?.stop()
+        // Detach only — the hub outlives this app and serves other surfaces.
+        hubClient.disconnect()
     }
 }

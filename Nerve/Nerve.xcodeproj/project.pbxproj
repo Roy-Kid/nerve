@@ -4,9 +4,11 @@
 	0188B8B3D39D4BAFA17F93D9 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB18F8A19ACF4021890F7A3C /* AppModel.swift */; };
 	2C45C2996AB94DD4B12314BC /* NerveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 361B3C476EF049E3807FA12B /* NerveApp.swift */; };
 	B410EE77B92644989B4344F3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F6A04DFA5894F578B004BA2 /* SettingsView.swift */; };
-	FA5376410A054A8E8C8688BA /* IngestServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34C965B09FA246DBA277C0AB /* IngestServer.swift */; };
+	BBC04E3495A233EB11F62D90 /* NerveEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5C816CC6F8D1EF7E5C0A4C /* NerveEndpoint.swift */; };
+	16EC4511B04E9F97E1606C06 /* HubFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1AF2CCC5DE1AA2359B94E8 /* HubFrame.swift */; };
+	DC406972BD2273B276CE049A /* FrameDiffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A8B961485FF3DB2B2AD0BD /* FrameDiffer.swift */; };
+	4479DCF1BBF8430D9E5E038E /* HubClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A92FA07D5E8AF609062386 /* HubClient.swift */; };
 	2BB3B10CCACC4ED1AC3EED84 /* CoreTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */; };
-	325F63134FE547BAB20C7BEB /* Event.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CCD95FA1514B12B0725353 /* Event.swift */; };
 	1762374C51B54AB2A110E1AA /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8A447C6505E4DC9B3F67A0D /* History.swift */; };
 	63D6C93FAAE249EE976322AA /* PendingAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED745B89E56A4725BB143D1E /* PendingAction.swift */; };
 	2B1C39688BF748CCA8953619 /* Subject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39005B163F3E4B1A831536E5 /* Subject.swift */; };
@@ -29,9 +31,11 @@
 	AB18F8A19ACF4021890F7A3C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/AppModel.swift"; sourceTree = "<group>"; };
 	361B3C476EF049E3807FA12B /* NerveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/NerveApp.swift"; sourceTree = "<group>"; };
 	3F6A04DFA5894F578B004BA2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/SettingsView.swift"; sourceTree = "<group>"; };
-	34C965B09FA246DBA277C0AB /* IngestServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Ingest/IngestServer.swift"; sourceTree = "<group>"; };
+	1F5C816CC6F8D1EF7E5C0A4C /* NerveEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/NerveEndpoint.swift"; sourceTree = "<group>"; };
+	2C1AF2CCC5DE1AA2359B94E8 /* HubFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/HubFrame.swift"; sourceTree = "<group>"; };
+	81A8B961485FF3DB2B2AD0BD /* FrameDiffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/FrameDiffer.swift"; sourceTree = "<group>"; };
+	93A92FA07D5E8AF609062386 /* HubClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services/Hub/HubClient.swift"; sourceTree = "<group>"; };
 	4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/CoreTypes.swift"; sourceTree = "<group>"; };
-	46CCD95FA1514B12B0725353 /* Event.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/Event.swift"; sourceTree = "<group>"; };
 	F8A447C6505E4DC9B3F67A0D /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/History.swift"; sourceTree = "<group>"; };
 	ED745B89E56A4725BB143D1E /* PendingAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/PendingAction.swift"; sourceTree = "<group>"; };
 	39005B163F3E4B1A831536E5 /* Subject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Models/Subject.swift"; sourceTree = "<group>"; };
@@ -58,9 +62,11 @@
 		AB18F8A19ACF4021890F7A3C /* AppModel.swift */,
 		361B3C476EF049E3807FA12B /* NerveApp.swift */,
 		3F6A04DFA5894F578B004BA2 /* SettingsView.swift */,
-		34C965B09FA246DBA277C0AB /* IngestServer.swift */,
+		1F5C816CC6F8D1EF7E5C0A4C /* NerveEndpoint.swift */,
+		2C1AF2CCC5DE1AA2359B94E8 /* HubFrame.swift */,
+		81A8B961485FF3DB2B2AD0BD /* FrameDiffer.swift */,
+		93A92FA07D5E8AF609062386 /* HubClient.swift */,
 		4BBFCF3D4CA34F54B095ACB4 /* CoreTypes.swift */,
-		46CCD95FA1514B12B0725353 /* Event.swift */,
 		F8A447C6505E4DC9B3F67A0D /* History.swift */,
 		ED745B89E56A4725BB143D1E /* PendingAction.swift */,
 		39005B163F3E4B1A831536E5 /* Subject.swift */,
@@ -85,9 +91,11 @@
 		0188B8B3D39D4BAFA17F93D9 /* AppModel.swift in Sources */,
 		2C45C2996AB94DD4B12314BC /* NerveApp.swift in Sources */,
 		B410EE77B92644989B4344F3 /* SettingsView.swift in Sources */,
-		FA5376410A054A8E8C8688BA /* IngestServer.swift in Sources */,
+		BBC04E3495A233EB11F62D90 /* NerveEndpoint.swift in Sources */,
+		16EC4511B04E9F97E1606C06 /* HubFrame.swift in Sources */,
+		DC406972BD2273B276CE049A /* FrameDiffer.swift in Sources */,
+		4479DCF1BBF8430D9E5E038E /* HubClient.swift in Sources */,
 		2BB3B10CCACC4ED1AC3EED84 /* CoreTypes.swift in Sources */,
-		325F63134FE547BAB20C7BEB /* Event.swift in Sources */,
 		1762374C51B54AB2A110E1AA /* History.swift in Sources */,
 		63D6C93FAAE249EE976322AA /* PendingAction.swift in Sources */,
 		2B1C39688BF748CCA8953619 /* Subject.swift in Sources */,

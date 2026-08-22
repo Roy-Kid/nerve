@@ -1,5 +1,5 @@
 ---
-status: approved
+status: code-complete
 slug: nerve-macos-surface-01-cutover
 depends: nerve-hub
 revised: 2026-08-22
@@ -47,7 +47,7 @@ hooks ──HTTP──▶ nerve-hub(状态权威:apply/commit/evict/reap/retenti
 ### 新增单元(`Nerve/Nerve/Services/Hub/`,先例 `Services/MachineTunnelManager.swift`)
 
 - `NerveEndpoint` —— 值类型常量:host `127.0.0.1`、port `17890`、各路径拼接。(Settings 旋钮的移除在 -03;本段先供 `HubClient` 使用。)
-- `HubFrame` —— `Codable` 值类型:`jobs: [Job]`、`departed: [Job]`;未知字段容错、缺字段按空数组。**无副作用、无 Foundation 以外依赖**。
+- `HubFrame` —— `Decodable` 值类型(单向消费,无编码回程):`jobs: [Job]`、`departed: [Job]`、`timelines: [String: [TimelineEntry]]`(从帧内 job 内嵌 `timeline` 键提取 —— `Job` 的 Codable 会丢弃未知键,故 decode 时显式提升);未知字段容错、缺字段按空数组。**无副作用、无 Foundation 以外依赖**。
 - `FrameDiffer` —— 纯 struct(非 `@MainActor`、无网络):持上一帧 `[String: Job]`,
   `func pairs(for frame: HubFrame) -> [(previous: Job?, next: Job)]`。规则:
   (1) 帧内 job 逐条与上帧同 id 配对,新 job 的 `previous = nil`;
@@ -116,12 +116,13 @@ hooks ──HTTP──▶ nerve-hub(状态权威:apply/commit/evict/reap/retenti
 
 ## Tasks
 
-- [ ] **T1** Write failing unit harness `scripts/test_swift_units.sh` + `Nerve/Tests/FrameDifferTests.swift`(swiftc 编译 Models/*.swift + Hub 纯值文件;覆盖 departed 配对、新 job previous=nil、无变化不产对、帧解码容错)。
-- [ ] **T2** Implement `NerveEndpoint` + `HubFrame` + `FrameDiffer` in `Nerve/Nerve/Services/Hub/` until T1 harness green.
-- [ ] **T3** Reduce `JobStore` to a frame-fed cache in `Nerve/Nerve/Store/SubjectStore.swift`(删语义块,加 `applyFrame`,保留展示派生与 `ensureLocalActions`)。
-- [ ] **T4** Remove `Nerve/Nerve/Ingest/` and its `project.pbxproj` references; add `Services/Hub/*.swift` to the target.
-- [ ] **T5** Implement `HubClient`(SSE 消费、退避重连、帧→cache、pair→`notificationSink`、clear/demo/action-result 端点)。
-- [ ] **T6** Rewire `AppModel.swift` and `StatusPanelView.swift` to `HubClient`; run build + hook tests + unit harness.
+- [x] **T1** Write failing unit harness `scripts/test_swift_units.sh` + `Nerve/Tests/FrameDifferTests.swift`(swiftc 编译 Models/*.swift + Hub 纯值文件;覆盖 departed 配对、新 job previous=nil、无变化不产对、帧解码容错)。
+- [x] **T2** Implement `NerveEndpoint` + `HubFrame` + `FrameDiffer` in `Nerve/Nerve/Services/Hub/` until T1 harness green.
+- [x] **T3** Reduce `JobStore` to a frame-fed cache in `Nerve/Nerve/Store/SubjectStore.swift`(删语义块,加 `applyFrame`,保留展示派生与 `ensureLocalActions`)。
+- [x] **T4** Remove `Nerve/Nerve/Ingest/` and its `project.pbxproj` references; add `Services/Hub/*.swift` to the target.
+- [x] **T5** Implement `HubClient`(SSE 消费、退避重连、帧→cache、pair→`notificationSink`、clear/demo/action-result 端点)。
+- [x] **Hygiene** `/mol:simplify` ran clean — dead dismiss branch + orphan Event.swift + stale comment refs; gates green (harness 11/11, xcodebuild, hook)
+- [x] **T6** Rewire `AppModel.swift` and `StatusPanelView.swift` to `HubClient`; run build + hook tests + unit harness.
 
 ## Testing
 

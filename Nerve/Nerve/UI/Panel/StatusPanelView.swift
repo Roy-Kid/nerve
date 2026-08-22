@@ -262,7 +262,8 @@ struct StatusPanelView: View {
     }
 
     private func refreshPresentation() {
-        store.runMaintenanceTick()
+        // Job upkeep (expiry, PID reaping) belongs to the hub; the panel only
+        // asks the ribbon to repaint what the latest frame already says.
         store.ribbonInvalidationSink?()
     }
 

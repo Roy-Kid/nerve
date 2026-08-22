@@ -16,21 +16,24 @@ enum PanelGroup: String, CaseIterable, Identifiable {
     }
 }
 
+/// Read-only client cache of what `nerve-hub` publishes, plus the display
+/// derivations the menu-bar ribbon and status panel read.
+///
+/// State semantics — apply / commit / evict / reap / retention — live in the
+/// hub, never here: two implementations of the same rules would drift. Every
+/// mutation of ``jobs`` / ``timelines`` arrives through ``applyFrame(jobs:timelines:)``,
+/// which overwrites wholesale because a hub frame is the full truth, not a delta.
+/// Commands the user triggers (Clear, Load demo) leave through the request sinks
+/// so the hub stays the single writer.
 @Observable
 final class JobStore {
     private(set) var jobs: [String: Job] = [:]
     private(set) var timelines: [String: [TimelineEntry]] = [:]
+    /// Dormant: the producer action queue lives in the hub and no surface path
+    /// fills this yet. Kept exposed so the panel's observation surface is stable.
     private(set) var pendingActions: [PendingActionRequest] = []
 
-    private var seenEventIds: Set<String> = []
-    private var seenEventOrder: [String] = []
-    private let maxSeenEvents = 4_000
-    private let maxTimelinePerJob = 40
-    private let maxPendingActions = 200
-
     private let clock: () -> Date
-    private var suppressRibbonInvalidation = false
-    private var pendingRibbonInvalidation = false
 
     var panelOpen: Bool = false
     var selectedJobId: String?
@@ -40,11 +43,17 @@ final class JobStore {
     /// Bumps on every subject mutation so the menu-bar ribbon can redraw immediately.
     private(set) var revision: UInt64 = 0
 
-    /// Set by AppModel after construction.
+    /// Set by AppModel after construction. Driven by `HubClient` once per
+    /// changed job, from the `(previous, next)` pairs `FrameDiffer` recovers.
     var notificationSink: ((Job?, Job) -> Void)?
     /// Fired after any state change that should refresh the ribbon.
     var ribbonInvalidationSink: (() -> Void)?
     var settingsProvider: (() -> SettingsStore)?
+    /// Set by AppModel: forwards a panel Clear to the hub. Clearing locally
+    /// would be undone by the next frame — a visible bug, not a stale cache.
+    var clearRequestSink: (() -> Void)?
+    /// Set by AppModel: asks the hub to load its demo jobs.
+    var demoRequestSink: (() -> Void)?
 
     /// In-memory only. Subjects/timelines/pending actions are never written to disk.
     init(clock: @escaping () -> Date = { Date() }) {
@@ -53,9 +62,6 @@ final class JobStore {
     }
 
     // MARK: - Queries
-
-    /// Public job list (API + debug). Conversation jobs only — no legacy children.
-    var allJobs: [Job] { conversationJobs }
 
     var activeJobs: [Job] {
         conversationJobs
@@ -185,16 +191,6 @@ final class JobStore {
             return statusGroupedSections()
         case .machine:
             return machineGroupedSections()
-        }
-    }
-
-    func openPendingActions(forProducer producerId: String?) -> [PendingActionRequest] {
-        let now = clock()
-        return pendingActions.filter { req in
-            guard req.state == .pending else { return false }
-            if let exp = req.expiresAt, exp < now { return false }
-            if let producerId { return req.producerId == producerId }
-            return true
         }
     }
 
@@ -401,150 +397,34 @@ final class JobStore {
         return "n=\(activeCount)|g=\(resolved.rawValue)|\(body)"
     }
 
-    // MARK: - Ingest
+    // MARK: - Frame intake
 
-    @discardableResult
-    func apply(envelope: IngestEnvelope) -> Int {
-        beginRibbonBatch()
-        defer { endRibbonBatch() }
-        var applied = 0
-        let envelopeAlias = envelope.alias?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let list = envelope.jobs {
-            for var job in list {
-                if job.alias.isEmpty, let envelopeAlias, !envelopeAlias.isEmpty {
-                    job.alias = envelopeAlias
-                }
-                if job.alias.isEmpty {
-                    job.alias = LocalMachine.alias
-                }
-                applySnapshot(job)
-                applied += 1
-            }
+    /// Replace the cache with one hub frame.
+    ///
+    /// Wholesale, never merged: a frame carries every job the hub holds, so a
+    /// job missing from it has left, and a timeline missing from it is gone.
+    /// That is what makes a dropped connection cost nothing — the next frame
+    /// after a reconnect restores the surface completely.
+    ///
+    /// `ensureLocalActions` runs per job here, the way `commit` used to run it
+    /// per write: the hub stores the producer's raw actions and the NSWorkspace
+    /// Open/Focus semantics stay on this side.
+    func applyFrame(jobs incoming: [Job], timelines incomingTimelines: [String: [TimelineEntry]]) {
+        var next: [String: Job] = [:]
+        next.reserveCapacity(incoming.count)
+        for job in incoming {
+            let stored = ensureLocalActions(job)
+            next[stored.id] = stored
         }
-        if let events = envelope.events {
-            for e in events {
-                if apply(event: e) { applied += 1 }
-            }
+        jobs = next
+        timelines = incomingTimelines
+        // A selected row that left the frame must not keep the panel expanded
+        // on a job that no longer exists.
+        if let selected = selectedJobId, next[selected] == nil {
+            selectedJobId = nil
         }
-        return applied
-    }
-
-    @discardableResult
-    func apply(event: NerveEvent) -> Bool {
-        if seenEventIds.contains(event.id) {
-            return false
-        }
-        rememberEventId(event.id)
-
-        if event.kind == .snapshot, let full = event.job {
-            applySnapshot(full)
-            appendTimeline(
-                jobId: full.id,
-                kind: event.kind.rawValue,
-                title: "Snapshot",
-                at: event.timestamp
-            )
-            return true
-        }
-
-        if let full = event.job, event.kind == .jobCreated || jobs[event.jobId] == nil {
-            applySnapshot(full)
-            appendTimeline(
-                jobId: full.id,
-                kind: event.kind.rawValue,
-                title: "Created",
-                at: event.timestamp
-            )
-            return true
-        }
-
-        guard var existing = jobs[event.jobId] else {
-            if event.kind == .jobCreated || event.name != nil {
-                let src = ProducerInfo(id: event.producerId)
-                var s = Job.make(
-                    id: event.jobId,
-                    kind: event.jobKind ?? "session",
-                    name: event.name ?? event.jobId,
-                    alias: event.alias ?? LocalMachine.alias,
-                    producer: src,
-                    lifecycle: event.lifecycle ?? .active,
-                    now: event.timestamp
-                )
-                let before: Job? = nil
-                applyPatch(event, to: &s)
-                if s.lifecycle == .ended {
-                    // Never insert a closed session into the panel.
-                    evictEnded(before: before, ended: s)
-                    return true
-                }
-                commit(before: before, next: s)
-                appendTimeline(
-                    jobId: s.id,
-                    kind: event.kind.rawValue,
-                    title: timelineTitle(for: event),
-                    at: event.timestamp
-                )
-                return true
-            }
-            return false
-        }
-
-        if let v = event.version, v < existing.version {
-            return false
-        }
-
-        let before = existing
-        applyPatch(event, to: &existing)
-        if let v = event.version {
-            existing.version = max(existing.version, v)
-        } else {
-            existing.version += 1
-        }
-        existing.updatedAt = max(existing.updatedAt, event.timestamp)
-        if existing.lifecycle == .ended {
-            // Same policy as full snapshot: notify outcome, then leave the panel.
-            evictEnded(before: before, ended: existing)
-            return true
-        }
-
-        commit(before: before, next: existing)
-        appendTimeline(
-            jobId: existing.id,
-            kind: event.kind.rawValue,
-            title: timelineTitle(for: event),
-            at: event.timestamp
-        )
-        return true
-    }
-
-    func applySnapshot(_ job: Job) {
-        // Legacy per-subagent rows are not conversation jobs — drop and ignore.
-        if !job.isConversationJob {
-            dropLegacyChild(job.id)
-            return
-        }
-        let before = jobs[job.id]
-        if let existing = before, job.version < existing.version {
-            return
-        }
-        if job.lifecycle == .ended {
-            var ended = job
-            // Preserve duration anchors for long-success notifications.
-            if let before {
-                ended.createdAt = before.createdAt
-                ended.startedAt = before.startedAt ?? before.createdAt
-            }
-            if ended.endedAt == nil {
-                ended.endedAt = clock()
-            }
-            evictEnded(before: before, ended: ended)
-            return
-        }
-        commit(before: before, next: job)
-        // Parent updates also scrub any leftover child rows for this session.
-        if purgeLegacyChildren(of: job.id) {
-            bumpRevision()
-        }
+        revision &+= 1
+        ribbonInvalidationSink?()
     }
 
     /// Display-only actions: strip remote control; **Open/Focus first**, then Copy.
@@ -600,276 +480,12 @@ final class JobStore {
         return j
     }
 
-    /// Local policy closes a row (dead PID, legacy dismiss action, …).
-    @MainActor
-    func endJobLocally(
-        id: String,
-        reason: String,
-        summary: String? = nil,
-        outcome: Outcome = .cancelled
-    ) {
-        guard var job = jobs[id], job.lifecycle != .ended else { return }
-        let before = job
-        let now = clock()
-        job.lifecycle = .ended
-        job.outcome = outcome
-        job.endedAt = now
-        job.updatedAt = now
-        job.version += 1
-        job.attention = .none
-        job.health = .ok
-        job.current = Current(
-            type: "idle",
-            summary: summary ?? "Session ended (\(reason))"
-        )
-        job.extensions["endReason"] = .string(reason)
-        evictEnded(before: before, ended: job)
-    }
-
-    /// Dismiss one open job from the panel (local only — does not signal the agent).
-    @MainActor
-    @discardableResult
-    func dismissJob(id: String) -> Bool {
-        guard jobs[id] != nil, jobs[id]?.lifecycle != .ended else { return false }
-        endJobLocally(id: id, reason: "dismissed", summary: "Dismissed")
-        return true
-    }
-
-    /// Reap local sessions whose producer PID is gone (closed terminal / kill).
-    /// Remote aliases are skipped — their PIDs are not visible on this Mac.
-    @MainActor
-    func reapDeadLocalProducers() {
-        let localAlias = LocalMachine.alias
-        let now = clock()
-        // Avoid thrashing brand-new rows (PID may not be ready / race on spawn).
-        let minAge: TimeInterval = 3
-        var toEnd: [(id: String, summary: String)] = []
-        for job in jobs.values {
-            guard job.lifecycle != .ended else { continue }
-            guard job.isConversationJob else { continue }
-            // Only local machine snapshots — remote PIDs are meaningless here.
-            guard job.alias == localAlias else { continue }
-            guard now.timeIntervalSince(job.createdAt) >= minAge else { continue }
-            guard let pid = producerPID(from: job) else { continue }
-            if !processIsAlive(pid) {
-                toEnd.append((job.id, "Process gone (pid \(pid))"))
-            }
-        }
-        for item in toEnd {
-            endJobLocally(
-                id: item.id,
-                reason: "process_gone",
-                summary: item.summary,
-                outcome: .cancelled
-            )
-        }
-    }
-
-    private func producerPID(from job: Job) -> Int32? {
-        switch job.extensions["pid"] {
-        case .number(let n):
-            let v = Int32(n)
-            return v > 1 ? v : nil
-        case .string(let s):
-            guard let v = Int32(s), v > 1 else { return nil }
-            return v
-        default:
-            return nil
-        }
-    }
-
-    /// Best-effort: `kill(pid, 0)` — exists (or EPERM) vs gone (ESRCH).
-    private func processIsAlive(_ pid: Int32) -> Bool {
-        if pid <= 1 { return false }
-        let rc = kill(pid, 0)
-        if rc == 0 { return true }
-        // EPERM: process exists but we cannot signal it — still alive.
-        return errno == EPERM
-    }
-
-    private func commit(before: Job?, next: Job) {
-        let stored = next.lifecycle == .ended ? next : ensureLocalActions(next)
-        jobs[stored.id] = stored
-        bumpRevision()
-        notificationSink?(before, stored)
-    }
-
-    /// Session closed (`lifecycle == ended`): fire outcome notifications, then drop from panel/store.
-    /// No Success/Recent linger — only open sessions stay visible.
-    private func evictEnded(before: Job?, ended: Job) {
-        notificationSink?(before, ended)
-        let id = ended.id
-        var changed = false
-        if jobs.removeValue(forKey: id) != nil || before != nil {
-            timelines.removeValue(forKey: id)
-            if selectedJobId == id {
-                selectedJobId = nil
-            }
-            changed = true
-        }
-        // Children of this conversation (legacy hooks) leave with the parent.
-        if purgeLegacyChildren(of: id) {
-            changed = true
-        }
-        if changed {
-            bumpRevision()
-        }
-    }
-
-    /// Drop a single non-conversation row (legacy subagent child).
-    private func dropLegacyChild(_ id: String) {
-        guard jobs[id] != nil || timelines[id] != nil else { return }
-        jobs.removeValue(forKey: id)
-        timelines.removeValue(forKey: id)
-        if selectedJobId == id { selectedJobId = nil }
-        bumpRevision()
-    }
-
-    /// Remove leftover child rows for `parentId` (`parentJobId` or id prefix).
-    @discardableResult
-    private func purgeLegacyChildren(of parentId: String) -> Bool {
-        let childIds = jobs.keys.filter { id in
-            guard let job = jobs[id], !job.isConversationJob else { return false }
-            if case .string(let pid) = job.extensions["parentJobId"], pid == parentId {
-                return true
-            }
-            // Legacy id shape: `{parentId}:{agentId}`
-            return id.hasPrefix(parentId + ":")
-        }
-        guard !childIds.isEmpty else { return false }
-        for id in childIds {
-            jobs.removeValue(forKey: id)
-            timelines.removeValue(forKey: id)
-            if selectedJobId == id { selectedJobId = nil }
-        }
-        return true
-    }
-
-    /// Drop every non-conversation row still in memory (one-shot hygiene).
-    func purgeAllLegacyChildJobs() {
-        let ids = jobs.keys.filter { jobs[$0].map { !$0.isConversationJob } ?? false }
-        guard !ids.isEmpty else { return }
-        for id in ids {
-            jobs.removeValue(forKey: id)
-            timelines.removeValue(forKey: id)
-            if selectedJobId == id { selectedJobId = nil }
-        }
-        bumpRevision()
-    }
-
-    private func beginRibbonBatch() {
-        suppressRibbonInvalidation = true
-        pendingRibbonInvalidation = false
-    }
-
-    private func endRibbonBatch() {
-        suppressRibbonInvalidation = false
-        if pendingRibbonInvalidation {
-            pendingRibbonInvalidation = false
-            ribbonInvalidationSink?()
-        }
-    }
-
-    private func bumpRevision() {
-        revision &+= 1
-        if suppressRibbonInvalidation {
-            pendingRibbonInvalidation = true
-        } else {
-            ribbonInvalidationSink?()
-        }
-    }
-
-    private func applyPatch(_ event: NerveEvent, to s: inout Job) {
-        if let name = event.name { s.name = name }
-        if let k = event.jobKind { s.kind = k }
-        if let lifecycle = event.lifecycle {
-            s.lifecycle = lifecycle
-            if lifecycle == .ended {
-                s.endedAt = event.timestamp
-            }
-        }
-        if let current = event.current { s.current = current }
-        if let attention = event.attention { s.attention = attention }
-        if let health = event.health { s.health = health }
-        if let outcome = event.outcome { s.outcome = outcome }
-        if let progress = event.progress { s.progress = progress }
-        if let context = event.context { s.context = context }
-        if let location = event.location { s.location = location }
-        if let capabilities = event.capabilities { s.capabilities = capabilities }
-        if let actions = event.actions { s.actions = actions }
-        if let ext = event.extensions {
-            for (k, v) in ext { s.extensions[k] = v }
-        }
-
-        switch event.kind {
-        case .jobEnded:
-            s.lifecycle = .ended
-            s.endedAt = event.timestamp
-        default:
-            break
-        }
-    }
-
-    private func timelineTitle(for event: NerveEvent) -> String {
-        switch event.kind {
-        case .attentionChanged:
-            return "Attention → \(event.attention?.level.rawValue ?? "?")"
-        case .lifecycleChanged:
-            return "Lifecycle → \(event.lifecycle?.rawValue ?? "?")"
-        case .currentChanged:
-            return event.current?.summary ?? event.current?.name ?? "Current changed"
-        case .healthChanged:
-            return "Health → \(event.health?.rawValue ?? "?")"
-        case .outcomeReported:
-            return "Outcome → \(event.outcome?.rawValue ?? "?")"
-        case .jobEnded:
-            return "Ended"
-        case .progressUpdated:
-            return event.progress?.label ?? "Progress"
-        case .heartbeat:
-            return "Heartbeat"
-        default:
-            return event.kind.rawValue
-        }
-    }
-
-    private func appendTimeline(jobId: String, kind: String, title: String, at: Date) {
-        // Skip pure heartbeats from cluttering
-        if kind == EventKind.heartbeat.rawValue { return }
-        var list = timelines[jobId] ?? []
-        let entry = TimelineEntry(
-            id: UUID().uuidString,
-            jobId: jobId,
-            kind: kind,
-            title: title,
-            timestamp: at
-        )
-        list.insert(entry, at: 0)
-        if list.count > maxTimelinePerJob {
-            list = Array(list.prefix(maxTimelinePerJob))
-        }
-        timelines[jobId] = list
-    }
-
-
-
-    private func rememberEventId(_ id: String) {
-        if seenEventIds.insert(id).inserted {
-            seenEventOrder.append(id)
-            if seenEventOrder.count > maxSeenEvents {
-                let drop = seenEventOrder.prefix(500)
-                for d in drop { seenEventIds.remove(d) }
-                seenEventOrder.removeFirst(min(500, seenEventOrder.count))
-            }
-        }
-    }
-
     // MARK: - Actions
 
     @MainActor
     @discardableResult
     func performAction(actionId: String, jobId: String, confirmed: Bool = false) -> ActionResult {
-        guard var subject = jobs[jobId] else {
+        guard let subject = jobs[jobId] else {
             return .denied("Job not found")
         }
         guard let action = subject.actions.first(where: { $0.id == actionId }) else {
@@ -881,13 +497,6 @@ final class JobStore {
 
         if ActionService.isDestructive(action), !confirmed {
             return .denied("Confirmation required")
-        }
-
-        // Dismiss is store-local eviction (no agent signal).
-        let kind = action.kind.lowercased()
-        if kind == "dismiss" || kind == "dismiss_job" || kind == "dismissjob" {
-            let ok = dismissJob(id: jobId)
-            return ok ? .succeeded("Dismissed") : .failed("Job not found")
         }
 
         let klass = ActionService.classify(action: action)
@@ -914,7 +523,7 @@ final class JobStore {
     @MainActor
     private func applyLocalResult(_ result: ActionResult, jobId: String, actionId: String) {
         switch result {
-        case .succeeded(let msg):
+        case .succeeded:
             // Open / Copy stay re-clickable; do not freeze them as .succeeded.
             if let kind = jobs[jobId]?.actions.first(where: { $0.id == actionId })?.kind,
                ActionService.reusableKinds.contains(kind.lowercased()) {
@@ -922,7 +531,6 @@ final class JobStore {
             } else {
                 setActionState(jobId: jobId, actionId: actionId, state: .succeeded)
             }
-            appendTimeline(jobId: jobId, kind: "action.completed", title: msg, at: clock())
         case .failed:
             setActionState(jobId: jobId, actionId: actionId, state: .failed)
         case .pending, .unsupported, .denied:
@@ -930,35 +538,8 @@ final class JobStore {
         }
     }
 
-    @MainActor
-    private func enqueueRemote(action: JobAction, subject: inout Job) -> ActionResult {
-        // Bind to owning producer only
-        let req = PendingActionRequest(
-            id: UUID().uuidString,
-            jobId: subject.id,
-            producerId: subject.producer.id,
-            actionId: action.id,
-            actionKind: action.kind,
-            title: action.title,
-            requestedAt: clock(),
-            state: .pending,
-            resultMessage: nil,
-            expiresAt: clock().addingTimeInterval(3600)
-        )
-        pendingActions.insert(req, at: 0)
-        if pendingActions.count > maxPendingActions {
-            pendingActions = Array(pendingActions.prefix(maxPendingActions))
-        }
-        setActionState(jobId: subject.id, actionId: action.id, state: .pending)
-        appendTimeline(
-            jobId: subject.id,
-            kind: "action.pending",
-            title: "\(action.title) → source",
-            at: clock()
-        )
-        return .pending("Queued for source")
-    }
-
+    /// Local echo of a click, overwritten by the next frame — the hub owns the
+    /// action's real state.
     private func setActionState(jobId: String, actionId: String, state: ActionState) {
         guard var s = jobs[jobId] else { return }
         if let idx = s.actions.firstIndex(where: { $0.id == actionId }) {
@@ -968,130 +549,16 @@ final class JobStore {
         }
     }
 
-    /// Source reports action outcome. Source may only complete its own actions.
-    @discardableResult
-    func completePendingAction(id: String, state: ActionState, message: String?, producerId: String?) -> Bool {
-        guard let idx = pendingActions.firstIndex(where: { $0.id == id }) else { return false }
-        var req = pendingActions[idx]
-        if let producerId, req.producerId != producerId {
-            return false
-        }
-        guard state == .succeeded || state == .failed || state == .expired else { return false }
-        req.state = state
-        req.resultMessage = message
-        pendingActions[idx] = req
-        setActionState(jobId: req.jobId, actionId: req.actionId, state: state)
-        // Reset action to available after success/fail so it can be used again if source re-declares
-        if state == .succeeded || state == .failed {
-            DispatchQueue.main.async { [weak self] in
-                // brief delay then allow re-use if still present
-                self?.setActionState(jobId: req.jobId, actionId: req.actionId, state: .available)
-            }
-        }
-        appendTimeline(
-            jobId: req.jobId,
-            kind: "action.completed",
-            title: message ?? "\(req.title): \(state.rawValue)",
-            at: clock()
-        )
-        return true
-    }
+    // MARK: - Commands (hub round-trips)
 
-    func expireStalePendingActions() {
-        let now = clock()
-        var changed = false
-        for i in pendingActions.indices {
-            if pendingActions[i].state == .pending,
-               let exp = pendingActions[i].expiresAt,
-               exp < now {
-                pendingActions[i].state = .expired
-                setActionState(
-                    jobId: pendingActions[i].jobId,
-                    actionId: pendingActions[i].actionId,
-                    state: .expired
-                )
-                changed = true
-            }
-        }
-        if changed { bumpRevision() }
-    }
-
-    /// Periodic maintenance: expire pending actions + reap dead local producer PIDs.
-    @MainActor
-    func runMaintenanceTick() {
-        expireStalePendingActions()
-        reapDeadLocalProducers()
-    }
-
-
-    // MARK: - Demo / utilities
-
+    /// Panel Clear. Local-only removal would be refilled by the next frame.
     func clearAll() {
-        jobs.removeAll()
-        seenEventIds.removeAll()
-        seenEventOrder.removeAll()
-        timelines.removeAll()
-        pendingActions.removeAll()
-        selectedJobId = nil
-        bumpRevision()
+        clearRequestSink?()
     }
 
+    /// First-run coach / Settings demo. The hub owns the demo jobs.
     func loadDemo() {
-        beginRibbonBatch()
-        defer { endRibbonBatch() }
-        let now = clock()
-        let src = ProducerInfo(id: "demo", name: "Demo", kind: "demo")
-        let alias = LocalMachine.alias
-        let demo: [Job] = [
-            {
-                var s = Job.make(id: "demo-1", kind: "session", name: "nerve", alias: alias, producer: src, now: now.addingTimeInterval(-3600))
-                s.current = Current(type: "editing", name: "Implement ribbon", summary: "Drawing menu-bar ribbon", startedAt: now.addingTimeInterval(-120))
-                s.location = LocationInfo(
-                    openURL: "file:///tmp",
-                    focusHint: "Demo · nerve · session · /tmp"
-                )
-                // ensureLocalActions will pin Open + Copy.
-                return s
-            }(),
-            {
-                var s = Job.make(id: "demo-2", kind: "build", name: "xcodebuild Nerve", alias: alias, producer: src, now: now.addingTimeInterval(-600))
-                s.current = Current(type: "building", summary: "Compiling 42 files", startedAt: now.addingTimeInterval(-90))
-                s.progress = Progress(kind: .indeterminate, label: "Building")
-                return s
-            }(),
-            {
-                var s = Job.make(id: "demo-3", kind: "session", name: "nerve", alias: alias, producer: src, now: now.addingTimeInterval(-300))
-                s.current = Current(
-                    type: "idle",
-                    summary: "Your turn — continue in the agent UI",
-                    startedAt: now.addingTimeInterval(-60)
-                )
-                s.attention = Attention(
-                    level: .suggested,
-                    reason: "input",
-                    title: "Your turn in agent",
-                    summary: "Return to the agent to continue"
-                )
-                s.location = LocationInfo(
-                    openURL: "file:///tmp",
-                    focusHint: "Demo · nerve · Terminal · /tmp"
-                )
-                return s
-            }(),
-            {
-                var s = Job.make(id: "demo-4", kind: "process", name: "long-job", alias: alias, producer: src, now: now.addingTimeInterval(-900))
-                s.current = Current(type: "computing", summary: "No heartbeat", startedAt: now.addingTimeInterval(-900))
-                s.health = .unresponsive
-                s.attention = Attention(level: .suggested, reason: "stale", title: "Possibly stuck", summary: "No update for 15m")
-                return s
-            }(),
-            // Ended jobs are not demo'd: SessionEnd evicts immediately (no Recent/Success linger).
-        ]
-        for s in demo {
-            applySnapshot(s)
-            appendTimeline(jobId: s.id, kind: "snapshot", title: "Demo loaded", at: now)
-        }
-        bumpRevision() // ensure at least one invalidation after batch
+        demoRequestSink?()
     }
 
     /// Select + expand a job in the status panel (notification deep-link / keyboard).
