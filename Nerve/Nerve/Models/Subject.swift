@@ -99,29 +99,55 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         return .inactive
     }
 
-    // MARK: Conversation job (panel / ribbon)
+    // MARK: Role / visibility (panel / ribbon)
 
-    /// Whether this row is a first-class conversation job.
+    /// Explicit producer role from `extensions.role` (group | member | job | subagent | …).
+    var extensionRole: String? {
+        if case .string(let role) = extensions["role"] {
+            let s = role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return s.isEmpty ? nil : s
+        }
+        return nil
+    }
+
+    var isGroupJob: Bool { extensionRole == "group" }
+    var isMemberJob: Bool { extensionRole == "member" }
+
+    /// Group id for member rows (`extensions.groupId` or legacy `parentJobId`).
+    var groupId: String? {
+        if case .string(let g) = extensions["groupId"], !g.isEmpty { return g }
+        if case .string(let g) = extensions["parentJobId"], !g.isEmpty { return g }
+        return nil
+    }
+
+    /// Legacy agent subagent / noise rows that must not accumulate in the store.
     ///
-    /// Invariant: **one job per conversation** (`{producer}:{session_id}`).
-    /// Older hooks briefly posted per-subagent rows with `role=subagent`,
-    /// `parentJobId`, `paintRibbon=false`, or a three-segment id
-    /// `{producer}:{session}:{agentId}`. Those must not appear in the panel
-    /// or ribbon and must not accumulate.
-    var isConversationJob: Bool {
-        if case .string(let role) = extensions["role"], role.lowercased() == "subagent" {
-            return false
+    /// Explicit ``role=group|member|job`` (e.g. molq rollup) is never treated as noise,
+    /// even when the id has multiple ``:`` segments or ``paintRibbon=false``.
+    var isLegacyChildNoise: Bool {
+        if let role = extensionRole {
+            if role == "subagent" { return true }
+            if role == "group" || role == "member" || role == "job" { return false }
         }
-        if extensions["parentJobId"] != nil {
-            return false
-        }
-        if case .bool(false) = extensions["paintRibbon"] {
-            return false
-        }
+        // Untyped legacy agent children
+        if extensions["parentJobId"] != nil { return true }
+        if case .bool(false) = extensions["paintRibbon"] { return true }
         // `{producer}:{session}` has one `:`; legacy child ids have two+.
-        if id.filter({ $0 == ":" }).count >= 2 {
-            return false
-        }
+        if id.filter({ $0 == ":" }).count >= 2 { return true }
+        return false
+    }
+
+    /// Whether this row should be kept in the in-memory job map.
+    var isConversationJob: Bool { !isLegacyChildNoise }
+
+    /// Whether this job paints a menu-bar ribbon segment.
+    ///
+    /// Members and rows with ``paintRibbon=false`` stay off the ribbon;
+    /// Settings may further restrict roots.
+    var paintsRibbon: Bool {
+        if isLegacyChildNoise { return false }
+        if isMemberJob { return false }
+        if case .bool(false) = extensions["paintRibbon"] { return false }
         return true
     }
 

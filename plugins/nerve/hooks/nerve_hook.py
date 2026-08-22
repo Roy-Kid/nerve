@@ -677,9 +677,14 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             "attention": {
                 "level": "required",
                 "reason": "approval",
-                "title": f"Approve {tool}",
+                # Honest: approve in the agent UI — Nerve does not reverse-control.
+                "title": "Approval needed in agent",
                 "summary": _truncate(
-                    json.dumps(_get(payload, "tool_input", "toolInput", default={}), default=str),
+                    f"{tool}: "
+                    + json.dumps(
+                        _get(payload, "tool_input", "toolInput", default={}),
+                        default=str,
+                    ),
                     140,
                 ),
             },
@@ -701,8 +706,8 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
                 "attention": {
                     "level": "required",
                     "reason": "approval",
-                    "title": "Needs approval",
-                    "summary": summary,
+                    "title": "Approval needed in agent",
+                    "summary": summary or "Return to the agent to approve",
                 },
                 "health": "ok",
             }
@@ -716,14 +721,20 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             # idle_prompt + bg-wait toast: shell/subagent → Running; monitor → Success.
             if ntype == "idle_prompt" and _is_harness_background_wait_toast(summary):
                 return _facets_for_bg_wait_toast(summary)
+            # Honest copy: Nerve signals “go back to agent UI”, never “type here”.
             return {
                 "lifecycle": "active",
-                "current": {"type": "idle", "summary": summary},
+                "current": {
+                    "type": "idle",
+                    "summary": "Your turn — continue in the agent UI",
+                },
                 "attention": {
                     "level": "suggested",
                     "reason": "input",
-                    "title": "Waiting for input",
-                    "summary": summary,
+                    "title": "Your turn in agent",
+                    "summary": summary
+                    if summary and ntype != "idle_prompt"
+                    else "Return to the agent to continue",
                 },
                 "health": "ok",
             }
@@ -751,23 +762,152 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 
     if event == "stop":
         # Non-empty background_tasks ⇒ still in flight (Running or monitor Success),
-        # never Attention. Empty queue ⇒ waiting for human input.
+        # never Attention. Empty queue ⇒ human’s turn in the agent UI (not in Nerve).
         bg = _background_tasks(payload)
         if bg:
             return _background_work_facets(payload, bg)
         return {
             "lifecycle": "active",
-            "current": {"type": "idle", "summary": "Waiting for your input"},
+            "current": {
+                "type": "idle",
+                "summary": "Your turn — continue in the agent UI",
+            },
             "attention": {
                 "level": "suggested",
                 "reason": "input",
-                "title": "Waiting for input",
-                "summary": "Waiting for your input",
+                "title": "Your turn in agent",
+                "summary": "Return to the agent to continue",
             },
             "health": "ok",
         }
 
     return None
+
+
+def _file_uri(path: str) -> str | None:
+    """Percent-encoded file:// URI for an absolute path (or None if not absolute).
+
+    Uses the path as given (no resolve) so unit tests and missing dirs still work.
+    """
+    if not path or not str(path).startswith("/"):
+        return None
+    try:
+        return Path(path).as_uri()
+    except ValueError:
+        # Extremely odd paths — last-resort encoding.
+        from urllib.parse import quote
+
+        return "file://" + quote(path, safe="/")
+
+
+def _detect_ide_scheme() -> str | None:
+    """Return cursor / vscode scheme when the host is clearly an editor, else None.
+
+    Terminal CLIs (Claude Code / Codex / Grok in iTerm) leave this None so we
+    fall back to a workspace file:// open rather than a dead IDE deep link.
+    """
+    term = (os.environ.get("TERM_PROGRAM") or "").lower()
+    if (
+        os.environ.get("CURSOR_TRACE_ID")
+        or os.environ.get("CURSOR_AGENT")
+        or "cursor" in term
+        or "cursor" in (os.environ.get("TERM_PROGRAM_VERSION") or "").lower()
+    ):
+        return "cursor"
+    if (
+        os.environ.get("VSCODE_INJECTION")
+        or os.environ.get("VSCODE_PID")
+        or os.environ.get("VSCODE_GIT_IPC_HANDLE")
+        or term in ("vscode", "vscode-insiders")
+    ):
+        return "vscode"
+    return None
+
+
+def _terminal_label() -> str | None:
+    """Short human label for the hosting terminal/tab when known."""
+    mapping = (
+        ("ITERM_SESSION_ID", "iTerm"),
+        ("TERM_SESSION_ID", "Terminal"),
+        ("WEZTERM_PANE", "WezTerm"),
+        ("KITTY_WINDOW_ID", "Kitty"),
+        ("TMUX_PANE", "tmux"),
+    )
+    for key, label in mapping:
+        if os.environ.get(key):
+            return label
+    term = os.environ.get("TERM_PROGRAM")
+    if term:
+        return term
+    return None
+
+
+def _build_location(
+    payload: dict[str, Any],
+    producer_key: str,
+    cwd: str,
+) -> dict[str, Any]:
+    """Focus-first location: reliable openURL + human focusHint for the agent UI.
+
+    openURL preference:
+      1. IDE deep link when host is Cursor / VS Code (``cursor://file/…``)
+      2. Workspace ``file://`` URI (opens Finder / default folder handler)
+    focusHint is always a paste-friendly breadcrumb: producer · project · host.
+    """
+    meta = PRODUCER_META.get(
+        producer_key,
+        {"id": producer_key, "name": producer_key.title()},
+    )
+    project = _project_name(cwd)
+    producer_name = meta.get("name") or producer_key
+    host = _terminal_label() or "session"
+    focus_hint = f"{producer_name} · {project} · {host}"
+    if cwd:
+        focus_hint = f"{focus_hint} · {cwd}"
+
+    open_url: str | None = None
+    scheme = _detect_ide_scheme()
+    if scheme and cwd and str(cwd).startswith("/"):
+        # vscode://file/Users/… and cursor://file/Users/… (no extra slash).
+        open_url = f"{scheme}://file{cwd}"
+    else:
+        open_url = _file_uri(cwd)
+
+    loc: dict[str, Any] = {
+        "openURL": open_url,
+        "focusHint": focus_hint,
+        "logPath": _get(payload, "transcript_path", "transcriptPath", default=None),
+    }
+    return {k: v for k, v in loc.items() if v is not None}
+
+
+def _local_actions(location: dict[str, Any]) -> list[dict[str, Any]]:
+    """Display-only actions: Open/Focus first, then Copy. Never approve/submit."""
+    actions: list[dict[str, Any]] = []
+    has_url = bool(location.get("openURL"))
+    has_hint = bool(location.get("focusHint"))
+    if has_url or has_hint:
+        actions.append(
+            {
+                "id": "open",
+                "title": "Open" if has_url else "Focus",
+                "kind": "open" if has_url else "focus",
+                "state": "available",
+                "destructive": False,
+                "confirmationRequired": False,
+            }
+        )
+    actions.append(
+        {
+            "id": "copy",
+            "title": "Copy",
+            "kind": "copy_summary",
+            "state": "available",
+            "destructive": False,
+            "confirmationRequired": False,
+        }
+    )
+    return actions
 
 
 def _build_job(
@@ -809,6 +949,8 @@ def _build_job(
     if facets.get("end_reason"):
         extensions["endReason"] = facets["end_reason"]
 
+    location = _build_location(payload, producer_key, cwd)
+
     job: dict[str, Any] = {
         "id": job_id,
         "kind": "session",
@@ -829,30 +971,9 @@ def _build_job(
             "workspace": cwd,
             "labels": [producer_key, "session"],
         },
-        "location": {
-            "openURL": f"file://{cwd}" if str(cwd).startswith("/") else None,
-            "focusHint": cwd,
-            "logPath": _get(payload, "transcript_path", "transcriptPath", default=None),
-        },
+        "location": location,
         "capabilities": [],
-        "actions": [
-            {
-                "id": "copy",
-                "title": "Copy",
-                "kind": "copy_summary",
-                "state": "available",
-                "destructive": False,
-                "confirmationRequired": False,
-            },
-            {
-                "id": "dismiss",
-                "title": "Dismiss",
-                "kind": "dismiss",
-                "state": "available",
-                "destructive": False,
-                "confirmationRequired": False,
-            },
-        ],
+        "actions": _local_actions(location),
         "createdAt": now,
         "startedAt": now,
         "updatedAt": now,
@@ -866,10 +987,8 @@ def _build_job(
         job["endedAt"] = now
         job["lifecycle"] = "ended"
 
-    loc = job["location"]
-    job["location"] = {k: v for k, v in loc.items() if v is not None}
-    if not job["location"]:
-        del job["location"]
+    if not job.get("location"):
+        job.pop("location", None)
 
     return job
 

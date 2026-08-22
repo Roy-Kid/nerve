@@ -120,6 +120,6 @@ export const designNotes = [
   },
   {
     title: 'Out of scope (on purpose)',
-    body: 'No multi-display ribbons, cloud sync, disk history, or in-app agent chat. Remotes poll their own action queues.',
+    body: 'No multi-display ribbons, cloud sync, disk history, in-app agent chat, or reverse-control (approve / submit_input). Open/Focus jumps you back to the agent UI.',
   },
 ] as const;

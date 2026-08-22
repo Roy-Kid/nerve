@@ -84,11 +84,11 @@ private enum PreferencesTab: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .general: return "Menu bar behavior and local connections"
-        case .machines: return "This Mac and remotes via SSH"
-        case .appearance: return "Ribbon size, system appearance, and status colors"
-        case .notifications: return "Choose when Nerve may get your attention"
-        case .about: return "Version, privacy, and connection details"
+        case .general: return "Menu bar, status panel, and local endpoint"
+        case .machines: return "This Mac and SSH reverse tunnels"
+        case .appearance: return "Ribbon size and status colors"
+        case .notifications: return "Alerts, quiet hours, and mutes"
+        case .about: return "Version, privacy, and local endpoint"
         }
     }
 
@@ -195,16 +195,10 @@ struct PreferencesView: View {
     private var generalPane: some View {
         SettingsPage(tab: .general) {
             Form {
-                Section("Menu Bar") {
-                    PreferenceToggleRow(
-                        title: "Animate status changes",
-                        description: "Use subtle motion when the ribbon or status list changes.",
-                        isOn: $settings.animationsEnabled
-                    )
-
+                Section {
                     PreferenceToggleRow(
                         title: "Hide when idle",
-                        description: "Remove Nerve from the menu bar when no work is active.",
+                        description: "Remove Nerve from the menu bar when nothing is active.",
                         isOn: Binding(
                             get: { settings.hideWhenIdle },
                             set: {
@@ -213,11 +207,58 @@ struct PreferencesView: View {
                             }
                         )
                     )
+
+                    PreferenceToggleRow(
+                        title: "Animate status changes",
+                        description: "Ease ribbon and panel transitions. Required for continuous ribbon motion.",
+                        isOn: $settings.animationsEnabled
+                    )
+
+                    Picker(
+                        "Ribbon motion",
+                        selection: $settings.ribbonMotionStyle
+                    ) {
+                        ForEach(RibbonMotionStyle.allCases) { style in
+                            Text(style.title).tag(style)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(!settings.animationsEnabled)
+                    .opacity(settings.animationsEnabled ? 1 : 0.55)
+
+                    Text(settings.ribbonMotionStyle.help)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if settings.systemReduceMotionActive {
+                        PreferenceToggleRow(
+                            title: "Respect system Reduce Motion",
+                            description: "macOS Reduce Motion is on. Keep this enabled to freeze motion, or turn it off to allow ribbon animation anyway.",
+                            isOn: $settings.respectSystemReduceMotion
+                        )
+                    }
+
+                    PreferenceToggleRow(
+                        title: "Ribbon shows roots only",
+                        description: "Only group and session roots color the menu bar. Turn off to also paint problem members.",
+                        isOn: Binding(
+                            get: { settings.ribbonRootsOnly },
+                            set: {
+                                settings.ribbonRootsOnly = $0
+                                onRibbonRefresh?()
+                            }
+                        )
+                    )
+                } header: {
+                    Text("Menu Bar")
+                } footer: {
+                    Text("Size and colors are under Appearance.")
                 }
 
                 Section {
                     Picker(
-                        "Group items by",
+                        "Group by",
                         selection: Binding(
                             get: { settings.panelGroupMode },
                             set: {
@@ -231,13 +272,28 @@ struct PreferencesView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                } header: {
-                    Text("Status Panel")
-                } footer: {
-                    Text("Default is Machine (by reported alias). Ribbon uses the same grouping.")
-                }
 
-                Section {
+                    Picker(
+                        "Batch members",
+                        selection: Binding(
+                            get: { settings.panelMemberVisibility },
+                            set: {
+                                settings.panelMemberVisibility = $0
+                                onRibbonRefresh?()
+                            }
+                        )
+                    ) {
+                        ForEach(PanelMemberVisibility.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text(settings.panelMemberVisibility.help)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     ForEach(PanelColumn.allCases) { column in
                         Toggle(isOn: Binding(
                             get: { settings.isPanelColumnEnabled(column) },
@@ -252,9 +308,9 @@ struct PreferencesView: View {
                         }
                     }
                 } header: {
-                    Text("Panel Columns")
+                    Text("Status Panel")
                 } footer: {
-                    Text("Columns keep fixed widths so rows align. Hovering a row hides Updated and gives the space to Activity.")
+                    Text("Grouping also orders the ribbon. Columns keep fixed widths so rows align; hover hides Updated and gives the space to Activity.")
                 }
 
                 Section {
@@ -265,9 +321,9 @@ struct PreferencesView: View {
                             .textSelection(.enabled)
                     }
                 } header: {
-                    Text("Local Connection")
+                    Text("Local Endpoint")
                 } footer: {
-                    Text("Nerve accepts loopback connections only. Jobs stay in memory and clear when the app quits. Remotes reach this endpoint through SSH tunnels managed under Machines.")
+                    Text("Loopback only. Jobs live in memory and clear when Nerve quits. Remotes reach this port via Machines tunnels.")
                 }
             }
             .formStyle(.grouped)
@@ -288,7 +344,7 @@ struct PreferencesView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(LocalMachine.alias)
                                 .font(.body.weight(.medium))
-                            Text("This Mac · always available · kind \(LocalMachine.kind)")
+                            Text("This Mac · always available")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -303,12 +359,12 @@ struct PreferencesView: View {
                 } header: {
                     Text("This Mac")
                 } footer: {
-                    Text("Local jobs typically report alias “\(LocalMachine.alias)”. Any alias is accepted and shown — this list is only for tunnels, not an allow-list.")
+                    Text("Local jobs usually report alias “\(LocalMachine.alias)”. Any free-form alias is shown — this page only manages tunnels, not an allow-list.")
                 }
 
                 Section {
                     if settings.machines.isEmpty {
-                        Text("No Host entries in ~/.ssh/config. Add a Host there, then hit refresh.")
+                        Text("No Host entries in ~/.ssh/config. Add a Host there, then refresh.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 4)
@@ -337,7 +393,7 @@ struct PreferencesView: View {
                         .accessibilityLabel("Refresh SSH hosts")
                     }
                 } footer: {
-                    Text("Loaded from ~/.ssh/config + known_hosts. Enable a host, then Connect. OTP/captcha: `ssh <alias>` in Terminal first so ControlMaster is up.")
+                    Text("Loaded from ~/.ssh/config. Enable a host, then Connect. For OTP/captcha, run `ssh <alias>` in Terminal first so ControlMaster is ready.")
                 }
             }
             .formStyle(.grouped)
@@ -437,20 +493,6 @@ struct PreferencesView: View {
     private var appearancePane: some View {
         SettingsPage(tab: .appearance) {
             Form {
-                Section("Interface") {
-                    LabeledContent {
-                        Label("System", systemImage: "circle.lefthalf.filled")
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Appearance")
-                            Text("Light and dark mode follow macOS automatically.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -474,7 +516,7 @@ struct PreferencesView: View {
                         .accessibilityLabel("Ribbon length")
                         .accessibilityValue(ribbonLengthLabel)
 
-                        Text("How far the ribbon stretches across the menu bar as work piles up.")
+                        Text("How far the ribbon stretches as more work is active.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -501,7 +543,7 @@ struct PreferencesView: View {
                         .accessibilityLabel("Ribbon thickness")
                         .accessibilityValue(ribbonThicknessLabel)
 
-                        Text("Vertical width of the continuous band inside the menu-bar item.")
+                        Text("Height of the band inside the menu-bar item.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -511,7 +553,7 @@ struct PreferencesView: View {
                         settings.ribbonThickness = SettingsStore.defaultRibbonThickness
                         onRibbonRefresh?()
                     } label: {
-                        Label("Reset Ribbon Size", systemImage: "arrow.counterclockwise")
+                        Label("Reset Size", systemImage: "arrow.counterclockwise")
                     }
                     .disabled(
                         settings.ribbonLengthScale == SettingsStore.defaultRibbonLengthScale
@@ -520,7 +562,7 @@ struct PreferencesView: View {
                 } header: {
                     Text("Ribbon Size")
                 } footer: {
-                    Text("Length scales with active work; thickness is fixed. Changes apply immediately to the menu bar.")
+                    Text("Length grows with active work; thickness stays fixed. Applies immediately.")
                 }
 
                 Section {
@@ -552,20 +594,18 @@ struct PreferencesView: View {
                             }
                         }
                     }
-                } header: {
-                    Text("Status Colors")
-                } footer: {
-                    Text("These semantic colors are shared by the menu-bar ribbon and status panel.")
-                }
 
-                Section {
                     Button {
                         settings.resetStatusColors()
                         onRibbonRefresh?()
                     } label: {
-                        Label("Restore Default Colors", systemImage: "arrow.counterclockwise")
+                        Label("Restore Defaults", systemImage: "arrow.counterclockwise")
                     }
                     .disabled(settings.statusColors.isDefault)
+                } header: {
+                    Text("Status Colors")
+                } footer: {
+                    Text("Shared by the menu-bar ribbon and status panel. Light/dark follows macOS.")
                 }
             }
             .formStyle(.grouped)
@@ -591,32 +631,38 @@ struct PreferencesView: View {
     private var notificationsPane: some View {
         SettingsPage(tab: .notifications) {
             Form {
-                Section("Delivery") {
+                Section {
                     PreferenceToggleRow(
-                        title: "Pause all notifications",
-                        description: "Silence every Nerve notification until this is turned off.",
+                        title: "Pause all",
+                        description: "Silence every Nerve notification until you turn this off.",
                         isOn: $settings.notificationsPaused
                     )
 
                     PreferenceToggleRow(
-                        title: "Play notification sounds",
-                        description: "Use the system notification sound for allowed alerts.",
+                        title: "Play sounds",
+                        description: "Use the system sound for allowed alerts.",
                         isOn: $settings.notificationSoundEnabled
                     )
+                } header: {
+                    Text("Delivery")
                 }
 
-                Section("Notify Me About") {
-                    NotificationToggle(title: "Required attention", systemImage: "person.crop.circle.badge.exclamationmark", isOn: $settings.notifyRequired)
-                    NotificationToggle(title: "Urgent attention", systemImage: "exclamationmark.triangle", isOn: $settings.notifyUrgent)
+                Section {
+                    NotificationToggle(title: "Needs attention", systemImage: "person.crop.circle.badge.exclamationmark", isOn: $settings.notifyRequired)
+                    NotificationToggle(title: "Urgent", systemImage: "exclamationmark.triangle", isOn: $settings.notifyUrgent)
                     NotificationToggle(title: "Failures", systemImage: "xmark.circle", isOn: $settings.notifyFailure)
-                    NotificationToggle(title: "Unresponsive work", systemImage: "bolt.slash", isOn: $settings.notifyUnresponsive)
-                    NotificationToggle(title: "Long task completions", systemImage: "checkmark.circle", isOn: $settings.notifyLongSuccess)
+                    NotificationToggle(title: "Unresponsive", systemImage: "bolt.slash", isOn: $settings.notifyUnresponsive)
+                    NotificationToggle(title: "Long task done", systemImage: "checkmark.circle", isOn: $settings.notifyLongSuccess)
+                } header: {
+                    Text("Events")
+                } footer: {
+                    Text("Needs attention covers waiting for input and permission prompts. Failures cover outcome.failure and tool/turn failures. Never free-text.")
                 }
 
-                Section("Quiet Hours") {
+                Section {
                     PreferenceToggleRow(
-                        title: "Use quiet hours",
-                        description: "Hold notifications during a daily schedule.",
+                        title: "Quiet hours",
+                        description: "Hold notifications during a daily window.",
                         isOn: $settings.dndEnabled
                     )
 
@@ -627,10 +673,12 @@ struct PreferencesView: View {
                         }
                         .datePickerStyle(.field)
                     }
+                } header: {
+                    Text("Schedule")
                 }
 
                 if !store.knownProducers.isEmpty {
-                    Section("Muted Sources") {
+                    Section {
                         ForEach(store.knownProducers, id: \.id) { source in
                             Toggle(source.name ?? source.id, isOn: Binding(
                                 get: { settings.mutedSourceIds.contains(source.id) },
@@ -638,11 +686,15 @@ struct PreferencesView: View {
                             ))
                             .toggleStyle(.switch)
                         }
+                    } header: {
+                        Text("Muted Producers")
+                    } footer: {
+                        Text("Producers that have reported at least once.")
                     }
                 }
 
                 if !store.knownProjects.isEmpty {
-                    Section("Muted Projects") {
+                    Section {
                         ForEach(store.knownProjects, id: \.self) { project in
                             Toggle(project, isOn: Binding(
                                 get: { settings.mutedProjectIds.contains(project) },
@@ -650,6 +702,8 @@ struct PreferencesView: View {
                             ))
                             .toggleStyle(.switch)
                         }
+                    } header: {
+                        Text("Muted Projects")
                     }
                 }
             }
@@ -681,7 +735,7 @@ struct PreferencesView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        Text("A quiet menu-bar pulse for builds, agents, tests, and long-running local work.")
+                        Text("A quiet menu-bar pulse for agents, builds, and long-running local work.")
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 390)
@@ -690,7 +744,7 @@ struct PreferencesView: View {
                     VStack(spacing: 0) {
                         AboutInfoRow(
                             title: "Private by design",
-                            detail: "Subjects, timelines, and pending actions stay in memory. Only app settings are saved on this Mac.",
+                            detail: "Jobs, timelines, and pending actions stay in memory. Only preferences are saved on this Mac.",
                             systemImage: "lock.shield.fill",
                             tint: Color(nsColor: .systemGreen)
                         )
@@ -752,12 +806,12 @@ struct PreferencesView: View {
 
     private func statusColorHint(_ status: Status) -> String {
         switch status {
-        case .problem: return "Failed or unable to continue"
-        case .attention: return "Needs input, authorization, or a decision"
-        case .waiting: return "Waiting for resources or dependencies"
-        case .running: return "Actively executing"
-        case .success: return "Done / monitor waiting for feedback"
-        case .inactive: return "Ready (no turn yet), paused, or unknown"
+        case .problem: return "Failed or cannot continue"
+        case .attention: return "Needs input or a decision"
+        case .waiting: return "Blocked on resources or dependencies"
+        case .running: return "Actively working"
+        case .success: return "Done, or monitor waiting for feedback"
+        case .inactive: return "Ready, paused, or unknown"
         }
     }
 

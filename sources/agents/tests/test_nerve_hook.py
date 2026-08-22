@@ -25,8 +25,26 @@ class NerveHookTests(unittest.TestCase):
     def setUp(self):
         # Host harness env must not leak into offline unit tests.
         for key in list(os.environ):
-            if key.startswith(("GROK_", "CLAUDE_PLUGIN_", "PLUGIN_ROOT", "CODEX_")):
+            if key.startswith(
+                (
+                    "GROK_",
+                    "CLAUDE_PLUGIN_",
+                    "PLUGIN_ROOT",
+                    "CODEX_",
+                    "CURSOR_",
+                    "VSCODE_",
+                )
+            ):
                 os.environ.pop(key, None)
+        # IDE scheme detection keys (not always prefixed).
+        for key in (
+            "VSCODE_INJECTION",
+            "VSCODE_PID",
+            "VSCODE_GIT_IPC_HANDLE",
+            "CURSOR_TRACE_ID",
+            "CURSOR_AGENT",
+        ):
+            os.environ.pop(key, None)
 
         self.mod = load_hook()
         self._posted: list = []
@@ -35,6 +53,9 @@ class NerveHookTests(unittest.TestCase):
         self.mod._STATE_DIR_OVERRIDE = self._state_dir
         # Stable terminal slot so pid-walk noise doesn't split keys mid-test.
         os.environ["TERM_SESSION_ID"] = "test-term-slot-1"
+        # Neutral TERM_PROGRAM so Cursor/VS Code host detection stays off.
+        self._prev_term_program = os.environ.get("TERM_PROGRAM")
+        os.environ["TERM_PROGRAM"] = "Apple_Terminal"
 
         def capture(alias, machine_kind, job):
             self._posted.append({"alias": alias, "machineKind": machine_kind, "jobs": [job]})
@@ -50,6 +71,10 @@ class NerveHookTests(unittest.TestCase):
         except Exception:
             pass
         os.environ.pop("TERM_SESSION_ID", None)
+        if getattr(self, "_prev_term_program", None) is None:
+            os.environ.pop("TERM_PROGRAM", None)
+        else:
+            os.environ["TERM_PROGRAM"] = self._prev_term_program
 
     def test_event_name_normalization(self):
         m = self.mod
@@ -83,8 +108,18 @@ class NerveHookTests(unittest.TestCase):
         self.assertIn("slot", job["extensions"])
         self.assertTrue(job["extensions"]["slot"])
         action_kinds = {a["kind"] for a in job["actions"]}
+        # Open/Focus first-class; Copy secondary; never reverse-control.
+        self.assertIn("open", action_kinds)
         self.assertIn("copy_summary", action_kinds)
-        self.assertIn("dismiss", action_kinds)
+        self.assertNotIn("dismiss", action_kinds)
+        self.assertNotIn("approve", action_kinds)
+        self.assertEqual(job["actions"][0]["kind"], "open")
+        self.assertEqual(job["actions"][0]["title"], "Open")
+        # Focus location: reliable openURL + breadcrumb focusHint.
+        self.assertIn("location", job)
+        self.assertTrue(job["location"].get("openURL", "").startswith("file://"))
+        self.assertIn("Claude Code", job["location"].get("focusHint", ""))
+        self.assertIn("/Users/me/work/nerve", job["location"].get("focusHint", ""))
         self.assertEqual(len(self._posted), 1)
         self.assertEqual(self._posted[0]["alias"], job["alias"])
         self.assertIn("jobs", self._posted[0])
@@ -124,6 +159,10 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(job["current"]["type"], "idle")
         self.assertEqual(job["attention"]["level"], "suggested")
         self.assertEqual(job["attention"]["reason"], "input")
+        # Honest copy: go back to agent UI — not "Type here" / "Waiting for input".
+        self.assertIn("agent", job["attention"]["title"].lower())
+        self.assertIn("agent", job["attention"]["summary"].lower())
+        self.assertNotIn("type here", job["attention"]["summary"].lower())
 
     def test_stop_with_background_tasks_is_running(self):
         """Claude Code Stop payload: non-empty background_tasks ⇒ still Running."""
@@ -187,6 +226,48 @@ class NerveHookTests(unittest.TestCase):
         )
         assert perm is not None
         self.assertEqual(perm["attention"]["reason"], "approval")
+        self.assertIn("agent", perm["attention"]["title"].lower())
+
+        # idle_prompt honest copy
+        self.assertIn("agent", idle["attention"]["title"].lower())
+
+    def test_location_ide_scheme_when_cursor_host(self):
+        prev = os.environ.get("CURSOR_TRACE_ID")
+        os.environ["CURSOR_TRACE_ID"] = "test-cursor"
+        try:
+            job = self.mod.process(
+                {
+                    "hook_event_name": "SessionStart",
+                    "session_id": "ide-1",
+                    "cwd": "/Users/me/work/nerve",
+                }
+            )
+            assert job is not None
+            url = job["location"]["openURL"]
+            self.assertTrue(url.startswith("cursor://file/"), url)
+            self.assertEqual(job["actions"][0]["kind"], "open")
+        finally:
+            if prev is None:
+                os.environ.pop("CURSOR_TRACE_ID", None)
+            else:
+                os.environ["CURSOR_TRACE_ID"] = prev
+
+    def test_permission_copy_is_honest(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "PermissionRequest",
+                "session_id": "perm-honest",
+                "cwd": "/tmp/x",
+                "tool_name": "Bash",
+                "tool_input": {"command": "ls"},
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["attention"]["reason"], "approval")
+        title = job["attention"]["title"].lower()
+        self.assertIn("agent", title)
+        # Not a control affordance ("Approve Bash" implies in-app approve).
+        self.assertFalse(title.startswith("approve "))
 
     def test_idle_prompt_background_wait_is_running_not_attention(self):
         """Claude often fires idle_prompt + bg-wait toast without background_tasks."""

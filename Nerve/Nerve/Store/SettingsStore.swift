@@ -103,8 +103,35 @@ final class SettingsStore {
             notifyRibbonAppearance()
         }
     }
-    var reduceMotion: Bool { didSet { persist() } }
-    var animationsEnabled: Bool { didSet { persist() } }
+    /// Legacy sticky flag (no longer gates animation by itself).
+    var reduceMotion: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    var animationsEnabled: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    /// When true (default), honor macOS Accessibility Reduce Motion.
+    /// Turn off to keep ribbon motion while system Reduce Motion is enabled.
+    var respectSystemReduceMotion: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    /// Continuous menu-bar motion while work is open (see `RibbonMotionStyle`).
+    /// Requires `effectiveAnimationsEnabled`; otherwise the ribbon stays static.
+    var ribbonMotionStyle: RibbonMotionStyle {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
     var ingestPort: UInt16 { didSet { persist() } }
 
     /// Per-status ribbon / panel colors.
@@ -136,6 +163,23 @@ final class SettingsStore {
     /// Status panel section grouping (priority / status / source).
     /// Also drives how the menu-bar ribbon is segmented and ordered.
     var panelGroupMode: PanelGroupMode {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+
+    /// Which group-member leaf jobs appear in the status panel (style preference).
+    var panelMemberVisibility: PanelMemberVisibility {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+
+    /// When true (default), only root jobs (`paintsRibbon`) color the menu-bar ribbon.
+    /// Turn off to also paint elevated-attention members (style preference).
+    var ribbonRootsOnly: Bool {
         didSet {
             persist()
             notifyRibbonAppearance()
@@ -281,6 +325,8 @@ final class SettingsStore {
         hideWhenIdle = false
         reduceMotion = false
         animationsEnabled = true
+        respectSystemReduceMotion = true
+        ribbonMotionStyle = .transitionsOnly
         ingestPort = 17890
         statusColors = .default
         notificationsPaused = false
@@ -299,6 +345,8 @@ final class SettingsStore {
         hasCompletedFirstRun = false
         hasSeenCoachMarks = false
         panelGroupMode = .machine
+        panelMemberVisibility = .attention
+        ribbonRootsOnly = true
         panelColumns = PanelColumn.defaultColumns
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
@@ -317,10 +365,8 @@ final class SettingsStore {
             applyV3(p)
         }
 
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            reduceMotion = true
-        }
-
+        // Do not sticky-persist system Reduce Motion into prefs — that once forced
+        // animations off forever with no UI to reverse it. Live check only below.
         isLoading = false
         persist()
     }
@@ -329,6 +375,9 @@ final class SettingsStore {
         hideWhenIdle = p.hideWhenIdle
         reduceMotion = p.reduceMotion
         animationsEnabled = p.animationsEnabled
+        // Default true for older prefs; only false when user explicitly opted out.
+        respectSystemReduceMotion = p.respectSystemReduceMotion ?? true
+        ribbonMotionStyle = p.ribbonMotionStyle ?? .transitionsOnly
         ingestPort = p.ingestPort
         let savedColors = p.statusColors ?? .default
         statusColors = savedColors == .legacyDefault ? .default : savedColors
@@ -352,6 +401,8 @@ final class SettingsStore {
         } else {
             panelGroupMode = .machine
         }
+        panelMemberVisibility = p.panelMemberVisibility ?? .attention
+        ribbonRootsOnly = p.ribbonRootsOnly ?? true
         panelColumns = Self.normalizePanelColumns(p.panelColumns ?? PanelColumn.defaultColumns)
         ribbonLengthScale = Self.clampRibbonLengthScale(p.ribbonLengthScale ?? Self.defaultRibbonLengthScale)
         ribbonThickness = Self.clampRibbonThickness(p.ribbonThickness ?? Self.defaultRibbonThickness)
@@ -364,6 +415,8 @@ final class SettingsStore {
         hideWhenIdle = p.hideWhenIdle
         reduceMotion = p.reduceMotion
         animationsEnabled = p.animationsEnabled
+        respectSystemReduceMotion = true
+        ribbonMotionStyle = .transitionsOnly
         ingestPort = p.ingestPort
         notificationsPaused = p.notificationsPaused
         notifyRequired = p.notifyRequired
@@ -381,6 +434,8 @@ final class SettingsStore {
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
         panelGroupMode = p.panelGroupMode ?? .machine
+        panelMemberVisibility = .attention
+        ribbonRootsOnly = true
         panelColumns = PanelColumn.defaultColumns
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
@@ -485,8 +540,16 @@ final class SettingsStore {
         }
     }
 
+    /// macOS Accessibility → Display → Reduce motion (live, not sticky prefs).
+    var systemReduceMotionActive: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Transitions + ambient ribbon. User toggle, plus optional honor of system Reduce Motion.
     var effectiveAnimationsEnabled: Bool {
-        animationsEnabled && !reduceMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard animationsEnabled else { return false }
+        if respectSystemReduceMotion && systemReduceMotionActive { return false }
+        return true
     }
 
     private func persist() {
@@ -495,6 +558,8 @@ final class SettingsStore {
             hideWhenIdle: hideWhenIdle,
             reduceMotion: reduceMotion,
             animationsEnabled: animationsEnabled,
+            respectSystemReduceMotion: respectSystemReduceMotion,
+            ribbonMotionStyle: ribbonMotionStyle,
             ingestPort: ingestPort,
             statusColors: statusColors,
             notificationsPaused: notificationsPaused,
@@ -513,6 +578,8 @@ final class SettingsStore {
             hasCompletedFirstRun: hasCompletedFirstRun,
             hasSeenCoachMarks: hasSeenCoachMarks,
             panelGroupMode: panelGroupMode,
+            panelMemberVisibility: panelMemberVisibility,
+            ribbonRootsOnly: ribbonRootsOnly,
             panelColumns: panelColumns,
             ribbonLengthScale: ribbonLengthScale,
             ribbonThickness: ribbonThickness,
@@ -529,6 +596,8 @@ final class SettingsStore {
         var hideWhenIdle: Bool
         var reduceMotion: Bool
         var animationsEnabled: Bool
+        var respectSystemReduceMotion: Bool?
+        var ribbonMotionStyle: RibbonMotionStyle?
         var ingestPort: UInt16
         var statusColors: StatusColorMap?
         var notificationsPaused: Bool
@@ -547,6 +616,8 @@ final class SettingsStore {
         var hasCompletedFirstRun: Bool
         var hasSeenCoachMarks: Bool
         var panelGroupMode: PanelGroupMode?
+        var panelMemberVisibility: PanelMemberVisibility?
+        var ribbonRootsOnly: Bool?
         var panelColumns: [PanelColumn]?
         var ribbonLengthScale: Double?
         var ribbonThickness: Double?

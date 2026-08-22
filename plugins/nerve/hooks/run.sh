@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 # Resolve plugin root robustly, then run nerve_hook.py.
-# Hosts expand ${CLAUDE_PLUGIN_ROOT} in hooks.json before invoking this script;
-# we still re-resolve so a broken expansion / alternate host still works.
-set -euo pipefail
+# Hosts may set CLAUDE_PLUGIN_ROOT (Claude), PLUGIN_ROOT (Codex), and/or
+# GROK_PLUGIN_ROOT. Prefer env when present; otherwise resolve from this script.
+# Always fail-open (exit 0) — observability must never block the agent.
+set -u
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "${HERE}/.." && pwd)"
+# Keep a usable PATH even when the host sandbox is minimal (missing dirname/python3).
+export PATH="/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:${PATH:-}"
+
+_src="${BASH_SOURCE[0]:-$0}"
+# Prefer %/ strip over dirname so a stripped PATH still works.
+case "${_src}" in
+  /*) _here="${_src%/*}" ;;
+  */*) _here="$(pwd)/${_src%/*}" ;;
+  *) _here="$(pwd)" ;;
+esac
+HERE="${_here}"
+ROOT="${HERE}/.."
 
 for v in CLAUDE_PLUGIN_ROOT PLUGIN_ROOT GROK_PLUGIN_ROOT; do
-  # bash indirect expansion
   eval "val=\${$v:-}"
   if [[ -n "${val}" && -d "${val}" ]]; then
     ROOT="${val}"
@@ -16,16 +26,32 @@ for v in CLAUDE_PLUGIN_ROOT PLUGIN_ROOT GROK_PLUGIN_ROOT; do
   fi
 done
 
+# Normalize ROOT when we derived it as HERE/..
+if [[ -d "${ROOT}" ]]; then
+  ROOT="$(cd "${ROOT}" 2>/dev/null && pwd || echo "${ROOT}")"
+fi
+
 HOOK="${ROOT}/hooks/nerve_hook.py"
 if [[ ! -f "${HOOK}" ]]; then
-  # Last resort: next to this script
   HOOK="${HERE}/nerve_hook.py"
 fi
 
 if [[ ! -f "${HOOK}" ]]; then
-  # Fail open for observability hooks — never block the agent.
   echo "[nerve] hook script not found under ${ROOT}" >&2
   exit 0
 fi
 
-exec python3 "${HOOK}"
+PY=""
+for c in python3 /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+  if command -v "${c}" >/dev/null 2>&1 || [[ -x "${c}" ]]; then
+    PY="${c}"
+    break
+  fi
+done
+
+if [[ -z "${PY}" ]]; then
+  echo "[nerve] python3 not found; skipping ingest" >&2
+  exit 0
+fi
+
+exec "${PY}" "${HOOK}"

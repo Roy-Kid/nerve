@@ -49,10 +49,12 @@ struct StatusPanelView: View {
             alignment: .topLeading
         )
         .overlay(alignment: .bottomTrailing) {
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 8, weight: .medium))
+            // Three diagonal lines — classic corner resize grip (not bidirectional arrows).
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 9, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(-45))
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
                 .gesture(resizeGesture)
@@ -431,14 +433,25 @@ struct StatusPanelView: View {
                     ForEach(sections) { section in
                         sectionHeader(section.title)
                         ForEach(section.jobs) { job in
+                            let children = job.isGroupJob ? store.members(of: job.id) : []
+                            let treeOpen = expandedId == job.id
+                                || children.contains(where: { $0.id == expandedId })
                             ExpandableSubjectRow(
                                 subject: job,
-                                isExpanded: expandedId == job.id,
+                                depth: 0,
+                                children: children,
+                                isExpanded: treeOpen,
                                 isKeyboardFocused: store.selectedJobId == job.id,
                                 timeline: store.timeline(for: job.id),
+                                childExpandedId: expandedId,
+                                childTimelines: Dictionary(
+                                    uniqueKeysWithValues: children.map {
+                                        ($0.id, store.timeline(for: $0.id))
+                                    }
+                                ),
                                 onToggle: {
                                     withAnimation(animate ? .easeInOut(duration: 0.14) : nil) {
-                                        if expandedId == job.id {
+                                        if treeOpen {
                                             expandedId = nil
                                         } else {
                                             expandedId = job.id
@@ -449,8 +462,21 @@ struct StatusPanelView: View {
                                         }
                                     }
                                 },
+                                onToggleChild: { childId in
+                                    withAnimation(animate ? .easeInOut(duration: 0.14) : nil) {
+                                        if expandedId == childId {
+                                            expandedId = job.id // collapse child detail; keep tree open
+                                        } else {
+                                            expandedId = childId
+                                            store.selectedJobId = childId
+                                        }
+                                    }
+                                },
                                 onAction: { actionId in
                                     handleAction(actionId: actionId, subject: job)
+                                },
+                                onChildAction: { actionId, child in
+                                    handleAction(actionId: actionId, subject: child)
                                 }
                             )
                             rowDivider
@@ -657,19 +683,32 @@ private struct StatusColorDot: View {
     }
 }
 
-// MARK: - Single-line expandable subject
+// MARK: - Single-line expandable subject (tree: subtasks + details)
 
 struct ExpandableSubjectRow: View {
     let subject: Job
+    /// Indent level (0 = root, 1 = subtask under a group).
+    var depth: Int = 0
+    /// Direct children (group members). Empty for leaves / standalone jobs.
+    var children: [Job] = []
     let isExpanded: Bool
     var isKeyboardFocused: Bool = false
     var timeline: [TimelineEntry]
+    /// Which child id is expanded for detail (parent may stay expanded for tree).
+    var childExpandedId: String? = nil
+    var childTimelines: [String: [TimelineEntry]] = [:]
     var onToggle: () -> Void
+    var onToggleChild: ((String) -> Void)? = nil
     var onAction: (String) -> Void
+    var onChildAction: ((String, Job) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(SettingsStore.self) private var settings
     @State private var hovered = false
+
+    private var indent: CGFloat { CGFloat(depth) * 14 }
+
+    private var hasSubtasks: Bool { !children.isEmpty || subject.isGroupJob }
 
     /// Columns for this paint — hide `.updated` on hover so primary fields get the width.
     private var visibleColumns: [PanelColumn] {
@@ -683,6 +722,22 @@ struct ExpandableSubjectRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
+                // Tree disclosure + status
+                if depth == 0 && hasSubtasks {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 10)
+                        .accessibilityHidden(true)
+                } else if depth > 0 {
+                    // Subtask marker
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2)
+                        .foregroundStyle(.quaternary)
+                        .frame(width: 10)
+                        .accessibilityHidden(true)
+                }
+
                 StatusColorDot(
                     status: subject.status,
                     color: RibbonPalette.color(
@@ -710,7 +765,8 @@ struct ExpandableSubjectRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
+            .padding(.leading, 12 + indent)
+            .padding(.trailing, 12)
             .padding(.vertical, 7)
             .background { rowSelectionBackground }
             .onHover { hovered = $0 }
@@ -718,18 +774,93 @@ struct ExpandableSubjectRow: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(accessibilityRowLabel)
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Collapse details" : "Expand details")
+            .accessibilityHint(expandHint)
             .accessibilityAddTraits(isExpanded ? [.isSelected] : [])
             .accessibilityAction { onToggle() }
 
             if isExpanded {
-                detailBlock
-                    .padding(.leading, 28)
+                expandedContent
+                    .padding(.leading, 28 + indent)
                     .padding(.trailing, 10)
                     .padding(.bottom, 9)
                     .transition(.opacity)
             }
         }
+    }
+
+    private var expandHint: String {
+        if hasSubtasks && depth == 0 {
+            return isExpanded ? "Collapse subtasks and details" : "Expand subtasks and details"
+        }
+        return isExpanded ? "Collapse details" : "Expand details"
+    }
+
+    @ViewBuilder
+    private var expandedContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // --- Subtasks (group members) ---
+            if !children.isEmpty {
+                sectionLabel("Subtasks", count: children.count)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(children) { child in
+                        ExpandableSubjectRow(
+                            subject: child,
+                            depth: depth + 1,
+                            children: [],
+                            isExpanded: childExpandedId == child.id,
+                            isKeyboardFocused: false,
+                            timeline: childTimelines[child.id] ?? [],
+                            onToggle: { onToggleChild?(child.id) },
+                            onAction: { actionId in
+                                onChildAction?(actionId, child)
+                            }
+                        )
+                    }
+                }
+                .padding(.leading, 4)
+                .padding(.vertical, 2)
+                .background {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(colorScheme == .dark ? 0.06 : 0.03))
+                }
+            } else if subject.isGroupJob {
+                // Group with no visible members under current Settings filter
+                Text(emptySubtasksHint)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 2)
+            }
+
+            // --- Details (metadata / local actions / timeline) ---
+            sectionLabel("Details")
+            detailBlock
+        }
+    }
+
+    private var emptySubtasksHint: String {
+        switch settings.panelMemberVisibility {
+        case .never:
+            return "Subtasks hidden (Settings → Batch members: Groups only)"
+        case .attention:
+            return "No problem/attention subtasks"
+        case .all:
+            return "No subtasks reported"
+        }
+    }
+
+    private func sectionLabel(_ title: String, count: Int? = nil) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+            if let count {
+                Text("\(count)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.quaternary)
+            }
+        }
+        .padding(.top, 2)
     }
 
     @ViewBuilder
@@ -830,16 +961,7 @@ struct ExpandableSubjectRow: View {
                 if !subject.actions.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(subject.actions) { action in
-                            Button(
-                                action.title,
-                                role: ActionService.isDestructive(action) ? .destructive : nil
-                            ) {
-                                onAction(action.id)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
-                            .disabled(action.state != .available)
-                            .help(action.kind)
+                            actionButton(action)
                         }
                     }
                     .padding(.top, 5)
@@ -886,6 +1008,34 @@ struct ExpandableSubjectRow: View {
         }
     }
 
+    @ViewBuilder
+    private func actionButton(_ action: JobAction) -> some View {
+        let isOpen = ActionService.isOpenKind(action.kind)
+        let helpText = isOpen
+            ? "Jump to the agent UI / workspace (Nerve does not type or approve)"
+            : action.kind
+        if isOpen {
+            Button(action.title) {
+                onAction(action.id)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.mini)
+            .disabled(action.state != .available)
+            .help(helpText)
+        } else {
+            Button(
+                action.title,
+                role: ActionService.isDestructive(action) ? .destructive : nil
+            ) {
+                onAction(action.id)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+            .disabled(action.state != .available)
+            .help(helpText)
+        }
+    }
+
     private var timeLabel: String {
         if subject.lifecycle == .ended, let end = subject.endedAt {
             return relative(end)
@@ -907,31 +1057,80 @@ struct ExpandableSubjectRow: View {
     }
 }
 
-// MARK: - SwiftUI menu-bar label
+// MARK: - Menu-bar ribbon ambient clock
 
+/// Owns the RunLoop timer so a SwiftUI `View` value type never captures `@State`.
+@MainActor
+final class RibbonAmbientClock: ObservableObject {
+    @Published private(set) var tick: UInt64 = 0
+    private var timer: Timer?
+
+    var phase: TimeInterval { Double(tick) / 20.0 }
+
+    func setActive(_ active: Bool) {
+        if active {
+            guard timer == nil else { return }
+            let timer = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.tick &+= 1
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        } else {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    deinit {
+        timer?.invalidate()
+    }
+}
+
+// MARK: - Menu-bar ribbon label
+
+/// MenuBarExtra label — pure SwiftUI `Canvas` (always visible) + class-owned timer
+/// for ambient frames. `NSViewRepresentable` in the status item often paints blank.
 struct MenuBarRibbonLabel: View {
     @Bindable var store: JobStore
     @Bindable var settings: SettingsStore
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @StateObject private var clock = RibbonAmbientClock()
 
-    private var animate: Bool {
-        settings.effectiveAnimationsEnabled && !systemReduceMotion
+    private var animate: Bool { settings.effectiveAnimationsEnabled }
+
+    private var ambientActive: Bool {
+        animate
+            && settings.ribbonMotionStyle.usesAmbientMotion
+            && store.activeCount > 0
+            && RibbonRenderer.ambientRelevant(store: store, settings: settings)
     }
+
+    private var motion: RibbonMotionStyle {
+        ambientActive ? settings.ribbonMotionStyle : .transitionsOnly
+    }
+
+    private var phase: TimeInterval { ambientActive ? clock.phase : 0 }
 
     var body: some View {
+        // Observe ambient ticks while motion is on.
+        let _ = clock.tick
         ribbonImage
+            // Explicit frame keeps MenuBarExtra from collapsing a zero-size label.
+            .frame(width: preferredWidth, height: 22)
+            .animation(animate ? .easeInOut(duration: 0.28) : nil, value: visualSignature)
             .contentShape(Rectangle())
-            .animation(
-                animate ? .easeInOut(duration: 0.28) : nil,
-                value: visualSignature
-            )
             .accessibilityLabel("Nerve")
             .accessibilityValue("\(store.activeCount) active jobs")
+            .onAppear { clock.setActive(ambientActive) }
+            .onDisappear { clock.setActive(false) }
+            .onChange(of: ambientActive) { _, on in clock.setActive(on) }
     }
 
+    /// Same `Image(size:)` path that painted the ribbon before the NSView attempt.
     private var ribbonImage: Image {
-        let width = preferredWidth
+        let width = max(14, preferredWidth)
         let height: CGFloat = 22
         let barHeight = min(18, max(3, CGFloat(settings.ribbonThickness)))
         let rect = CGRect(
@@ -940,32 +1139,59 @@ struct MenuBarRibbonLabel: View {
             width: max(6, width - 4),
             height: barHeight
         )
-        let path = Path(
-            roundedRect: rect,
-            cornerRadius: barHeight / 2,
-            style: .continuous
-        )
-        let gradient = Gradient(stops: ribbonStops)
+        let path = Path(roundedRect: rect, cornerRadius: barHeight / 2, style: .continuous)
+        let stops = ribbonStops(motion: motion, time: phase)
+        let shimmerCycle = shimmerOverlay(motion: motion, time: phase)
+        let dark = colorScheme == .dark
+        // Include tick in the label so Image identity refreshes each ambient frame.
+        let label = Text("Nerve ribbon \(clock.tick)")
 
         return Image(
             size: CGSize(width: width, height: height),
-            label: Text("Nerve status ribbon"),
+            label: label,
             opaque: false,
             colorMode: .nonLinear
         ) { context in
             context.fill(
                 path,
                 with: .linearGradient(
-                    gradient,
+                    Gradient(stops: stops),
                     startPoint: CGPoint(x: rect.minX, y: rect.midY),
                     endPoint: CGPoint(x: rect.maxX, y: rect.midY)
                 )
             )
-            context.stroke(
-                path,
-                with: .color(Color.primary.opacity(0.22)),
-                lineWidth: 0.5
-            )
+            if let cycle = shimmerCycle {
+                context.drawLayer { layer in
+                    layer.clip(to: path)
+                    let travel = rect.width + rect.width * 0.7
+                    let centerX = rect.minX - rect.width * 0.35 + CGFloat(cycle) * travel
+                    // Original wider glint (~48% of bar), soft white so color still reads.
+                    let half = max(10, rect.width * 0.24)
+                    let shine = Path(CGRect(
+                        x: centerX - half,
+                        y: rect.minY,
+                        width: half * 2,
+                        height: rect.height
+                    ))
+                    // Keep this a veil, never a solid wash (peak << 0.3).
+                    let peak = dark ? 0.20 : 0.14
+                    layer.fill(
+                        shine,
+                        with: .linearGradient(
+                            Gradient(stops: [
+                                .init(color: .white.opacity(0), location: 0),
+                                .init(color: .white.opacity(peak * 0.4), location: 0.32),
+                                .init(color: .white.opacity(peak), location: 0.5),
+                                .init(color: .white.opacity(peak * 0.4), location: 0.68),
+                                .init(color: .white.opacity(0), location: 1),
+                            ]),
+                            startPoint: CGPoint(x: centerX - half, y: rect.midY),
+                            endPoint: CGPoint(x: centerX + half, y: rect.midY)
+                        )
+                    )
+                }
+            }
+            context.stroke(path, with: .color(Color.primary.opacity(0.22)), lineWidth: 0.5)
         }
         .renderingMode(.original)
     }
@@ -980,13 +1206,13 @@ struct MenuBarRibbonLabel: View {
     }
 
     private var visualSignature: String {
-        "\(store.ribbonSignature(mode: settings.panelGroupMode))|\(settings.ribbonLengthScale)|\(settings.ribbonThickness)|\(settings.statusColors)"
+        "\(store.ribbonSignature(mode: settings.panelGroupMode))|\(settings.ribbonLengthScale)|\(settings.ribbonThickness)|\(settings.statusColors)|\(settings.ribbonMotionStyle.rawValue)"
     }
 
-    private var ribbonStops: [Gradient.Stop] {
+    private func ribbonStops(motion: RibbonMotionStyle, time: TimeInterval) -> [Gradient.Stop] {
         let segments = store.ribbonSegments(mode: settings.panelGroupMode)
         guard !segments.isEmpty else {
-            let idle = statusColor(.inactive).opacity(0.55)
+            let idle = baseStatusColor(.inactive).opacity(0.55)
             return [
                 .init(color: idle, location: 0),
                 .init(color: idle, location: 1),
@@ -995,37 +1221,95 @@ struct MenuBarRibbonLabel: View {
 
         var stops: [Gradient.Stop] = []
         var cursor: CGFloat = 0
-
         for (index, segment) in segments.enumerated() {
-            let color = statusColor(segment.status)
+            let color = animatedColor(for: segment.status, motion: motion, time: time)
             let end = min(1, cursor + segment.weight)
-
             if index == 0 {
                 stops.append(.init(color: color, location: 0))
             }
-
             if index < segments.count - 1 {
                 let next = segments[index + 1]
+                let nextColor = animatedColor(for: next.status, motion: motion, time: time)
                 let blend = min(0.045, min(segment.weight, next.weight) * 0.28)
                 stops.append(.init(color: color, location: max(cursor, end - blend)))
-                stops.append(.init(color: statusColor(next.status), location: min(1, end + blend)))
+                stops.append(.init(color: nextColor, location: min(1, end + blend)))
             } else {
                 stops.append(.init(color: color, location: 1))
             }
-
             cursor = end
         }
-
         return stops
     }
 
-    private func statusColor(_ status: Status) -> Color {
+    /// Progress 0…1 of the shimmer cycle, or nil when shimmer is off.
+    private func shimmerOverlay(motion: RibbonMotionStyle, time: TimeInterval) -> Double? {
+        guard motion == .shimmer || motion == .full else { return nil }
+        let period: TimeInterval = 1.8
+        return (time.truncatingRemainder(dividingBy: period)) / period
+    }
+
+    private func animatedColor(
+        for status: Status,
+        motion: RibbonMotionStyle,
+        time: TimeInterval
+    ) -> Color {
+        let base = baseStatusColor(status)
+        let pulse = pulseAmount(for: status, motion: motion, time: time)
+        guard pulse > 0.001 else { return base }
+        // Hard cap: never wash a segment to white (was 0.4–0.6 → full bleach).
+        return lift(base, towardWhite: min(0.16, pulse))
+    }
+
+    private func pulseAmount(
+        for status: Status,
+        motion: RibbonMotionStyle,
+        time: TimeInterval
+    ) -> CGFloat {
+        func wave(period: TimeInterval, amplitude: CGFloat) -> CGFloat {
+            guard period > 0 else { return 0 }
+            let p = (time.truncatingRemainder(dividingBy: period)) / period
+            // sin in [-1,1] → 0…1, scaled by amplitude (keep amplitudes small).
+            return amplitude * CGFloat((sin(p * 2 * Double.pi - Double.pi / 2) + 1) / 2)
+        }
+        switch motion {
+        case .transitionsOnly, .shimmer:
+            return 0
+        case .breathe:
+            switch status {
+            case .running, .waiting: return wave(period: 2.2, amplitude: 0.14)
+            default: return 0
+            }
+        case .statusPulse, .full:
+            // Full mode also runs shimmer — keep body pulse subtle so they don't stack to white.
+            switch status {
+            case .running, .waiting: return wave(period: 2.2, amplitude: 0.12)
+            case .attention: return wave(period: 1.4, amplitude: 0.16)
+            case .problem: return wave(period: 0.9, amplitude: 0.18)
+            default: return 0
+            }
+        }
+    }
+
+    private func baseStatusColor(_ status: Status) -> Color {
         let rgb = settings.statusColors.color(for: status)
         let lift = colorScheme == .dark ? 0.04 : 0
         return Color(
             red: rgb.r + (1 - rgb.r) * lift,
             green: rgb.g + (1 - rgb.g) * lift,
             blue: rgb.b + (1 - rgb.b) * lift
+        )
+    }
+
+    private func lift(_ color: Color, towardWhite amount: CGFloat) -> Color {
+        let a = min(1, max(0, amount))
+        let ns = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, alpha: CGFloat = 0
+        ns.getRed(&r, green: &g, blue: &b, alpha: &alpha)
+        return Color(
+            red: r + (1 - r) * a,
+            green: g + (1 - g) * a,
+            blue: b + (1 - b) * a,
+            opacity: alpha
         )
     }
 }

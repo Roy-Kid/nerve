@@ -1,5 +1,31 @@
 # Notes
 
+## 2026-07-23 — Focus A+B (no reverse-control)
+
+- Product: **do not** C/D (approve / submit_input / in-panel chat). Enhance **A+B**.
+- A Attention semantics already clear (input vs approval vs failure; bg wait ≠ Attention).
+- B Focus first-class:
+  - Hook `location.openURL`: Cursor/VS Code deep link when host is IDE, else `file://` workspace URI; `focusHint` = producer · project · host · path.
+  - Panel primary action **Open / Focus** (borderedProminent), then Copy. No Approve.
+  - Notification click → `focusAndOpenJob` (select + expand + open location) + best-effort panel reveal.
+  - Honest copy: “Your turn in agent” / “Approval needed in agent” — return to agent UI, never “Type here”.
+- Local open/copy actions stay re-usable (not stuck `.succeeded`).
+
+## 2026-07-22 — Notifications: suggested attention was silent
+
+- Bug: `NotificationService` only fired for `attention.level` `required` / `urgent`.
+- Hooks set Stop / idle_prompt to **`suggested`** (paints Status.attention) — no banner.
+- Fix: escalate notify on `suggested` + `required` (Settings “Needs attention”); `urgent` separate.
+- Also fire Failures on `attention.reason=failure` (tool/turn fail without outcome).
+- Auth denied → log to Console; empty body no longer drops banner.
+
+## 2026-07-22 — Ribbon ambient motion (settings)
+
+- Menu-bar ribbon keeps transition ease (length / segment cross-fade).
+- Continuous styles via `RibbonMotionStyle`: transitionsOnly | breathe | shimmer | statusPulse | full.
+- Settings → General → Ribbon motion; gated by `animationsEnabled` + Reduce Motion.
+- Live paint path is SwiftUI `MenuBarRibbonLabel` (`TimelineView` ~24fps when ambient active).
+
 ## 2026-07-22 — Remote tunnels: local SSH config + known_hosts
 
 - Machines list = Hosts from `~/.ssh/config` (refresh only; no manual add).
@@ -25,7 +51,7 @@
 - Authoritative: SessionEnd (`endReason` + outcome success|cancelled) → evict.
 - Supersede: same UI `slot` + new SessionStart → previous ended (`superseded`).
 - Local PID reaping: snapshot `extensions.pid` + 5s timer; dead local process → `process_gone`.
-- Dismiss action: local-only row remove (`dismissed`); does not signal the agent.
+- No manual Dismiss control — leave paths above only (Copy remains as local action).
 - Snapshots carry `extensions.slot` + `extensions.pid` when known.
 
 ## 2026-07-22 — Public docs on the website only

@@ -66,9 +66,55 @@ final class JobStore {
     /// Open conversation jobs only (legacy subagent child rows excluded).
     var activeCount: Int { activeJobs.count }
 
-    /// All stored conversation-level jobs (excludes legacy child/subagent rows).
+    /// All stored jobs that are not legacy noise (includes group + member + roots).
     private var conversationJobs: [Job] {
         jobs.values.filter(\.isConversationJob)
+    }
+
+    /// Jobs that may paint the ribbon (respects Settings.ribbonRootsOnly).
+    private func ribbonEligibleJobs() -> [Job] {
+        let open = conversationJobs.filter { $0.lifecycle != .ended }
+        let rootsOnly = settingsProvider?().ribbonRootsOnly ?? true
+        if rootsOnly {
+            return open.filter(\.paintsRibbon)
+        }
+        // Style opt-in: also paint attention/problem members.
+        return open.filter { job in
+            if job.paintsRibbon { return true }
+            if job.isMemberJob {
+                let s = job.status
+                return s == .problem || s == .attention
+            }
+            return false
+        }
+    }
+
+    /// Top-level panel rows only (groups + standalone jobs). Members nest under groups.
+    private func panelVisibleJobs() -> [Job] {
+        conversationJobs
+            .filter { $0.lifecycle != .ended && !$0.isMemberJob }
+    }
+
+    /// Child members for a group row, filtered by Settings.panelMemberVisibility.
+    func members(of groupId: String) -> [Job] {
+        let visibility = settingsProvider?().panelMemberVisibility ?? .attention
+        let kids = conversationJobs.filter { job in
+            guard job.lifecycle != .ended, job.isMemberJob else { return false }
+            return job.groupId == groupId
+        }
+        let filtered: [Job]
+        switch visibility {
+        case .never:
+            filtered = []
+        case .attention:
+            filtered = kids.filter { job in
+                let s = job.status
+                return s == .problem || s == .attention || s == .waiting
+            }
+        case .all:
+            filtered = kids
+        }
+        return filtered.sorted(by: sortComparator)
     }
 
     // MARK: Status counts (single source of truth = `Job.status`)
@@ -165,9 +211,9 @@ final class JobStore {
         }
     }
 
-    /// Open conversation jobs eligible for the status list (no legacy child rows).
+    /// Open jobs eligible for the status list (member visibility from Settings).
     private func panelListJobs() -> [Job] {
-        conversationJobs.filter { $0.lifecycle != .ended }
+        panelVisibleJobs()
     }
 
     private func statusGroupedSections() -> [StatusSection] {
@@ -235,8 +281,9 @@ final class JobStore {
 
     /// Subjects that paint the ribbon colors — open work only.
     /// Ended sessions leave on `SessionEnd` and do not paint Success/Problem wedges.
+    /// Members stay off the ribbon unless Settings.ribbonRootsOnly is false.
     func ribbonColorJobs() -> [Job] {
-        activeJobs
+        ribbonEligibleJobs().sorted(by: sortComparator)
     }
 
     /// Ribbon layout follows the status-panel grouping mode.
@@ -500,28 +547,60 @@ final class JobStore {
         }
     }
 
-    /// Ensure Copy + Dismiss exist on every open conversation row (demo / older hooks).
+    /// Display-only actions: strip remote control; **Open/Focus first**, then Copy.
+    /// Rows leave via SessionEnd / slot supersede / PID reap — no manual Dismiss.
     private func ensureLocalActions(_ job: Job) -> Job {
         guard job.isConversationJob, job.lifecycle != .ended else { return job }
         var j = job
-        if !j.actions.contains(where: { $0.kind.lowercased() == "copy_summary" || $0.kind.lowercased() == "copy" }) {
+        // Nerve is status display only — never surface reverse-control actions.
+        j.actions = j.actions.filter { ActionService.isDisplayAction($0) }
+        // Hide dismiss even if a producer still sends it (legacy snapshots).
+        j.actions = j.actions.filter {
+            let k = $0.kind.lowercased()
+            return k != "dismiss" && k != "dismiss_job" && k != "dismissjob"
+        }
+
+        // Primary: Open (has openURL) or Focus (focusHint only).
+        let hasOpenAction = j.actions.contains { ActionService.isOpenKind($0.kind) }
+        if ActionService.canFocus(j), !hasOpenAction {
+            let title = ActionService.focusActionTitle(for: j)
+            let kind = (j.location?.openURL?.isEmpty == false) ? "open" : "focus"
             j.actions.insert(
-                JobAction(id: "copy", title: "Copy", kind: "copy_summary"),
+                JobAction(id: "open", title: title, kind: kind),
                 at: 0
             )
+        } else if hasOpenAction {
+            // Normalize title + pin Open/Focus to the front.
+            if let idx = j.actions.firstIndex(where: { ActionService.isOpenKind($0.kind) }) {
+                var action = j.actions.remove(at: idx)
+                if ActionService.canFocus(j) {
+                    action.title = ActionService.focusActionTitle(for: j)
+                    if j.location?.openURL?.isEmpty == false {
+                        action.kind = "open"
+                    } else if action.kind.lowercased() != "focus" {
+                        action.kind = "focus"
+                    }
+                }
+                j.actions.insert(action, at: 0)
+            }
         }
+
         if !j.actions.contains(where: {
             let k = $0.kind.lowercased()
-            return k == "dismiss" || k == "dismiss_job" || k == "dismissjob"
+            return k == "copy_summary" || k == "copy"
         }) {
-            j.actions.append(
-                JobAction(id: "dismiss", title: "Dismiss", kind: "dismiss")
+            // After Open when present.
+            let insertAt = j.actions.firstIndex(where: { ActionService.isOpenKind($0.kind) })
+                .map { $0 + 1 } ?? 0
+            j.actions.insert(
+                JobAction(id: "copy", title: "Copy", kind: "copy_summary"),
+                at: min(insertAt, j.actions.count)
             )
         }
         return j
     }
 
-    /// User or local policy closes a row (Dismiss button, dead PID, …).
+    /// Local policy closes a row (dead PID, legacy dismiss action, …).
     @MainActor
     func endJobLocally(
         id: String,
@@ -824,10 +903,11 @@ final class JobStore {
                 applyLocalResult(result, jobId: jobId, actionId: actionId)
                 return result
             }
-            return enqueueRemote(action: action, subject: &subject)
+            return .denied("Display only — Nerve does not control agents or jobs")
 
-        case .remote:
-            return enqueueRemote(action: action, subject: &subject)
+        case .unsupportedRemote:
+            // Product invariant: status instrument only, never reverse-control.
+            return .denied("Display only — Nerve does not control agents or jobs")
         }
     }
 
@@ -835,7 +915,13 @@ final class JobStore {
     private func applyLocalResult(_ result: ActionResult, jobId: String, actionId: String) {
         switch result {
         case .succeeded(let msg):
-            setActionState(jobId: jobId, actionId: actionId, state: .succeeded)
+            // Open / Copy stay re-clickable; do not freeze them as .succeeded.
+            if let kind = jobs[jobId]?.actions.first(where: { $0.id == actionId })?.kind,
+               ActionService.reusableKinds.contains(kind.lowercased()) {
+                // leave .available
+            } else {
+                setActionState(jobId: jobId, actionId: actionId, state: .succeeded)
+            }
             appendTimeline(jobId: jobId, kind: "action.completed", title: msg, at: clock())
         case .failed:
             setActionState(jobId: jobId, actionId: actionId, state: .failed)
@@ -960,9 +1046,11 @@ final class JobStore {
             {
                 var s = Job.make(id: "demo-1", kind: "session", name: "nerve", alias: alias, producer: src, now: now.addingTimeInterval(-3600))
                 s.current = Current(type: "editing", name: "Implement ribbon", summary: "Drawing menu-bar ribbon", startedAt: now.addingTimeInterval(-120))
-                s.actions = [
-                    JobAction(id: "copy", title: "Copy", kind: "copy_summary"),
-                ]
+                s.location = LocationInfo(
+                    openURL: "file:///tmp",
+                    focusHint: "Demo · nerve · session · /tmp"
+                )
+                // ensureLocalActions will pin Open + Copy.
                 return s
             }(),
             {
@@ -972,10 +1060,22 @@ final class JobStore {
                 return s
             }(),
             {
-                var s = Job.make(id: "demo-3", kind: "test", name: "Unit tests", alias: alias, producer: src, now: now.addingTimeInterval(-300))
-                s.current = Current(type: "waiting", summary: "Waiting for approval to run tests", startedAt: now.addingTimeInterval(-60))
-                s.attention = Attention(level: .required, reason: "approval", title: "Approve test run", summary: "Needs permission to execute tests")
-                s.actions = [JobAction(id: "approve", title: "Approve", kind: "approve", confirmationRequired: true)]
+                var s = Job.make(id: "demo-3", kind: "session", name: "nerve", alias: alias, producer: src, now: now.addingTimeInterval(-300))
+                s.current = Current(
+                    type: "idle",
+                    summary: "Your turn — continue in the agent UI",
+                    startedAt: now.addingTimeInterval(-60)
+                )
+                s.attention = Attention(
+                    level: .suggested,
+                    reason: "input",
+                    title: "Your turn in agent",
+                    summary: "Return to the agent to continue"
+                )
+                s.location = LocationInfo(
+                    openURL: "file:///tmp",
+                    focusHint: "Demo · nerve · Terminal · /tmp"
+                )
                 return s
             }(),
             {
@@ -994,8 +1094,27 @@ final class JobStore {
         bumpRevision() // ensure at least one invalidation after batch
     }
 
+    /// Select + expand a job in the status panel (notification deep-link / keyboard).
     func focusJob(id: String) {
         selectedJobId = id
         panelOpen = true
+    }
+
+    /// Notification / deep-link: select the job and run Open/Focus when location exists.
+    /// Does **not** approve, submit input, or reverse-control the agent.
+    @MainActor
+    @discardableResult
+    func focusAndOpenJob(id: String) -> ActionResult {
+        focusJob(id: id)
+        guard let subject = jobs[id] else {
+            return .denied("Job not found")
+        }
+        if let action = subject.actions.first(where: { ActionService.isOpenKind($0.kind) }) {
+            return performAction(actionId: action.id, jobId: id, confirmed: true)
+        }
+        if ActionService.canFocus(subject) {
+            return ActionService.openLocation(subject)
+        }
+        return .succeeded("Focused")
     }
 }

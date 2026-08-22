@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5,
             "statusMessage": "Nerve"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -95,7 +95,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -106,7 +106,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -117,7 +117,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
@@ -128,7 +128,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\"",
+            "command": "/bin/bash -c 'for r in \"$CLAUDE_PLUGIN_ROOT\" \"$PLUGIN_ROOT\" \"$GROK_PLUGIN_ROOT\" \".\"; do [ -n \"$r\" ] || continue; f=\"$r/hooks/run.sh\"; [ -f \"$f\" ] || continue; exec /bin/bash \"$f\"; done; [ -f ./hooks/run.sh ] && exec /bin/bash ./hooks/run.sh; exit 0'",
             "timeout": 5
           }
         ]
