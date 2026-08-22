@@ -33,3 +33,6 @@ index-page/node_modules/
 index-page/dist/
 index-page/.rsbuild/
 
+# Rust (cargo workspace)
+/target/
+

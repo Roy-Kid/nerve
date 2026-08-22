@@ -1,0 +1,55 @@
+[package]
+name = "nerve-hub"
+description = "Cross-platform status hub daemon for Nerve surfaces"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "nerve-hub"
+path = "src/main.rs"
+
+[dependencies]
+# Default features carry `tokio`, which is what gates `axum::serve` and
+# `axum::response::sse` (the `GET /v1/stream` surface).
+axum = "0.8"
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "signal",
+    "time",
+    "net",
+    # `sync` carries the three primitives the runtime is built from: `watch`
+    # (surface count, exit decision), `broadcast` (frame fan-out) and `mpsc`
+    # (one connection's queue).
+    "sync",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Single time library for the whole crate: ISO8601 with second precision.
+time = { version = "0.3", features = ["formatting", "parsing", "macros", "serde"] }
+# The `Stream` trait `axum::response::Sse` takes. Already in the tree as an axum
+# dependency: naming it here adds no crate, only the trait `GET /v1/stream`
+# implements for its response body.
+futures-core = "0.3"
+# `kill(pid, 0)` for the reaper's liveness probe. A dependency rather than a
+# hand-rolled FFI call because `unsafe_code` is forbidden workspace-wide.
+rustix = { version = "1", features = ["process"] }
+
+[dev-dependencies]
+# Contract tests drive the `Router` directly with `ServiceExt::oneshot`, so no
+# port is ever bound and a running Nerve.app on 17890 cannot interfere.
+tower = { version = "0.5", features = ["util"] }
+# Collecting a response body into bytes (`BodyExt::collect`).
+http-body-util = "0.1"
+# Two test-only tokio features, unified with the runtime dependency above:
+# `io-util` for the hand-written SSE client in `tests/sse_stream.rs` (line reads
+# over a raw `TcpStream`, so no HTTP client crate enters the tree), and
+# `test-util` for the paused clock `tests/lifecycle.rs` drives the grace timer
+# with.
+tokio = { version = "1", features = ["io-util", "test-util"] }
