@@ -16,6 +16,7 @@ Product docs are **not** in a `docs/` folder. They live on the site handbook:
 | Get started | …/docs/get-started |
 | Agent plugins | …/docs/plugin |
 | Machines & remotes | …/docs/machines |
+| tmux surface | …/docs/tmux |
 | Status & lifecycle | …/docs/status |
 | Ingest API | …/docs/ingest |
 | Privacy | …/docs/privacy |
@@ -44,7 +45,9 @@ CLAUDE.md / AGENTS.md   Agent harness (router)
 .claude/notes/          Passive agent notes
 plugins/nerve/          Marketplace hooks → :17890
 sources/agents/         Hook tests (symlink to plugin)
-Nerve/                  macOS menu-bar app
+Nerve/                  macOS menu-bar app (surface)
+crates/                 Rust: nerve-hub daemon + nerve-tmux-surface helper
+surfaces/tmux/          tmux plugin surface (TPM entry)
 index-page/             Marketing site + /docs SPA
 fixtures/ · scripts/ · assets/
 ```

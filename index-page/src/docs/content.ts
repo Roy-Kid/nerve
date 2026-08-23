@@ -23,6 +23,11 @@ export const docNav: DocNavItem[] = [
     summary: 'SSH reverse tunnels so remote agents report to this Mac.',
   },
   {
+    slug: 'tmux',
+    title: 'tmux surface',
+    summary: 'Status-line segment and read-only popup, from the same hub.',
+  },
+  {
     slug: 'status',
     title: 'Status & lifecycle',
     summary: 'One job per session, facets, ribbon colors, design scope.',
@@ -243,6 +248,122 @@ codex plugin add nerve@nerve`,
           'Run sessions as usual',
           'Hooks POST to http://127.0.0.1:17890 — the tunnel forwards that to the host Nerve',
         ],
+      },
+    ],
+  },
+  {
+    slug: 'tmux',
+    title: 'tmux surface',
+    lede: 'The menu bar and tmux are two peer surfaces of one hub. Neither knows the other exists; both just read frames.',
+    blocks: [
+      {
+        type: 'p',
+        text: 'A small helper — nerve-tmux-surface — holds one stream open to nerve-hub and paints a counts segment into a tmux user option. status-right shows it; prefix + N opens a read-only job list. No menu bar is involved, so this works the same on a headless Linux box as it does on your Mac.',
+      },
+      { type: 'h2', text: 'Install the helper' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `cargo install --path crates/nerve-tmux-surface`,
+      },
+      {
+        type: 'p',
+        text: 'That puts nerve-tmux-surface in ~/.cargo/bin. Working from a checkout you do not have to install at all — the plugin looks in the repo’s own target/release first, then /opt/homebrew/bin, /usr/local/bin, ~/.cargo/bin, and finally PATH.',
+      },
+      { type: 'h2', text: 'Wire it into tmux' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `# ~/.tmux.conf — from a checkout
+run-shell ~/src/nerve/surfaces/tmux/nerve.tmux
+
+# ~/.tmux.conf — with TPM handling the clone and updates
+set -g @plugin 'Roy-Kid/nerve'
+run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
+      },
+      {
+        type: 'callout',
+        title: 'Why TPM needs the second line',
+        text: 'TPM auto-sources only the *.tmux files at the root of a plugin repo. Nerve is a monorepo and the entry point lives at surfaces/tmux/nerve.tmux, so @plugin does the cloning and updating while run-shell points at the entry point. The run-shell line alone is enough if you would rather clone it yourself.',
+      },
+      {
+        type: 'p',
+        text: 'Sourcing it more than once is safe, which matters because reloading your config does exactly that: the segment is appended to status-right only if it is not already there, and a second helper sees the first one’s pid and stands down without opening a stream.',
+      },
+      { type: 'h2', text: 'Options' },
+      {
+        type: 'table',
+        headers: ['Option', 'Default', 'What it sets'],
+        rows: [
+          ['@nerve_status_format', 'counts + colours (below)', 'The segment template'],
+          ['@nerve_status_offline', 'nerve: offline, dimmed', 'Shown while no hub answers'],
+          ['@nerve_popup_key', 'N', 'prefix + this key opens the popup'],
+        ],
+      },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `# the shipped default
+set -g @nerve_status_format '#[fg=red]{problem}!#[default] #[fg=yellow]{attention}?#[default] #[fg=magenta]{waiting}~#[default] #[fg=blue]{running}>#[default]'
+
+# or something terser, on your own key
+set -g @nerve_status_format '{running}/{total} nerve'
+set -g @nerve_popup_key 'j'`,
+      },
+      {
+        type: 'ul',
+        items: [
+          'Count tokens are {problem} {attention} {waiting} {running} {success} {inactive} {total}.',
+          'The template splits on whitespace into segments. A segment whose counts are all zero is dropped whole — colour markers and punctuation with it — so an idle machine shows nothing rather than a row of noughts.',
+          'A segment with no count token in it is a literal separator and always survives.',
+          'Placeholders are {token}, not #{token}, because tmux expands an option’s value a second time when status-right interpolates it. Your #[fg=…] markers are the part we want expanded; # inside job names is escaped before it is written, so a job called “fix #42” cannot inject a format.',
+        ],
+      },
+      { type: 'h2', text: 'The popup' },
+      {
+        type: 'p',
+        text: 'prefix + N runs nerve-tmux-surface popup inside display-popup -E: one line per job — producer, name, status, attention, age — and ESC closes it. It reads /v1/jobs once and exits, so it works even somewhere the status segment does not.',
+      },
+      {
+        type: 'callout',
+        title: 'Display only',
+        text: 'There is no approve, cancel or submit key in the popup — not hidden behind a flag, absent. Nerve reports; you act in the agent’s own UI. Same boundary as the menu-bar panel.',
+      },
+      { type: 'h2', text: 'How it relates to the hub' },
+      {
+        type: 'ul',
+        items: [
+          'The helper is a consumer, not an authority. It looks for nerve-hub (/opt/homebrew/bin → /usr/local/bin → ~/.cargo/bin → PATH) and starts one if nothing answers 127.0.0.1:17890, at most once every 10s.',
+          'It holds exactly one GET /v1/stream?surface=tmux. That open connection is this surface’s entry in the hub’s refcount — there is nothing else to register and nothing to unregister.',
+          'One helper per tmux server, held by the @nerve_surface_pid user option.',
+          'Kill the helper and the hub loses a subscriber. When it loses the last one it waits out its grace (30s by default) and exits. With the menu-bar app also attached, it stays — the two surfaces are counted the same way.',
+          'Nothing is written to disk: no launchd job, no systemd unit, no state file. What state there is lives in tmux options, which die with the tmux server.',
+        ],
+      },
+      { type: 'h2', text: 'Remote hosts get this for free' },
+      {
+        type: 'p',
+        text: 'If a machine already has a RemoteForward tunnel back to your Mac (see Machines & remotes), then 127.0.0.1:17890 on that remote already is your Mac’s hub. Install the helper there, add the run-shell line, and the remote’s tmux shows your jobs. The helper has no concept of “remote” to configure — no host, no port, no env var. It is the same design that lets agent hooks on a remote POST to loopback and mean this Mac.',
+      },
+      { type: 'h2', text: 'Notifications stay on macOS' },
+      {
+        type: 'p',
+        text: 'Attention in tmux is colour in the segment, and that is the whole of it. This surface never posts a system notification, plays a sound, or shells out to osascript or terminal-notifier — with both surfaces attached you would get two alerts for one job. Banners belong to the menu-bar app.',
+      },
+      { type: 'h2', text: 'When the segment is not what you expect' },
+      {
+        type: 'table',
+        headers: ['You see', 'It means'],
+        rows: [
+          ['nerve: setup', 'The plugin found no nerve-tmux-surface binary — cargo install it, or build the repo.'],
+          ['nerve: offline', 'The helper is running but no hub answers. It retries with backoff (0.5s doubling to 30s) and recovers on its own.'],
+          ['Nothing, but tmux is fine', 'No jobs. Zero counts elide by design.'],
+          ['Nothing, ever', 'Check the wiring: tmux show -gv status-right should contain #{@nerve_status}.'],
+        ],
+      },
+      {
+        type: 'p',
+        text: 'nerve.tmux always exits 0 and never blocks tmux, whatever it fails to find — a status instrument that breaks your terminal is worse than no instrument. bash scripts/verify_tmux_surface.sh proves the whole path end to end against an isolated tmux server, so it never touches the one you are using.',
       },
     ],
   },

@@ -282,6 +282,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerve-tmux-surface"
+version = "0.1.0"
+dependencies = [
+ "rustix",
+ "serde",
+ "serde_json",
+ "time",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

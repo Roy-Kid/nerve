@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/nerve-hub"]
+members = ["crates/nerve-hub", "crates/nerve-tmux-surface"]
 
 # Shared metadata for every crate in the workspace. Future Rust crates
 # (surfaces, helpers) inherit these with `field.workspace = true`.

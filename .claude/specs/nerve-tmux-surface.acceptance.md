@@ -1,3 +1,19 @@
+---
+criteria:
+  - { id: A1, type: code, status: verified, last_checked: 2026-08-23 }
+  - { id: A2, type: code, status: verified, last_checked: 2026-08-23 }
+  - { id: A3, type: code, status: verified, last_checked: 2026-08-23 }
+  - { id: A4, type: code, status: verified, last_checked: 2026-08-23 }
+  - { id: A5, type: code, status: verified, last_checked: 2026-08-23 }
+  - { id: A6, type: code, status: verified, last_checked: 2026-08-23 }
+  - { id: A7, type: runtime, status: verified, last_checked: 2026-08-23 }
+  - { id: A8, type: runtime, status: verified, last_checked: 2026-08-23 }
+  - { id: A9, type: runtime, status: verified, last_checked: 2026-08-23 }
+  - { id: A10, type: runtime, status: verified, last_checked: 2026-08-23 }
+  - { id: A11, type: review, status: pending }
+  - { id: A12, type: review, status: pending }
+---
+
 # nerve-tmux-surface — Acceptance
 
 Binding contract for `.claude/specs/nerve-tmux-surface.md`. All items must pass before spec close.

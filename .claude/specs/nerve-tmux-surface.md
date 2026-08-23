@@ -1,5 +1,5 @@
 ---
-status: approved
+status: code-complete
 slug: nerve-tmux-surface
 depends: nerve-hub
 revised: 2026-08-22
@@ -111,7 +111,7 @@ prefix + N → display-popup -E "nerve-tmux-surface popup"  (一次性 GET /v1/j
 |------|------|
 | `Cargo.toml` | 由 `nerve-hub` 创建;本 spec 仅向 `members` 追加 `crates/nerve-tmux-surface` |
 | `crates/nerve-tmux-surface/Cargo.toml` | (new) crate 清单,bin 名 `nerve-tmux-surface` |
-| `crates/nerve-tmux-surface/src/{main,frame,status,tally,summary,popup,locate,launch,stream,tmux,instance}.rs` | (new) 见 Design 模块表 |
+| `crates/nerve-tmux-surface/src/{main,frame,status,tally,summary,popup,locate,launch,stream,tmux,instance,hub}.rs` | (new) 见 Design 模块表;`hub.rs` 为 loopback 阻塞 HTTP 传输(三个消费者共享,避免 launch↔stream 耦合,实现期补记) |
 | `crates/nerve-tmux-surface/tests/` | (new) 集成级单测:帧 → 段文本、popup 渲染 golden |
 | `surfaces/tmux/nerve.tmux` | (new) TPM 入口:自定位 helper、单实例 spawn、`status-right` 幂等接入、绑定 popup 键 |
 | `surfaces/tmux/README.md` | (new) 短指引:TPM `set -g @plugin` / 手动 source / 三个 option |
@@ -126,34 +126,36 @@ prefix + N → display-popup -E "nerve-tmux-surface popup"  (一次性 GET /v1/j
 
 ### Phase 1 — Helper 渲染核心
 
-- [ ] **T1** Add `crates/nerve-tmux-surface` to the root workspace `members`; scaffold the
+- [x] **T1** Add `crates/nerve-tmux-surface` to the root workspace `members`; scaffold the
       `run` / `popup` CLI skeleton with arg-array spawning only (no shell anywhere).
-- [ ] **T2** Implement `frame.rs` + `status.rs` — frame decoding and `StatusClass::of()` mirroring
+- [x] **T2** Implement `frame.rs` + `status.rs` — frame decoding and `StatusClass::of()` mirroring
       `Subject.swift:38`; tests assert free-text fields never affect the result.
-- [ ] **T3** Implement `tally.rs` + `summary.rs` — counts and `@nerve_status_format` rendering
+- [x] **T3** Implement `tally.rs` + `summary.rs` — counts and `@nerve_status_format` rendering
       with `{token}` placeholders, zero-count elision, and `#` → `##` escaping of dynamic text.
 
 ### Phase 2 — Hub 附着(发现 / 流 / 写回)
 
-- [ ] **T4** Implement `locate.rs` + `launch.rs` — discovery order
+- [x] **T4** Implement `locate.rs` + `launch.rs` — discovery order
       (`/opt/homebrew/bin` → `/usr/local/bin` → `~/.cargo/bin` → PATH), health probe, and
       at-most-one spawn per 10s window under an injected clock.
-- [ ] **T5** Implement `stream.rs` — SSE frame consumption over an injected transport,
+- [x] **T5** Implement `stream.rs` — SSE frame consumption over an injected transport,
       `Backoff` (0.5s doubling, 30s cap, reset on success), offline placeholder on first failure.
-- [ ] **T6** Implement `tmux.rs` + `instance.rs` — `set -g @nerve_status` + `refresh-client -S`
+- [x] **T6** Implement `tmux.rs` + `instance.rs` — `set -g @nerve_status` + `refresh-client -S`
       via fake runner, `@nerve_surface_pid` single-instance guard, `ServerGone` → clean exit 0
       that drops the SSE connection.
 
 ### Phase 3 — tmux 插件面与文档
 
-- [ ] **T7** Add `surfaces/tmux/nerve.tmux` — self-locating helper lookup and fail-open exit 0
+- [x] **T7** Add `surfaces/tmux/nerve.tmux` — self-locating helper lookup and fail-open exit 0
       following `plugins/nerve/hooks/run.sh`; idempotent `status-right` wiring of `#{@nerve_status}`.
-- [ ] **T8** Implement `popup.rs` and bind `@nerve_popup_key` to
+- [x] **T8** Implement `popup.rs` and bind `@nerve_popup_key` to
       `display-popup -E "<helper> popup"` — read-only rows (producer / name / status / attention / age).
-- [ ] **T9** Add `scripts/verify_tmux_surface.sh` — reuse `scripts/inject_demo.sh`; assert the
+- [x] **T9** Add `scripts/verify_tmux_surface.sh` — reuse `scripts/inject_demo.sh`; assert the
       rendered segment counts, then assert hub survives helper exit while another surface holds a stream.
-- [ ] **T10** Add docs — `index-page/src/docs/content.ts` `tmux` page + nav entry,
+- [x] **T10** Add docs — `index-page/src/docs/content.ts` `tmux` page + nav entry,
       `surfaces/tmux/README.md`, root `README.md` pointer.
+
+- [x] **Hygiene** `/mol:simplify` ran clean — janitor retry 0 findings (shellcheck clean x2, README Layout fix verified)
 
 ## Testing
 
