@@ -1,5 +1,14 @@
 # Notes
 
+<!-- mol:note:topic:arch-hub-topology -->
+## 2026-08-23 — State hub topology (supersedes in-app ingest)
+
+Why: surfaces must be peers; the app quitting must not take state down; tmux plugin joined as a second surface.
+
+**Rule**: State authority is the standalone `nerve-hub` daemon (`crates/nerve-hub`, fixed `127.0.0.1:17890`, port bind = single-instance lock). Surfaces hold a `GET /v1/stream` SSE connection as their presence token; hub self-exits ~30s after the last one drops. `JobStore` in the app is a frame-fed read-only cache (writes leave only via request sinks); notifications derive from adjacent-frame diffs incl. `departed` terminal pairs, and fire from the macOS surface only. Hook wire contract unchanged; producers never spawn the hub.
+
+**Supersedes**: in-process `IngestServer.swift` + `JobStore`-owned state semantics (deleted 2026-08-22/23, spec chain `nerve-hub` → `nerve-macos-surface-01..03` → `nerve-tmux-surface`).
+
 ## 2026-07-23 — Focus A+B (no reverse-control)
 
 - Product: **do not** C/D (approve / submit_input / in-panel chat). Enhance **A+B**.
@@ -50,7 +59,7 @@
 
 - Authoritative: SessionEnd (`endReason` + outcome success|cancelled) → evict.
 - Supersede: same UI `slot` + new SessionStart → previous ended (`superseded`).
-- Local PID reaping: snapshot `extensions.pid` + 5s timer; dead local process → `process_gone`.
+- Local PID reaping: snapshot `extensions.pid` + hub's 5s maintenance tick; dead local process → `process_gone`.
 - No manual Dismiss control — leave paths above only (Copy remains as local action).
 - Snapshots carry `extensions.slot` + `extensions.pid` when known.
 

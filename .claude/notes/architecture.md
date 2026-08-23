@@ -5,13 +5,17 @@
 ## Layers
 
 ```
-plugins/nerve/hooks/     →  POST /v1/snapshot  →  Nerve Ingest (loopback)
-sources/agents/tests/    →  offline unit tests of the hook
-Nerve/Nerve/Ingest       →  HTTP server :17890
-Nerve/Nerve/Store        →  SubjectStore (memory jobs + ribbon segments)
-Nerve/Nerve/UI           →  menu-bar ribbon + status panel
-index-page/              →  marketing + /docs handbook (React SPA)
+plugins/nerve/hooks/         →  POST /v1/snapshot  →  nerve-hub (loopback :17890)
+sources/agents/tests/        →  offline unit tests of the hook
+crates/nerve-hub/            →  state authority: ingest + SSE frames + refcount lifecycle
+Nerve/Nerve/Services/Hub     →  macOS surface client (spawn, SSE, frame diff)
+Nerve/Nerve/Store            →  JobStore (frame-fed read-only cache + ribbon segments)
+Nerve/Nerve/UI               →  menu-bar ribbon + status panel
+surfaces/tmux/ + crates/nerve-tmux-surface/  →  tmux surface (segment + popup)
+index-page/                  →  marketing + /docs handbook (React SPA)
 ```
+
+> Full rebuild pending: run `/mol:map` for a fresh blueprint (this block is a minimal truth patch).
 
 ## Job model
 

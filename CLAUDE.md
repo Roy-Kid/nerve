@@ -5,15 +5,17 @@
 
 ## What this repo is
 
-**Nerve** — macOS menu-bar status hub. Agents/builds push jobs over loopback HTTP (`127.0.0.1:17890`); Nerve paints a continuous ribbon. It does **not** run agents.
+**Nerve** — agent/job status for your machines. Hooks push jobs over loopback HTTP to the **`nerve-hub` daemon** (`127.0.0.1:17890`, state authority); peer **surfaces** render it: the macOS menu-bar app and the tmux plugin. Nerve does **not** run agents.
 
-Stack: SwiftUI menu-bar app (`Nerve/`), Python marketplace hooks (`plugins/nerve/`), Rsbuild React site + handbook (`index-page/`).
+Stack: `nerve-hub` + tmux helper (Rust, `crates/`), SwiftUI menu-bar app (`Nerve/`), tmux plugin entry (`surfaces/tmux/`), Python marketplace hooks (`plugins/nerve/`), Rsbuild React site + handbook (`index-page/`).
 
 ## Where things live
 
 | Zone | Path |
 |------|------|
-| macOS app | `Nerve/Nerve/` (App, Models, Store, Ingest, Services, UI) |
+| State hub daemon | `crates/nerve-hub/` (ingest contract, SSE frames, refcount lifecycle) |
+| macOS app (surface) | `Nerve/Nerve/` (App, Models, Store, Services incl. `Services/Hub/`, UI) |
+| tmux surface | `surfaces/tmux/` (TPM entry) + `crates/nerve-tmux-surface/` (helper) |
 | Marketplace plugin | `plugins/nerve/` (`hooks/nerve_hook.py`, `hooks.json`) |
 | Hook tests (stable path) | `sources/agents/tests/` — `nerve_hook.py` → plugin symlink |
 | Website + **public docs** | `index-page/` → routes `/docs/*`; body `index-page/src/docs/content.ts` |
@@ -24,7 +26,7 @@ Stack: SwiftUI menu-bar app (`Nerve/`), Python marketplace hooks (`plugins/nerve
 **There is no `docs/` tree.** Product handbook is the site:
 
 - `/docs` · `/docs/get-started` · `/docs/plugin` · `/docs/machines`
-- `/docs/status` · `/docs/ingest` · `/docs/privacy`
+- `/docs/status` · `/docs/ingest` · `/docs/tmux` · `/docs/privacy`
 
 ```bash
 cd index-page && npm run dev   # http://localhost:3000/docs
@@ -33,9 +35,13 @@ cd index-page && npm run dev   # http://localhost:3000/docs
 ## Commands
 
 ```bash
-./scripts/run.sh                                    # build + launch app
-./scripts/inject_demo.sh                            # POST demo snapshot
-./scripts/verify_loop.sh
+./scripts/run.sh                                    # build hub + app, embed, launch
+cargo test --workspace                              # hub + tmux-surface tests
+bash scripts/verify_loop.sh                         # ingest contract E2E (needs hub)
+bash scripts/verify_surface.sh                      # macOS surface regression
+bash scripts/verify_tmux_surface.sh                 # tmux surface E2E (isolated tmux)
+./scripts/inject_demo.sh                            # POST demo fixture snapshot
+bash scripts/test_swift_units.sh                    # Swift value-type unit harness
 python3 sources/agents/tests/test_nerve_hook.py     # hook unit tests
 cd index-page && npm test && npm run build          # site tests + static build
 ```
@@ -43,18 +49,20 @@ cd index-page && npm test && npm run build          # site tests + static build
 ## Invariants (do not break casually)
 
 1. **One job per conversation** — id `{producer}:{session_id}`. Subagents refine main `current` only; no child session rows. Batch/chain producers may use `role=group|member` with tree panel (display).
-2. **Fail-open hooks** — exit 0 always; never block the agent. No `NERVE_*` env; ingest fixed `http://127.0.0.1:17890`.
+2. **Fail-open hooks** — exit 0 always; never block the agent. No `NERVE_*` env; ingest fixed `http://127.0.0.1:17890`, served by `nerve-hub` (the port bind is its single-instance lock). Producers never spawn the hub.
 3. **Status from structured fields only** — never free-text message classification (`notification_type`, `background_tasks`, event name).
-4. **Memory-only runtime jobs** — jobs/timelines/pending are process RAM; Settings + managed `~/.ssh/config` only on disk.
-5. **Open alias ingest** — any snapshot `alias` shows; Settings Machines are tunnels only (Hosts from local `~/.ssh/config` + known_hosts; managed block is RemoteForward-only; ControlMaster via `ssh -O forward` when master is up).
+4. **Memory-only runtime jobs** — jobs/timelines/pending live in `nerve-hub` process RAM; hub exits ~30s after the last surface disconnects (SSE refcount). Settings + managed `~/.ssh/config` only on disk.
+5. **Open alias ingest** — any snapshot `alias` shows; Settings Machines are tunnels only (Hosts from local `~/.ssh/config` + known_hosts; managed block is RemoteForward-only; ControlMaster via `ssh -O forward` when master is up). Tunnels target 17890, so remote producers *and* remote surfaces reach the hub for free.
 6. **Display only** — Nerve never reverse-controls agents or jobs (no approve/cancel/submit_input). Local actions: **Open/Focus** (location) + Copy; rows leave via SessionEnd / slot supersede / PID reap. Attention means “return to agent UI”, not “type here”.
-7. **Public docs** — edit `index-page/src/docs/content.ts` (and site UI), not a repo `docs/` folder. Keep root/plugin READMEs as short pointers.
+7. **Surfaces are peers** — macOS app and tmux plugin only consume the hub contract (`GET /v1/jobs`, `GET /v1/stream` full frames with `departed` terminal states); neither owns state, neither knows the other. System notifications fire from the macOS surface only. Hook wire contract is unchanged by all of this.
+8. **Public docs** — edit `index-page/src/docs/content.ts` (and site UI), not a repo `docs/` folder. Keep root/plugin READMEs as short pointers.
 
 ## Default workflow
 
 1. Product copy / API handbook → `index-page/src/docs/content.ts` (+ pages under `src/pages/`)
 2. Hook lifecycle → `plugins/nerve/hooks/nerve_hook.py` + `sources/agents/tests/test_nerve_hook.py`
-3. App UI/store → `Nerve/Nerve/`
-4. Capture decisions → `.claude/notes/notes.md`
+3. State semantics / ingest contract → `crates/nerve-hub/` (golden parity tests guard it)
+4. App UI / surface glue → `Nerve/Nerve/`; tmux surface → `surfaces/tmux/` + `crates/nerve-tmux-surface/`
+5. Capture decisions → `.claude/notes/notes.md`
 
 <!-- nerve:harness:managed end -->
