@@ -312,6 +312,63 @@ fn test_snapshot_with_older_version_does_not_overwrite() {
 }
 
 #[test]
+fn test_last_prompt_survives_the_snapshots_that_follow_it() {
+    // The prompt exists in exactly one hook run; every later event posts a
+    // snapshot that has never heard of it.
+    let mut fixture = fixture();
+    fixture.store.apply_snapshot(vec![job_fixture(
+        "claude-code:s1",
+        json!({
+            "version": 1,
+            "extensions": { "lastPrompt": "fix the sidebar", "lastPromptAt": T0 }
+        }),
+    )]);
+
+    fixture.store.apply_snapshot(vec![job_fixture(
+        "claude-code:s1",
+        json!({ "version": 2, "extensions": { "hookEvent": "PreToolUse" } }),
+    )]);
+
+    let stored = job_in(&fixture.store.jobs_json(), "claude-code:s1");
+    assert_eq!(text(&stored, "/extensions/lastPrompt"), "fix the sidebar");
+    assert_eq!(text(&stored, "/extensions/hookEvent"), "PreToolUse");
+}
+
+#[test]
+fn test_a_new_prompt_replaces_the_kept_one() {
+    let mut fixture = fixture();
+    fixture.store.apply_snapshot(vec![job_fixture(
+        "claude-code:s1",
+        json!({ "version": 1, "extensions": { "lastPrompt": "first" } }),
+    )]);
+    fixture.store.apply_snapshot(vec![job_fixture(
+        "claude-code:s1",
+        json!({ "version": 2, "extensions": { "lastPrompt": "second" } }),
+    )]);
+
+    let stored = job_in(&fixture.store.jobs_json(), "claude-code:s1");
+    assert_eq!(text(&stored, "/extensions/lastPrompt"), "second");
+}
+
+#[test]
+fn test_live_status_extensions_are_not_sticky() {
+    // Only prompt keys carry forward: a snapshot that drops `pid` means the
+    // producer stopped reporting one, and the hub must not re-assert it.
+    let mut fixture = fixture();
+    fixture.store.apply_snapshot(vec![job_fixture(
+        "claude-code:s1",
+        json!({ "version": 1, "extensions": { "pid": 4242 } }),
+    )]);
+    fixture.store.apply_snapshot(vec![job_fixture(
+        "claude-code:s1",
+        json!({ "version": 2, "extensions": {} }),
+    )]);
+
+    let stored = job_in(&fixture.store.jobs_json(), "claude-code:s1");
+    assert!(stored.pointer("/extensions/pid").is_none());
+}
+
+#[test]
 fn test_apply_snapshot_counts_every_job_including_ended_and_legacy() {
     let mut fixture = fixture();
 

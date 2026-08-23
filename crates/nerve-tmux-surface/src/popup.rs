@@ -5,9 +5,10 @@
 //! hang one on (CLAUDE.md invariant 6).
 //!
 //! ─────────────────────────────────────────────────────────────────────────
-//! Row format: `producer  name  status  attention  age`, two spaces between
-//! columns, the first four left-aligned and padded to the widest cell in this
-//! render, the last unpadded. Every line ends with `\n`.
+//! Row format: `{icon}  {name}  {activity}  {age}`, two spaces between the
+//! padded name and activity columns, age unpadded. Status is a coloured glyph
+//! in the sidebar; here it is the same icon without escape codes. Every line
+//! ends with `\n`.
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! A popup is plain stdout, not a tmux option value, so
@@ -16,20 +17,16 @@
 
 use time::OffsetDateTime;
 
-use crate::frame::{AttentionLevel, JobView};
+use crate::columns::{self, activity_text, cell_text, GAP};
+use crate::frame::JobView;
+use crate::icons;
 use crate::status::StatusClass;
 
 /// What a popup with nothing to show prints.
 pub const EMPTY: &str = "nerve: no jobs";
 
-/// Shown wherever a job carries nothing for a column.
-const MISSING: &str = "-";
-
-/// Two spaces, the gap between every pair of columns.
-const GAP: &str = "  ";
-
-/// The four columns that are padded; `age` closes the line and is not.
-const PADDED_COLUMNS: usize = 4;
+/// The two padded columns: session name and current activity.
+const PADDED_COLUMNS: usize = 2;
 
 /// Renders job rows against one frozen reading of the clock.
 pub struct PopupRenderer {
@@ -53,88 +50,35 @@ impl PopupRenderer {
             return format!("{EMPTY}\n");
         }
 
-        let rows: Vec<[String; 5]> = jobs.iter().map(|job| self.row(job)).collect();
-        let widths = Self::widths(&rows);
+        let rows: Vec<Vec<String>> = jobs
+            .iter()
+            .map(|job| {
+                vec![
+                    cell_text(&job.name).to_string(),
+                    cell_text(activity_text(job)).to_string(),
+                    self.age(job),
+                ]
+            })
+            .collect();
+        let padded = columns::pad_columns(&rows, PADDED_COLUMNS);
 
         let mut rendered = String::new();
-        for row in &rows {
-            for (column, cell) in row.iter().enumerate() {
-                if column > 0 {
-                    rendered.push_str(GAP);
-                }
-                rendered.push_str(cell);
-                if column < PADDED_COLUMNS {
-                    for _ in cell.chars().count()..widths[column] {
-                        rendered.push(' ');
-                    }
-                }
-            }
+        for (job, row) in jobs.iter().zip(padded) {
+            let class = StatusClass::of(job);
+            rendered.push_str(icons::status_icon(class));
+            rendered.push(' ');
+            rendered.push_str(&row[0]);
+            rendered.push_str(GAP);
+            rendered.push_str(&row[1]);
+            rendered.push(' ');
+            rendered.push_str(&row[2]);
             rendered.push('\n');
         }
         rendered
     }
 
-    fn row(&self, job: &JobView) -> [String; 5] {
-        [
-            Self::producer(job),
-            Self::text(&job.name),
-            StatusClass::of(job).label().to_string(),
-            Self::attention(job),
-            self.age(job),
-        ]
-    }
-
-    /// The widest cell of each padded column, in characters.
-    fn widths(rows: &[[String; 5]]) -> [usize; PADDED_COLUMNS] {
-        let mut widths = [0usize; PADDED_COLUMNS];
-        for row in rows {
-            for (column, width) in widths.iter_mut().enumerate() {
-                *width = (*width).max(row[column].chars().count());
-            }
-        }
-        widths
-    }
-
-    fn producer(job: &JobView) -> String {
-        match job.producer.name.as_deref() {
-            Some(name) if !name.trim().is_empty() => name.to_string(),
-            _ => Self::text(&job.producer.id),
-        }
-    }
-
-    /// The reason a job wants a human, else the level when it is raised at all.
-    fn attention(job: &JobView) -> String {
-        match job.attention.reason.as_deref() {
-            Some(reason) if !reason.trim().is_empty() => reason.to_string(),
-            _ if job.attention.level > AttentionLevel::None => {
-                job.attention.level.wire().to_string()
-            }
-            _ => MISSING.to_string(),
-        }
-    }
-
     /// How long ago the job last said anything.
-    ///
-    /// A producer whose clock runs ahead reads as `0s` rather than as a
-    /// negative age.
     fn age(&self, job: &JobView) -> String {
-        let Some(updated) = job.updated_at else {
-            return MISSING.to_string();
-        };
-        let seconds = (self.now - updated.instant()).whole_seconds().max(0);
-        match seconds {
-            0..=59 => format!("{seconds}s"),
-            60..=3_599 => format!("{}m", seconds / 60),
-            3_600..=86_399 => format!("{}h", seconds / 3_600),
-            _ => format!("{}d", seconds / 86_400),
-        }
-    }
-
-    fn text(value: &str) -> String {
-        if value.trim().is_empty() {
-            MISSING.to_string()
-        } else {
-            value.to_string()
-        }
+        columns::age_label(self.now, job)
     }
 }

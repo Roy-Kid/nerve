@@ -110,6 +110,18 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         return nil
     }
 
+    /// What the human last asked this agent (`extensions.lastPrompt`).
+    ///
+    /// Reported once, by the producer's `UserPromptSubmit` hook run, and kept
+    /// by the hub across the snapshots that follow (`STICKY_EXTENSIONS` in
+    /// `crates/nerve-hub/src/state/store.rs`). It is the one thing a status row
+    /// cannot say: `current` is what the agent is doing *now*.
+    var lastPrompt: String? {
+        guard case .string(let prompt) = extensions["lastPrompt"] else { return nil }
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     var isGroupJob: Bool { extensionRole == "group" }
     var isMemberJob: Bool { extensionRole == "member" }
 

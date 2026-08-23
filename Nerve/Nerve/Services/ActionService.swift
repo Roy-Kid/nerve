@@ -62,7 +62,14 @@ enum ActionService {
     }
 
     /// Preferred primary local action title for the panel.
+    ///
+    /// A job on another machine says so on the button: clicking it opens a
+    /// terminal *there*, which is a bigger thing than revealing a folder here
+    /// and must not be labelled the same way.
     static func focusActionTitle(for subject: Job) -> String {
+        if let alias = RemoteMachine.foreignAlias(of: subject.alias) {
+            return "Open on \(alias)"
+        }
         if let url = subject.location?.openURL, !url.isEmpty { return "Open" }
         return "Focus"
     }
@@ -124,8 +131,15 @@ enum ActionService {
     }
 
     /// Open workspace / IDE deep link, else copy focus breadcrumb for the user.
+    ///
+    /// A job on another machine is answered by [`openRemote`] instead: its
+    /// `openURL` names that machine's filesystem, and opening it here would at
+    /// best fail and at worst open an unrelated local folder of the same name.
     @MainActor
     static func openLocation(_ subject: Job) -> ActionResult {
+        if let alias = RemoteMachine.foreignAlias(of: subject.alias) {
+            return openRemote(subject, alias: alias)
+        }
         if let raw = subject.location?.openURL?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
             if let url = URL(string: raw) {
@@ -162,6 +176,66 @@ enum ActionService {
             return .succeeded("Copied focus hint")
         }
         return .failed("No open target")
+    }
+
+    /// Take the human to a job running on another machine.
+    ///
+    /// Same order as the tmux surface (`crates/nerve-tmux-surface/src/preview.rs`):
+    /// an IDE deep link routes itself to its own remote, otherwise the ssh
+    /// session that reaches that machine, otherwise nothing local can do it and
+    /// the breadcrumb is copied instead. A remote path is never handed to
+    /// NSWorkspace — display only means honest, not eager.
+    @MainActor
+    private static func openRemote(_ subject: Job, alias: String) -> ActionResult {
+        if let url = ideDeepLink(subject), NSWorkspace.shared.open(url) {
+            return .succeeded("Opened")
+        }
+        if let host = remoteSSHHost(for: alias) {
+            guard let url = URL(string: "ssh://\(host)") else {
+                return .failed("Could not address ssh host \(host)")
+            }
+            // Whatever the user registered for `ssh:` — Terminal by default.
+            if NSWorkspace.shared.open(url) { return .succeeded("Opened ssh \(host)") }
+            return .failed("No app to open ssh \(host)")
+        }
+        return copyFocusBreadcrumb(subject, fallback: "\(alias) — no ssh host in ~/.ssh/config")
+    }
+
+    /// `openURL` when it is a link its app resolves on its own (`cursor://`,
+    /// `vscode://`). A `file://` URL is a path on the reporting machine and is
+    /// never one of these.
+    static func ideDeepLink(_ subject: Job) -> URL? {
+        guard let raw = subject.location?.openURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(),
+              scheme != "file"
+        else { return nil }
+        return url
+    }
+
+    /// ssh `Host` that reaches `alias`, from the user's own config — the same
+    /// file Settings sources its Machines list from (CLAUDE.md invariant 5).
+    @MainActor
+    private static func remoteSSHHost(for alias: String) -> String? {
+        let hosts = SSHConfigWriter.loadLocalHosts().map {
+            (alias: $0.alias, hostName: $0.hostName)
+        }
+        return RemoteMachine.bestHost(for: alias, among: hosts)
+    }
+
+    /// Last resort: hand the human the breadcrumb so they can get there
+    /// themselves.
+    @MainActor
+    private static func copyFocusBreadcrumb(_ subject: Job, fallback: String) -> ActionResult {
+        let hint = subject.location?.focusHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = subject.location?.openURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let text = [hint, path].compactMap({ $0 }).first(where: { !$0.isEmpty }) else {
+            return .failed(fallback)
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        return .succeeded("Copied location — \(fallback)")
     }
 
     /// Destructive kinds require explicit confirmation in UI.

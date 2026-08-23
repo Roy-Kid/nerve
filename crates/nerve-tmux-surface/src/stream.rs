@@ -27,6 +27,9 @@ use crate::tmux::SegmentWriter;
 /// The one stream this surface opens. `?surface=` is a log tag for the hub.
 pub const STREAM_PATH: &str = "/v1/stream?surface=tmux";
 
+/// One-shot job list — same rows a connect frame carries, bare array.
+pub const JOBS_PATH: &str = "/v1/jobs";
+
 /// The SSE field that carries a frame.
 const DATA_FIELD: &str = "data:";
 

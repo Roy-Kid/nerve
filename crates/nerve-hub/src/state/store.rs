@@ -41,12 +41,33 @@ pub struct JobStore {
     departed: Vec<Job>,
 }
 
+/// Open fields a snapshot inherits from the job it replaces.
+///
+/// A hook is one process per event, so only the `UserPromptSubmit` run ever
+/// sees the prompt — every snapshot after it would blank the field. Patches
+/// already merge per key (`state/patch.rs`); this is the same promise at the
+/// snapshot door, kept deliberately narrow: facts *about* the job that a
+/// producer states once, never live status (which must be free to go away).
+const STICKY_EXTENSIONS: [&str; 2] = ["lastPrompt", "lastPromptAt"];
+
 /// A job as published: its own wire shape plus the timeline the hub keeps for it.
+///
+/// Borrowed rather than owned, so the frame that publishes a whole job set
+/// serialises straight out of the store — no intermediate `serde_json::Value`
+/// tree to build and walk a second time.
 #[derive(Serialize)]
-struct JobView<'a> {
+pub struct JobView<'a> {
     #[serde(flatten)]
     job: &'a Job,
     timeline: &'a [TimelineEntry],
+}
+
+impl<'a> JobView<'a> {
+    /// A row that has left: eviction forgot its timeline, and a surface must
+    /// parse one job shape rather than two, so it publishes an empty one.
+    pub(crate) fn departed(job: &'a Job) -> Self {
+        Self { job, timeline: &[] }
+    }
 }
 
 impl JobStore {
@@ -128,6 +149,14 @@ impl JobStore {
         if let Some(stored) = self.jobs.get(&job.id) {
             if job.version < stored.version {
                 return;
+            }
+            for key in STICKY_EXTENSIONS {
+                if job.extensions.contains_key(key) {
+                    continue;
+                }
+                if let Some(value) = stored.extensions.get(key) {
+                    job.extensions.insert(key.to_string(), value.clone());
+                }
             }
         }
         if job.is_ended() {
@@ -221,25 +250,17 @@ impl JobStore {
         std::mem::take(&mut self.departed)
     }
 
-    /// The same terminal states, drained and in the published job shape.
+    /// The same terminal states, drained and deduplicated.
     ///
-    /// Two rules the typed drain above does not carry, both belonging to the
+    /// One rule the typed drain above does not carry, and it belongs to the
     /// frame that publishes them: one id appears at most once — a producer that
-    /// reports the end twice inside a window leaves only its last word — and a
-    /// departed row publishes an empty `timeline`, because eviction forgets it
-    /// and a surface must parse one job shape rather than two.
-    pub fn drain_departed_json(&mut self) -> Value {
-        let departed = self.take_departed();
-        let mut last: BTreeMap<&str, &Job> = BTreeMap::new();
-        for job in &departed {
-            last.insert(job.id.as_str(), job);
+    /// reports the end twice inside a window leaves only its last word.
+    pub(crate) fn drain_departed_deduped(&mut self) -> Vec<Job> {
+        let mut last: BTreeMap<String, Job> = BTreeMap::new();
+        for job in self.take_departed() {
+            last.insert(job.id.clone(), job);
         }
-        let views: Vec<JobView<'_>> = last
-            .into_values()
-            .map(|job| JobView { job, timeline: &[] })
-            .collect();
-        // See `pending_json`: plain data, unreachable fallback, array shape kept.
-        serde_json::to_value(views).unwrap_or_else(|_| Value::Array(Vec::new()))
+        last.into_values().collect()
     }
 
     fn drop_legacy_child(&mut self, id: &str) {
@@ -453,18 +474,24 @@ impl JobStore {
 
     // ── Publication ─────────────────────────────────────────────────────────
 
-    /// Every stored job as a bare JSON array, each with its timeline.
-    pub fn jobs_json(&self) -> Value {
-        let views: Vec<JobView<'_>> = self
-            .jobs
+    /// Every stored job in the published shape, borrowed from the store.
+    ///
+    /// The frame renderer serialises these directly; `jobs_json` is the same
+    /// list for the one caller that genuinely wants a `Value`.
+    pub(crate) fn job_views(&self) -> Vec<JobView<'_>> {
+        self.jobs
             .values()
             .map(|job| JobView {
                 job,
                 timeline: self.timelines.of(&job.id),
             })
-            .collect();
+            .collect()
+    }
+
+    /// Every stored job as a bare JSON array, each with its timeline.
+    pub fn jobs_json(&self) -> Value {
         // See `pending_json`: plain data, unreachable fallback, array shape kept.
-        serde_json::to_value(views).unwrap_or_else(|_| Value::Array(Vec::new()))
+        serde_json::to_value(self.job_views()).unwrap_or_else(|_| Value::Array(Vec::new()))
     }
 
     fn now(&self) -> WireTime {

@@ -7,7 +7,7 @@ Offline tests and the stable import path for the marketplace plugin.
 | Hook implementation | `plugins/nerve/hooks/nerve_hook.py` |
 | Symlink | `sources/agents/nerve_hook.py` → plugin |
 | Tests | `sources/agents/tests/test_nerve_hook.py` |
-| Docs | website **`/docs/plugin`** (`index-page/src/docs/content.ts`) |
+| Docs | website **`/docs/plugin`** (`index/src/docs/content.ts`) |
 
 ```bash
 # from repo root

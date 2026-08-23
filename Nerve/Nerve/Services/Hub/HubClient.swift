@@ -17,6 +17,8 @@ final class HubClient {
     private static let minRetryDelay: TimeInterval = 1
     /// Ceiling for the doubling backoff. Loopback, so it never needs to be shy.
     private static let maxRetryDelay: TimeInterval = 30
+    /// One-shot `GET /v1/jobs` — not the long-lived stream timeout.
+    private static let jobsFetchTimeout: TimeInterval = 5
 
     /// `?surface=` is a log tag on the hub side — every surface sees every frame.
     private static let streamURL: URL = {
@@ -121,6 +123,7 @@ final class HubClient {
     /// the moment one attaches.
     private func readFrames() async {
         while !Task.isCancelled {
+            await syncFromHub()
             do {
                 try await readOneConnection()
                 NSLog("[Nerve] hub closed the stream")
@@ -184,7 +187,30 @@ final class HubClient {
             NSLog("[Nerve] hub frame ignored (decode failed): %@", "\(error)")
             return
         }
+        applyFrame(frame)
+    }
 
+    /// `GET /v1/jobs` before (re)attaching to SSE — paint immediately, not
+    /// after the first stream event.
+    private func syncFromHub() async {
+        var request = URLRequest(url: NerveEndpoint.jobs)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = Self.jobsFetchTimeout
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                return
+            }
+            let frame = try HubFrame(jobsListJSON: data, decoder: decoder)
+            applyFrame(frame)
+        } catch {
+            NSLog("[Nerve] hub jobs fetch failed: %@", "\(error)")
+        }
+    }
+
+    private func applyFrame(_ frame: HubFrame) {
         let pairs = differ.pairs(for: frame)
         store.applyFrame(jobs: frame.jobs, timelines: frame.timelines)
         for pair in pairs {

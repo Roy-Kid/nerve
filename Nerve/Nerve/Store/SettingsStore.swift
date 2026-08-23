@@ -45,23 +45,37 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     var inactive: RGBColor
 
     static let `default` = StatusColorMap(
-        problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),
-        attention: RGBColor(r: 1.000, g: 0.584, b: 0.000),
-        waiting: RGBColor(r: 0.686, g: 0.321, b: 0.871),
-        running: RGBColor(r: 0.000, g: 0.478, b: 1.000),
-        success: RGBColor(r: 0.204, g: 0.780, b: 0.349),
-        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+        problem: RGBColor(r: 1.000, g: 0.271, b: 0.227),   // #FF453A
+        attention: RGBColor(r: 1.000, g: 0.624, b: 0.039), // #FF9F0A
+        waiting: RGBColor(r: 0.749, g: 0.353, b: 0.949),   // #BF5AF2
+        running: RGBColor(r: 0.039, g: 0.518, b: 1.000), // #0A84FF
+        success: RGBColor(r: 0.188, g: 0.820, b: 0.345), // #30D158
+        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)  // #8E8E93
     )
 
-    /// The first-release palette, retained only to migrate untouched defaults.
-    static let legacyDefault = StatusColorMap(
-        problem: RGBColor(r: 0.95, g: 0.14, b: 0.18),
-        attention: RGBColor(r: 1.00, g: 0.52, b: 0.10),
-        waiting: RGBColor(r: 0.55, g: 0.28, b: 0.92),
-        running: RGBColor(r: 0.14, g: 0.52, b: 0.98),
-        success: RGBColor(r: 0.08, g: 0.80, b: 0.34),
-        inactive: RGBColor(r: 0.48, g: 0.52, b: 0.58)
-    )
+    /// Every palette that used to be `default`, newest first. An install still
+    /// sitting on one of these never customized its colors, so it is safe to
+    /// move forward — add a row here when `default` changes, nothing else.
+    static let retiredDefaults: [StatusColorMap] = [
+        // Before the vivid alignment pass.
+        StatusColorMap(
+            problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),
+            attention: RGBColor(r: 1.000, g: 0.584, b: 0.000),
+            waiting: RGBColor(r: 0.686, g: 0.321, b: 0.871),
+            running: RGBColor(r: 0.000, g: 0.478, b: 1.000),
+            success: RGBColor(r: 0.204, g: 0.780, b: 0.349),
+            inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+        ),
+        // First release.
+        StatusColorMap(
+            problem: RGBColor(r: 0.95, g: 0.14, b: 0.18),
+            attention: RGBColor(r: 1.00, g: 0.52, b: 0.10),
+            waiting: RGBColor(r: 0.55, g: 0.28, b: 0.92),
+            running: RGBColor(r: 0.14, g: 0.52, b: 0.98),
+            success: RGBColor(r: 0.08, g: 0.80, b: 0.34),
+            inactive: RGBColor(r: 0.48, g: 0.52, b: 0.58)
+        ),
+    ]
 
     func color(for status: Status) -> RGBColor {
         switch status {
@@ -86,6 +100,11 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     }
 
     var isDefault: Bool { self == .default }
+
+    /// Bump installs that never customized colors to the current vivid palette.
+    static func migrated(from saved: StatusColorMap) -> StatusColorMap {
+        retiredDefaults.contains(saved) ? .default : saved
+    }
 }
 
 // MARK: - Settings
@@ -292,11 +311,11 @@ final class SettingsStore {
         min(panelHeightRange.upperBound, max(panelHeightRange.lowerBound, v))
     }
 
-    /// Keep enum order, drop unknowns/dupes, guarantee at least `.name`.
+    /// Keep enum order, drop retired columns, guarantee at least `.name`.
     static func normalizePanelColumns(_ cols: [PanelColumn]) -> [PanelColumn] {
         var seen = Set<PanelColumn>()
         var ordered: [PanelColumn] = []
-        for col in PanelColumn.allCases where cols.contains(col) {
+        for col in PanelColumn.allCases where col.isRenderable && cols.contains(col) {
             if seen.insert(col).inserted {
                 ordered.append(col)
             }
@@ -376,7 +395,7 @@ final class SettingsStore {
         respectSystemReduceMotion = p.respectSystemReduceMotion ?? true
         ribbonMotionStyle = p.ribbonMotionStyle ?? .transitionsOnly
         let savedColors = p.statusColors ?? .default
-        statusColors = savedColors == .legacyDefault ? .default : savedColors
+        statusColors = StatusColorMap.migrated(from: savedColors)
         notificationsPaused = p.notificationsPaused
         notifyRequired = p.notifyRequired
         notifyUrgent = p.notifyUrgent

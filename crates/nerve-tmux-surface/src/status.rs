@@ -37,6 +37,12 @@ const ASK_REASONS: [&str; 6] = [
     "elicitation",
 ];
 
+/// `Subject.swift:82` — the job is doing work of its own.
+const BUSY_KINDS: [&str; 4] = ["subagent", "tool", "thinking", "info"];
+
+/// `Subject.swift:92` — open, but no turn of its own under way.
+const IDLE_KINDS: [&str; 3] = ["idle", "starting", "booting"];
+
 /// Derived display status.
 ///
 /// Variants are declared in priority order, so the derived `Ord` *is* the
@@ -115,7 +121,7 @@ impl StatusClass {
             let Some(reason) = Self::reason(job) else {
                 return Some(Self::Attention); // :53
             };
-            return Some(if WAIT_REASONS.contains(&reason.as_str()) {
+            return Some(if names(reason, &WAIT_REASONS) {
                 Self::Waiting // :46
             } else {
                 Self::Attention // :49
@@ -125,10 +131,10 @@ impl StatusClass {
         // :56 — informational needs a reason to say anything at all.
         if job.attention.level >= AttentionLevel::Informational {
             let reason = Self::reason(job)?;
-            if ASK_REASONS.contains(&reason.as_str()) {
+            if names(reason, &ASK_REASONS) {
                 return Some(Self::Attention); // :58
             }
-            if WAIT_REASONS.contains(&reason.as_str()) {
+            if names(reason, &WAIT_REASONS) {
                 return Some(Self::Waiting); // :60
             }
         }
@@ -171,26 +177,41 @@ impl StatusClass {
     /// `current.type` is producer vocabulary, not an enum: a spelling this
     /// table never heard of decides nothing (`:94`).
     fn from_activity(job: &JobView) -> Option<Self> {
-        let current = job.current.as_ref()?;
-        match current.kind.to_ascii_lowercase().as_str() {
-            // :82 — shell / subagent still running is Running, never Attention.
-            "subagent" | "tool" | "thinking" | "info" => {
-                (job.lifecycle == Lifecycle::Active).then_some(Self::Running) // :84
-            }
-            // :86 — phase complete, waiting on stream feedback.
-            "monitor" => Some(Self::Success),
-            "waiting" => Some(Self::Waiting), // :88
-            // :92 — `starting` is Ready (open, no turn yet); never Running.
-            "idle" | "starting" | "booting" => Some(Self::Inactive),
-            _ => None,
+        let kind = job.current.as_ref()?.kind.as_str();
+        // :82 — shell / subagent still running is Running, never Attention.
+        if names(kind, &BUSY_KINDS) {
+            // :84
+            return (job.lifecycle == Lifecycle::Active).then_some(Self::Running);
         }
+        // :86 — phase complete, waiting on stream feedback.
+        if names(kind, &["monitor"]) {
+            return Some(Self::Success);
+        }
+        if names(kind, &["waiting"]) {
+            return Some(Self::Waiting); // :88
+        }
+        // :92 — `starting` is Ready (open, no turn yet); never Running.
+        if names(kind, &IDLE_KINDS) {
+            return Some(Self::Inactive);
+        }
+        None
     }
 
-    /// `Subject.swift:44` / `:56` — the reason, lower-cased for matching.
-    fn reason(job: &JobView) -> Option<String> {
-        job.attention
-            .reason
-            .as_ref()
-            .map(|reason| reason.to_ascii_lowercase())
+    /// `Subject.swift:44` / `:56` — the reason, as the producer spelled it.
+    ///
+    /// Not lower-cased here: matching is case-insensitive
+    /// ([`names`]), and this runs once per job per repaint — the sidebar
+    /// derives a class for the filter bar, the section list and every row.
+    fn reason(job: &JobView) -> Option<&str> {
+        job.attention.reason.as_deref()
     }
+}
+
+/// Whether producer vocabulary `value` is one of `set`, ignoring case.
+///
+/// The tables are ASCII, so this is the whole of "lower-case it and compare"
+/// without the allocation that phrasing implies.
+fn names(value: &str, set: &[&str]) -> bool {
+    let value = value.trim();
+    set.iter().any(|known| known.eq_ignore_ascii_case(value))
 }

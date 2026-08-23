@@ -45,7 +45,19 @@ struct HubFrame: Decodable, Sendable, Equatable {
         let gone = try c.decodeIfPresent([PublishedJob].self, forKey: .departed) ?? []
         jobs = live.map(\.job)
         departed = gone.map(\.job)
-        timelines = live.reduce(into: [:]) { result, published in
+        timelines = Self.timelines(from: live)
+    }
+
+    /// `GET /v1/jobs` — bare array, same rows as a connect frame's `jobs`.
+    init(jobsListJSON data: Data, decoder: JSONDecoder) throws {
+        let live = try decoder.decode([PublishedJob].self, from: data)
+        jobs = live.map(\.job)
+        departed = []
+        timelines = Self.timelines(from: live)
+    }
+
+    private static func timelines(from live: [PublishedJob]) -> [String: [TimelineEntry]] {
+        live.reduce(into: [:]) { result, published in
             guard !published.timeline.isEmpty else { return }
             result[published.job.id] = published.timeline
         }

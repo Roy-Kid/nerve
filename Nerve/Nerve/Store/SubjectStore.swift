@@ -29,6 +29,21 @@ enum PanelGroup: String, CaseIterable, Identifiable {
 final class JobStore {
     private(set) var jobs: [String: Job] = [:]
     private(set) var timelines: [String: [TimelineEntry]] = [:]
+
+    /// Every stored job that is not legacy noise, in panel order.
+    ///
+    /// Derived once per write rather than per read. It feeds the ribbon, the
+    /// panel sections, the header counts and the keyboard list — several of
+    /// which one SwiftUI update asks for more than once — and each of those
+    /// used to filter the dictionary and sort the result again.
+    ///
+    /// Sorted here is what lets every reader below filter and stop: a filter
+    /// keeps order, so a section carved out of this list is already in it.
+    private(set) var conversationJobs: [Job] = []
+
+    /// The open half of ``conversationJobs`` — the only jobs a surface paints.
+    /// Ended rows leave on `SessionEnd`, so this is what "active" means.
+    private(set) var openJobs: [Job] = []
     /// Dormant: the producer action queue lives in the hub and no surface path
     /// fills this yet. Kept exposed so the panel's observation surface is stable.
     private(set) var pendingActions: [PendingActionRequest] = []
@@ -63,23 +78,14 @@ final class JobStore {
 
     // MARK: - Queries
 
-    var activeJobs: [Job] {
-        conversationJobs
-            .filter { $0.lifecycle != .ended }
-            .sorted(by: sortComparator)
-    }
+    var activeJobs: [Job] { openJobs }
 
     /// Open conversation jobs only (legacy subagent child rows excluded).
-    var activeCount: Int { activeJobs.count }
-
-    /// All stored jobs that are not legacy noise (includes group + member + roots).
-    private var conversationJobs: [Job] {
-        jobs.values.filter(\.isConversationJob)
-    }
+    var activeCount: Int { openJobs.count }
 
     /// Jobs that may paint the ribbon (respects Settings.ribbonRootsOnly).
     private func ribbonEligibleJobs() -> [Job] {
-        let open = conversationJobs.filter { $0.lifecycle != .ended }
+        let open = openJobs
         let rootsOnly = settingsProvider?().ribbonRootsOnly ?? true
         if rootsOnly {
             return open.filter(\.paintsRibbon)
@@ -97,16 +103,14 @@ final class JobStore {
 
     /// Top-level panel rows only (groups + standalone jobs). Members nest under groups.
     private func panelVisibleJobs() -> [Job] {
-        conversationJobs
-            .filter { $0.lifecycle != .ended && !$0.isMemberJob }
+        openJobs.filter { !$0.isMemberJob }
     }
 
     /// Child members for a group row, filtered by Settings.panelMemberVisibility.
     func members(of groupId: String) -> [Job] {
         let visibility = settingsProvider?().panelMemberVisibility ?? .attention
-        let kids = conversationJobs.filter { job in
-            guard job.lifecycle != .ended, job.isMemberJob else { return false }
-            return job.groupId == groupId
+        let kids = openJobs.filter { job in
+            job.isMemberJob && job.groupId == groupId
         }
         let filtered: [Job]
         switch visibility {
@@ -120,7 +124,7 @@ final class JobStore {
         case .all:
             filtered = kids
         }
-        return filtered.sorted(by: sortComparator)
+        return filtered
     }
 
     // MARK: Status counts (single source of truth = `Job.status`)
@@ -136,8 +140,8 @@ final class JobStore {
     }
 
     private func countOpen(where pred: (Job) -> Bool) -> Int {
-        conversationJobs.reduce(into: 0) { n, job in
-            if job.lifecycle != .ended, pred(job) { n += 1 }
+        openJobs.reduce(into: 0) { n, job in
+            if pred(job) { n += 1 }
         }
     }
 
@@ -198,9 +202,7 @@ final class JobStore {
     func jobsInPriorityGroup(_ group: PanelGroup) -> [Job] {
         switch group {
         case .attention, .active:
-            return conversationJobs
-                .filter { $0.lifecycle != .ended && priorityGroup(for: $0.status) == group }
-                .sorted(by: sortComparator)
+            return openJobs.filter { priorityGroup(for: $0.status) == group }
         case .recent:
             // Session close removes the job immediately — no Recent linger.
             return []
@@ -219,8 +221,7 @@ final class JobStore {
             buckets[job.status, default: []].append(job)
         }
         return Status.allCases.compactMap { status in
-            guard var items = buckets[status], !items.isEmpty else { return nil }
-            items.sort(by: sortComparator)
+            guard let items = buckets[status], !items.isEmpty else { return nil }
             return StatusSection(id: "status:\(status.rawValue)", title: status.title, jobs: items)
         }
     }
@@ -234,9 +235,7 @@ final class JobStore {
         }
         return buckets
             .map { key, items in
-                var sorted = items
-                sorted.sort(by: sortComparator)
-                return StatusSection(id: "machine:\(key)", title: key, jobs: sorted)
+                StatusSection(id: "machine:\(key)", title: key, jobs: items)
             }
             .sorted { a, b in
                 a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
@@ -250,6 +249,10 @@ final class JobStore {
     }
 
 
+    /// Panel order: attention, then health, then failure, then recency.
+    ///
+    /// Applied once, in ``rederive()``. Every section below inherits it by
+    /// filtering rather than re-sorting.
     private func sortComparator(_ a: Job, _ b: Job) -> Bool {
         if a.attention.level != b.attention.level {
             return a.attention.level > b.attention.level
@@ -279,7 +282,7 @@ final class JobStore {
     /// Ended sessions leave on `SessionEnd` and do not paint Success/Problem wedges.
     /// Members stay off the ribbon unless Settings.ribbonRootsOnly is false.
     func ribbonColorJobs() -> [Job] {
-        ribbonEligibleJobs().sorted(by: sortComparator)
+        ribbonEligibleJobs()
     }
 
     /// Ribbon layout follows the status-panel grouping mode.
@@ -288,7 +291,8 @@ final class JobStore {
     /// Priority / Status / Source visibly reorders the continuous light strip.
     func ribbonSegments(mode: PanelGroupMode? = nil) -> [RibbonSegment] {
         let resolved = mode ?? settingsProvider?().panelGroupMode ?? .machine
-        let paintIds = Set(ribbonColorJobs().map(\.id))
+        let painted = ribbonColorJobs()
+        let paintIds = Set(painted.map(\.id))
         guard !paintIds.isEmpty else { return [] }
 
         // Panel order under the active grouping — this is what the user just switched.
@@ -296,7 +300,7 @@ final class JobStore {
 
         if ordered.count < paintIds.count {
             let seen = Set(ordered.map(\.id))
-            for s in ribbonColorJobs() where !seen.contains(s.id) {
+            for s in painted where !seen.contains(s.id) {
                 ordered.append(s)
             }
         }
@@ -417,6 +421,7 @@ final class JobStore {
             next[stored.id] = stored
         }
         jobs = next
+        rederive()
         timelines = incomingTimelines
         // A selected row that left the frame must not keep the panel expanded
         // on a job that no longer exists.
@@ -425,6 +430,15 @@ final class JobStore {
         }
         revision &+= 1
         ribbonInvalidationSink?()
+    }
+
+    /// Rebuild the published orderings — the one place a write to ``jobs``
+    /// becomes something a view reads.
+    private func rederive() {
+        conversationJobs = jobs.values
+            .filter(\.isConversationJob)
+            .sorted(by: sortComparator)
+        openJobs = conversationJobs.filter { $0.lifecycle != .ended }
     }
 
     /// Display-only actions: strip remote control; **Open/Focus first**, then Copy.
@@ -546,6 +560,7 @@ final class JobStore {
             s.actions[idx].state = state
             s.updatedAt = clock()
             jobs[jobId] = s
+            rederive()
         }
     }
 

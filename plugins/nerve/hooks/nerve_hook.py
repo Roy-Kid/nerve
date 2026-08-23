@@ -59,22 +59,30 @@ Install (GitHub marketplace — repo root)
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import os
 import platform
 import socket
 import sys
-import tempfile
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 # Fixed ingest — tunnels (SSH RemoteForward) make remotes look like loopback.
-INGEST_BASE = "http://127.0.0.1:17890"
+INGEST_HOST = "127.0.0.1"
+INGEST_PORT = 17890
+INGEST_BASE = f"http://{INGEST_HOST}:{INGEST_PORT}"
+
+#: How long one ingest POST may hold the agent up. Fail-open: past this the
+#: hook gives up on the hub, never on the agent.
+INGEST_TIMEOUT = 1.5
+
+#: Most of an answer the hook ever reads. It wants a status line, and — when
+#: that status is a refusal — enough of the body to say why.
+_ANSWER_CAP = 2048
 
 PRODUCER_META: dict[str, dict[str, str]] = {
     "claude": {"id": "claude-code", "name": "Claude Code", "kind": "agent.claude"},
@@ -108,12 +116,18 @@ def _version_ms() -> int:
     return int(time.time() * 1000)
 
 
+@functools.lru_cache(maxsize=1)
 def _machine_alias() -> str:
     """Prefer stable Bonjour LocalHostName on macOS; fall back to gethostname short.
 
     Campus / DHCP networks often rewrite DNS hostnames (e.g. RoydeAir.kemi…,
     emp-181-64.eduroam…), while Nerve Settings “This Mac” uses the Bonjour
     LocalHostName (e.g. RoydeMacBook-Air). Mismatch → 403 and silent drop.
+
+    Cached for the life of the hook process: the answer is a `scutil` spawn and
+    a machine does not rename itself between the slot id, the job body and the
+    ingest envelope of one event. One process is one event, so nothing here
+    outlives what it describes.
     """
     if sys.platform == "darwin":
         try:
@@ -134,7 +148,9 @@ def _machine_alias() -> str:
     return short
 
 
+@functools.lru_cache(maxsize=1)
 def _machine_kind() -> str:
+    """Which OS family reported this job. Constant per process — see [_machine_alias]."""
     system = platform.system().lower()
     if system == "darwin":
         return "darwin"
@@ -179,8 +195,6 @@ def _event_name(payload: dict[str, Any]) -> str:
 
 def _detect_producer(payload: dict[str, Any]) -> str:
     """Detect producer from host env (plugin runner) then payload heuristics."""
-    import os
-
     # Host harness injects these for plugin hooks — most reliable signal.
     if os.environ.get("GROK_PLUGIN_ROOT") or os.environ.get("GROK_SESSION_ID") or os.environ.get(
         "GROK_HOOK_EVENT"
@@ -266,6 +280,11 @@ def _project_name(cwd: str) -> str:
     if not cwd:
         return "unknown"
     return Path(cwd).name or "unknown"
+
+
+#: How much of a user prompt a surface may show. Longer than the one-line
+#: `current.summary` cap: the sidebar's Prompt panel wraps and scrolls it.
+PROMPT_MAX = 400
 
 
 def _truncate(s: str | None, n: int = 160) -> str | None:
@@ -948,6 +967,14 @@ def _build_job(
         extensions["agentId"] = aid
     if facets.get("end_reason"):
         extensions["endReason"] = facets["end_reason"]
+    # The prompt only exists in this one hook run — `current` is overwritten by
+    # the next event, so it travels as an extension the hub keeps (see
+    # `crates/nerve-hub/src/state/store.rs` STICKY_EXTENSIONS).
+    if _event_name(payload) == "userpromptsubmit":
+        prompt = _truncate(_get(payload, "prompt", "user_prompt", default=""), PROMPT_MAX)
+        if prompt:
+            extensions["lastPrompt"] = prompt
+            extensions["lastPromptAt"] = now
 
     location = _build_location(payload, producer_key, cwd)
 
@@ -993,41 +1020,67 @@ def _build_job(
     return job
 
 
+def _post_json(path: str, payload: dict[str, Any]) -> tuple[int, str]:
+    """POST `payload` to the fixed ingest endpoint; return `(status, detail)`.
+
+    Written straight onto a socket rather than through ``urllib``: the hook is
+    one process per agent event, and importing ``urllib.request`` — which drags
+    in ``http.client``, ``email`` and ``ssl`` — costs more than the request it
+    would send. The peer is a known one at a fixed loopback address speaking a
+    contract we own (`crates/nerve-hub/src/http/`), so the whole of what this
+    needs from HTTP is a request line, four headers and a status line.
+
+    Raises whatever the socket raises; the caller is what fails open.
+    """
+    body = json.dumps(payload).encode("utf-8")
+    head = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {INGEST_HOST}:{INGEST_PORT}\r\n"
+        "User-Agent: nerve-hook/0.4\r\n"
+        "Content-Type: application/json\r\n"
+        # One request per connection: no keep-alive to manage, and the close is
+        # what ends the read below.
+        "Connection: close\r\n"
+        f"Content-Length: {len(body)}\r\n\r\n"
+    ).encode("ascii")
+
+    answer = b""
+    with socket.create_connection(
+        (INGEST_HOST, INGEST_PORT), timeout=INGEST_TIMEOUT
+    ) as sock:
+        sock.sendall(head + body)
+        while len(answer) < _ANSWER_CAP:
+            piece = sock.recv(_ANSWER_CAP)
+            if not piece:
+                break
+            answer += piece
+
+    status_line, _, rest = answer.partition(b"\r\n")
+    fields = status_line.split(None, 2)
+    status = int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else 0
+    detail = rest.partition(b"\r\n\r\n")[2].decode("utf-8", errors="replace")[:200]
+    return status, detail
+
+
 def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:
-    url = f"{INGEST_BASE}/v1/snapshot"
-    body = json.dumps(
-        {
-            "alias": alias,
-            "machineKind": machine_kind,
-            "jobs": [job],
-        }
-    ).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "nerve-hook/0.4",
-        },
-    )
+    payload = {
+        "alias": alias,
+        "machineKind": machine_kind,
+        "jobs": [job],
+    }
     try:
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            return 200 <= getattr(resp, "status", 200) < 300
-    except urllib.error.HTTPError as e:
-        # Fail open, but leave a breadcrumb for "why is Nerve empty?".
-        try:
-            detail = e.read().decode("utf-8", errors="replace")[:200]
-        except Exception:
-            detail = ""
-        print(
-            f"[nerve] snapshot HTTP {e.code} alias={alias!r} {detail}",
-            file=sys.stderr,
-        )
-        return False
+        status, detail = _post_json("/v1/snapshot", payload)
     except Exception as e:
         print(f"[nerve] snapshot failed alias={alias!r}: {e}", file=sys.stderr)
         return False
+    if 200 <= status < 300:
+        return True
+    # Fail open, but leave a breadcrumb for "why is Nerve empty?".
+    print(
+        f"[nerve] snapshot HTTP {status} alias={alias!r} {detail}",
+        file=sys.stderr,
+    )
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1054,6 +1107,10 @@ _SHELL_NAMES = frozenset(
 def _state_dir() -> Path:
     if _STATE_DIR_OVERRIDE is not None:
         return _STATE_DIR_OVERRIDE
+    # Imported here rather than at module scope: `tempfile` pulls in `shutil`
+    # and `random`, and an event the hook skips never reaches this.
+    import tempfile
+
     d = Path(tempfile.gettempdir()) / "nerve-hook"
     try:
         d.mkdir(mode=0o700, exist_ok=True)
@@ -1062,8 +1119,13 @@ def _state_dir() -> Path:
     return d
 
 
+@functools.lru_cache(maxsize=32)
 def _proc_ppid_and_name(pid: int) -> tuple[int | None, str | None]:
-    """Best-effort parent pid + command name (macOS / Linux)."""
+    """Best-effort parent pid + command name (macOS / Linux).
+
+    Cached per pid: the climb below asks about the same handful of processes
+    from several callers, and each answer costs a `ps` spawn.
+    """
     try:
         import subprocess
 
@@ -1085,8 +1147,15 @@ def _proc_ppid_and_name(pid: int) -> tuple[int | None, str | None]:
         return None, None
 
 
+@functools.lru_cache(maxsize=1)
 def _agent_process_pid() -> int | None:
-    """Climb past shell/python wrappers to the agent host PID for this slot."""
+    """Climb past shell/python wrappers to the agent host PID for this slot.
+
+    The single most expensive thing the hook does — up to six `ps` spawns — and
+    four callers want it (the job body, the slot id, twice more when a
+    SessionStart supersedes the previous conversation). The tree above this
+    process cannot change while this process runs, so it is walked once.
+    """
     try:
         pid = os.getppid()
     except Exception:

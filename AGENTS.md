@@ -7,10 +7,10 @@ Agent entry for Codex / Grok / other harnesses. Same contract as [`CLAUDE.md`](.
 - **App:** `Nerve/Nerve/` (Swift, menu bar + ingest)
 - **Plugin:** `plugins/nerve/hooks/nerve_hook.py`
 - **Hook tests:** `python3 sources/agents/tests/test_nerve_hook.py`
-- **Public docs (website only):** `index-page/src/docs/content.ts` → `/docs/*`
+- **Public docs (website only):** `index/src/docs/content.ts` → `/docs/*`
 - **Agent notes:** `.claude/notes/`
 
-No `docs/` directory. Run site docs locally: `cd index-page && npm run dev`.
+No `docs/` directory. Run site docs locally: `cd index && npm run dev`.
 
 ## Hard rules
 

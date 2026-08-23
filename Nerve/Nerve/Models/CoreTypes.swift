@@ -325,6 +325,16 @@ enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashabl
         }
     }
 
+    /// Retired columns. They stay in the enum so saved preferences still
+    /// decode, but nothing offers them and nothing paints them — status is the
+    /// row dot, and producer is not shown at all.
+    var isRenderable: Bool {
+        switch self {
+        case .producer, .status: return false
+        default: return true
+        }
+    }
+
     /// Flexible columns absorb leftover width so rows stay aligned.
     var isFlexible: Bool {
         switch self {
@@ -346,6 +356,9 @@ enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashabl
     }
 
     static let defaultColumns: [PanelColumn] = [.name, .summary, .updated]
+
+    /// Columns users can toggle — every column that still paints something.
+    static var configurableColumns: [PanelColumn] { allCases.filter(\.isRenderable) }
 }
 
 // MARK: - Panel member visibility (view preference)

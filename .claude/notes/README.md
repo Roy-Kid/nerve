@@ -8,6 +8,6 @@ Passive agent knowledge for this repo (decisions, architecture map, open questio
 | `architecture.md` | Module map / layers |
 | `open-questions.md` | Unresolved product or tech questions |
 
-**Not** public documentation — that lives on the website (`index-page` → `/docs/*`).
+**Not** public documentation — that lives on the website (`index` → `/docs/*`).
 
 **Not** active specs — those go under `.claude/specs/` if used.

@@ -188,6 +188,68 @@ pub struct ProducerInfo {
     pub kind: Option<String>,
 }
 
+/// Workspace labels from the hook (`context.workspace`, `context.project`).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobContext {
+    #[serde(default)]
+    pub workspace: Option<String>,
+    #[serde(default)]
+    pub project: Option<String>,
+}
+
+/// Hook metadata — pid is the agent process when reported.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobExtensions {
+    #[serde(default)]
+    pub pid: Option<u32>,
+    /// What the human last asked this agent, as the producer reported it and
+    /// the hub kept it (`crates/nerve-hub/src/state/store.rs` STICKY_EXTENSIONS).
+    #[serde(default)]
+    pub last_prompt: Option<String>,
+}
+
+/// Where a surface should send the human back to.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocationInfo {
+    #[serde(rename = "openURL", default, skip_serializing_if = "Option::is_none")]
+    pub open_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_path: Option<String>,
+}
+
+/// One hub-maintained observation, embedded in each job.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineEntry {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub job_id: Option<String>,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, alias = "timestamp")]
+    pub at: Option<WireTime>,
+}
+
+/// An action a producer declares. Surfaces fulfill open/copy locally.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobAction {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub kind: String,
+}
+
 /// The subset of a hub job this surface paints.
 ///
 /// Everything but `id` defaults to what the hub itself would have filled in
@@ -216,6 +278,19 @@ pub struct JobView {
     pub outcome: Option<Outcome>,
     #[serde(default)]
     pub producer: ProducerInfo,
+
+    #[serde(default)]
+    pub context: JobContext,
+
+    #[serde(default)]
+    pub extensions: JobExtensions,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<LocationInfo>,
+    #[serde(default)]
+    pub actions: Vec<JobAction>,
+    #[serde(default)]
+    pub timeline: Vec<TimelineEntry>,
 
     #[serde(default)]
     pub created_at: Option<WireTime>,
@@ -249,6 +324,11 @@ impl Frame {
     /// caller decides whether to keep the last segment or go offline, and
     /// silently painting zero jobs would be a lie either way.
     pub fn decode(raw: &str) -> Result<Self, FrameError> {
+        serde_json::from_str(raw).map_err(FrameError::new)
+    }
+
+    /// Read `GET /v1/jobs` — a bare array, not an SSE envelope.
+    pub fn decode_jobs_list(raw: &str) -> Result<Vec<JobView>, FrameError> {
         serde_json::from_str(raw).map_err(FrameError::new)
     }
 }

@@ -12,7 +12,7 @@ Nerve/Nerve/Services/Hub     →  macOS surface client (spawn, SSE, frame diff)
 Nerve/Nerve/Store            →  JobStore (frame-fed read-only cache + ribbon segments)
 Nerve/Nerve/UI               →  menu-bar ribbon + status panel
 surfaces/tmux/ + crates/nerve-tmux-surface/  →  tmux surface (segment + popup)
-index-page/                  →  marketing + /docs handbook (React SPA)
+index/                  →  marketing + /docs handbook (React SPA)
 ```
 
 > Full rebuild pending: run `/mol:map` for a fresh blueprint (this block is a minimal truth patch).

@@ -362,6 +362,42 @@ private enum Fixture {
     }
     """
 
+    /// A job carrying the prompt the hub kept for it, and one with a blank
+    /// spelling of the same key.
+    static let payloadWithPrompts = """
+    {
+      "jobs": [
+        {
+          "id": "claude-code:s1", "kind": "session", "name": "nerve", "alias": "local",
+          "lifecycle": "active",
+          "current": { "type": "tool", "name": "Bash", "summary": "Using Bash" },
+          "attention": { "level": "none" },
+          "health": "ok",
+          "progress": { "kind": "none" },
+          "producer": { "id": "claude-code" },
+          "capabilities": [], "actions": [],
+          "createdAt": "2026-08-22T08:00:00Z",
+          "updatedAt": "2026-08-22T08:10:00Z",
+          "version": 1,
+          "extensions": { "lastPrompt": "  fix the sidebar preview  ", "pid": 4242 }
+        },
+        {
+          "id": "codex:s2", "kind": "session", "name": "index", "alias": "local",
+          "lifecycle": "active",
+          "attention": { "level": "none" },
+          "health": "ok",
+          "progress": { "kind": "none" },
+          "producer": { "id": "codex" },
+          "capabilities": [], "actions": [],
+          "createdAt": "2026-08-22T08:00:00Z",
+          "updatedAt": "2026-08-22T08:10:00Z",
+          "version": 1,
+          "extensions": { "lastPrompt": "   " }
+        }
+      ]
+    }
+    """
+
     /// Idle hub: both arrays empty (the common heartbeat frame).
     static let payloadEmptyArrays = """
     { "jobs": [], "departed": [] }
@@ -530,6 +566,89 @@ private func test_decodeFrameAcceptsEmptyPayloads(_ t: TestRun) throws {
     t.equal(bare.departed.count, 0, "missing departed key decodes as empty array")
 }
 
+// MARK: - Tests: last prompt (panel detail)
+
+/// The prompt the hub kept reaches the panel, trimmed.
+private func test_lastPromptDecodesFromExtensions(_ t: TestRun) throws {
+    let frame = try decodeFrame(Fixture.payloadWithPrompts)
+    let job = try t.unwrap(frame.jobs.first { $0.id == "claude-code:s1" }, "prompt job decodes")
+
+    t.equal(job.lastPrompt, "fix the sidebar preview", "prompt is exposed, trimmed")
+    // The row still says what the agent is doing now — the two are different facts.
+    t.equal(job.current?.summary, "Using Bash", "current activity is untouched by the prompt")
+}
+
+/// A blank prompt is no prompt: the panel must not paint an empty block.
+private func test_blankOrAbsentPromptIsNil(_ t: TestRun) throws {
+    let frame = try decodeFrame(Fixture.payloadWithPrompts)
+    let blank = try t.unwrap(frame.jobs.first { $0.id == "codex:s2" }, "blank-prompt job decodes")
+    t.check(blank.lastPrompt == nil, "whitespace-only prompt reads as no prompt")
+
+    let plain = try decodeFrame(Fixture.payloadWithoutDepartedKey)
+    t.check(plain.jobs.first?.lastPrompt == nil, "a job that never reported one has no prompt")
+}
+
+// MARK: - Tests: which machine a job runs on
+
+/// A job's machine is a name comparison, and only that.
+private func test_foreignAliasIsNameComparisonOnly(_ t: TestRun) throws {
+    let mac = "RoydeMacBook-Air"
+    t.check(RemoteMachine.foreignAlias(of: "arrhenius1", local: mac) == "arrhenius1",
+            "another machine keeps its own name")
+    t.check(RemoteMachine.foreignAlias(of: " roydemacbook-air ", local: mac) == nil,
+            "this machine, spelled differently, is still this machine")
+    t.check(RemoteMachine.foreignAlias(of: "", local: mac) == nil,
+            "a job that named no machine is never foreign")
+}
+
+/// The ssh Host that reaches a machine, scored best-first.
+private func test_bestHostPrefersTheClosestName(_ t: TestRun) throws {
+    let hosts = [
+        (alias: "dardel", hostName: "dardel.pdc.kth.se"),
+        (alias: "Arrhenius", hostName: "login.hpc.arrhenius.naiss.se"),
+        (alias: "hpc", hostName: "arrhenius1.hpc.example"),
+    ]
+    // `HostName arrhenius1…` names the machine outright; `Host Arrhenius` only
+    // shares a prefix with it.
+    t.equal(RemoteMachine.bestHost(for: "arrhenius1", among: hosts), "hpc",
+            "the config entry that names the machine wins")
+    t.equal(RemoteMachine.bestHost(for: "dardel", among: hosts), "dardel",
+            "an exact Host token matches")
+    t.check(RemoteMachine.bestHost(for: "beskow", among: hosts) == nil,
+            "a machine the config cannot reach has no host")
+}
+
+/// Scoring is exact > first label > shared prefix, and never a coincidence.
+private func test_hostScoreRanksExactAboveLabelAbovePrefix(_ t: TestRun) throws {
+    t.check(RemoteMachine.score(host: "arrhenius1", alias: "arrhenius1") == 3, "exact name")
+    t.check(RemoteMachine.score(host: "arrhenius1.uu.se", alias: "arrhenius1") == 2, "first label")
+    t.check(RemoteMachine.score(host: "Arrhenius", alias: "arrhenius1") == 1, "shared prefix")
+    t.check(RemoteMachine.score(host: "a", alias: "arrhenius1") == nil, "one letter is not a machine")
+    t.check(RemoteMachine.score(host: "dardel", alias: "arrhenius1") == nil, "unrelated hosts")
+}
+
+/// The panel button says where it goes when that is not this Mac.
+private func test_openTitleNamesTheOtherMachine(_ t: TestRun) throws {
+    var remote = Job.make(
+        id: "claude-code:s1",
+        name: "molcrafts",
+        alias: "arrhenius1",
+        producer: ProducerInfo(id: "claude-code")
+    )
+    remote.location = LocationInfo(openURL: "file:///nobackup/proj/molcrafts")
+    t.equal(ActionService.focusActionTitle(for: remote), "Open on arrhenius1",
+            "a job elsewhere is not labelled `Open`")
+
+    var here = Job.make(
+        id: "claude-code:s2",
+        name: "nerve",
+        alias: LocalMachine.alias,
+        producer: ProducerInfo(id: "claude-code")
+    )
+    here.location = LocationInfo(openURL: "file:///Users/me/nerve")
+    t.equal(ActionService.focusActionTitle(for: here), "Open", "a local workspace still opens")
+}
+
 // MARK: - Minimal assertion harness (no XCTest / swift-testing in this repo)
 
 private struct TestAbort: Error {
@@ -587,6 +706,14 @@ enum FrameDifferTestMain {
         ("test_decodeFrameWithoutDepartedKeyYieldsEmptyArray", test_decodeFrameWithoutDepartedKeyYieldsEmptyArray),
         ("test_decodeFrameIgnoresUnknownKeys", test_decodeFrameIgnoresUnknownKeys),
         ("test_decodeFrameAcceptsEmptyPayloads", test_decodeFrameAcceptsEmptyPayloads),
+        // Panel detail — what the human asked
+        ("test_lastPromptDecodesFromExtensions", test_lastPromptDecodesFromExtensions),
+        ("test_blankOrAbsentPromptIsNil", test_blankOrAbsentPromptIsNil),
+        // Machines — a job in the panel is not always a job on this Mac
+        ("test_foreignAliasIsNameComparisonOnly", test_foreignAliasIsNameComparisonOnly),
+        ("test_bestHostPrefersTheClosestName", test_bestHostPrefersTheClosestName),
+        ("test_hostScoreRanksExactAboveLabelAbovePrefix", test_hostScoreRanksExactAboveLabelAbovePrefix),
+        ("test_openTitleNamesTheOtherMachine", test_openTitleNamesTheOtherMachine),
     ]
 
     static func main() {

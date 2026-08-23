@@ -1,0 +1,1234 @@
+/** Structured docs content for website subpages (source of truth; repo READMEs point here). */
+
+import type { Locale } from '../i18n/messages';
+
+export type DocNavItem = {
+  slug: string;
+  title: string;
+  summary: string;
+};
+
+export const docNav: DocNavItem[] = [
+  {
+    slug: 'get-started',
+    title: 'Get started',
+    summary: 'Run Nerve, use the ribbon, verify with demo jobs.',
+  },
+  {
+    slug: 'plugin',
+    title: 'Agent plugins',
+    summary: 'Claude Code, Codex, Grok marketplace hooks → local ingest.',
+  },
+  {
+    slug: 'machines',
+    title: 'Machines & remotes',
+    summary: 'SSH reverse tunnels so remote agents report to this Mac.',
+  },
+  {
+    slug: 'tmux',
+    title: 'tmux plugin',
+    summary: 'Install, keys, options, remotes, and troubleshooting.',
+  },
+  {
+    slug: 'status',
+    title: 'Status & lifecycle',
+    summary: 'One job per session, facets, ribbon colors, design scope.',
+  },
+  {
+    slug: 'ingest',
+    title: 'Ingest API',
+    summary: 'Loopback HTTP for snapshots, events, live status updates, and actions.',
+  },
+  {
+    slug: 'privacy',
+    title: 'Privacy',
+    summary: 'Memory-only runtime, loopback only, fail-open hooks.',
+  },
+];
+
+const zhDocNav: DocNavItem[] = [
+  {
+    slug: 'get-started',
+    title: '开始使用',
+    summary: '运行 Nerve、使用状态条，并用演示任务验证。',
+  },
+  {
+    slug: 'plugin',
+    title: 'Agent 插件',
+    summary: 'Claude Code、Codex、Grok 市场钩子 → 本地接入。',
+  },
+  {
+    slug: 'machines',
+    title: '机器与远程主机',
+    summary: '通过 SSH 反向隧道，让远程 agent 向这台 Mac 报告。',
+  },
+  {
+    slug: 'tmux',
+    title: 'tmux 插件',
+    summary: '安装、按键、选项、远程主机与故障排查。',
+  },
+  {
+    slug: 'status',
+    title: '状态与生命周期',
+    summary: '每个会话一个任务、状态切面、状态条颜色与设计边界。',
+  },
+  {
+    slug: 'ingest',
+    title: '接入 API',
+    summary: '用于快照、事件、实时状态更新与操作的本地回环 HTTP。',
+  },
+  {
+    slug: 'privacy',
+    title: '隐私',
+    summary: '运行时仅存内存、只用本地回环、钩子失败开放。',
+  },
+];
+
+export type DocBlock =
+  | { type: 'p'; text: string }
+  | { type: 'ul'; items: string[] }
+  | { type: 'ol'; items: string[] }
+  | { type: 'code'; lang?: string; code: string }
+  | { type: 'table'; headers: string[]; rows: string[][] }
+  | { type: 'callout'; title?: string; text: string }
+  | { type: 'h2'; text: string }
+  | { type: 'h3'; text: string };
+
+export type DocPage = {
+  slug: string;
+  title: string;
+  lede: string;
+  blocks: DocBlock[];
+};
+
+export const docPages: DocPage[] = [
+  {
+    slug: 'get-started',
+    title: 'Get started',
+    lede: 'Nerve aggregates the status your agents already push, over an open loopback protocol you can implement yourself.',
+    blocks: [
+      { type: 'h2', text: 'Requirements' },
+      {
+        type: 'ul',
+        items: [
+          'macOS 14+',
+          'Xcode 15+ (to build the app from source)',
+          'Python 3 (agent hook plugin only)',
+          'OpenSSH client (for remote machines)',
+        ],
+      },
+      { type: 'h2', text: 'Run from the repo' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `./scripts/nerve.sh --run
+
+# optional: demo jobs (hub must already be running)
+./scripts/nerve.sh --demo
+
+# optional smoke checks
+./scripts/nerve.sh --verify-loop`,
+      },
+      {
+        type: 'p',
+        text: 'A continuous ribbon appears in the macOS menu bar — no Dock icon, no floating window.',
+      },
+      { type: 'h2', text: 'Ribbon gestures' },
+      {
+        type: 'table',
+        headers: ['Gesture', 'Action'],
+        rows: [
+          ['Left-click', 'Status panel (↑/↓, Enter expand; expanded rows show the last prompt, detail, timeline, actions)'],
+          ['Right-click', 'Settings… or Quit Nerve'],
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Settings: General (menu bar, panel, endpoint) · Machines (SSH tunnels) · Appearance (ribbon size & colors) · Notifications · About.',
+      },
+      { type: 'h2', text: 'Website (this site)' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `cd index
+npm install
+npm run dev      # local preview
+npm run build    # static → index/dist/`,
+      },
+    ],
+  },
+  {
+    slug: 'plugin',
+    title: 'Agent plugins',
+    lede: 'One marketplace plugin reports session lifecycle to Nerve as jobs. Fail-open, stateless, no project environment variables.',
+    blocks: [
+      {
+        type: 'callout',
+        title: 'One job per conversation',
+        text: 'Job id is {producer}:{session_id} (never append agent_id). Subagents are not separate panel rows — they only refine the main session’s current facet. Tool noise inside subagents (agent_id set) is ignored. The app also drops legacy child rows (parentJobId / role=subagent / multi-segment ids). Stop waits for input; SessionEnd removes the row. If the host skips SessionEnd on /new · /clear · fork, the next SessionStart for the same UI slot posts an ended snapshot for the previous session_id. Local snapshots carry pid so a closed terminal can be reaped automatically.',
+      },
+      { type: 'h2', text: 'Install' },
+      {
+        type: 'table',
+        headers: ['Harness', 'Install', 'Producer id'],
+        rows: [
+          [
+            'Claude Code',
+            '/plugin marketplace add Roy-Kid/nerve → /plugin install nerve@nerve',
+            'claude-code',
+          ],
+          [
+            'Codex',
+            'codex plugin marketplace add Roy-Kid/nerve → codex plugin add nerve@nerve',
+            'codex',
+          ],
+          ['Grok', 'Same Claude-compatible marketplace / plugin', 'grok'],
+        ],
+      },
+      { type: 'h3', text: 'Claude Code' },
+      {
+        type: 'code',
+        lang: 'text',
+        code: `/plugin marketplace add Roy-Kid/nerve
+/plugin install nerve@nerve`,
+      },
+      { type: 'h3', text: 'Codex CLI' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `codex plugin marketplace add Roy-Kid/nerve
+codex plugin add nerve@nerve
+
+# local development
+codex plugin marketplace add /ABS/PATH/TO/nerve
+codex plugin add nerve@nerve`,
+      },
+      {
+        type: 'p',
+        text: 'Interactive Codex: /plugins → nerve → install. Trust hooks with /hooks if prompted.',
+      },
+      { type: 'h2', text: 'What hooks report' },
+      {
+        type: 'table',
+        headers: ['Hook', 'Main session facets', 'Ribbon'],
+        rows: [
+          ['SessionStart', 'active + starting (“Ready”)', 'Inactive'],
+          ['UserPromptSubmit', 'active + thinking', 'Running'],
+          ['PreToolUse / PostToolUse (main thread)', 'active + tool / subagent', 'Running'],
+          ['SubagentStart', 'active + current.type=subagent', 'Running'],
+          ['SubagentStop (no other bg work)', 'active + thinking', 'Running'],
+          ['Stop + shell/subagent bg tasks', 'current.type=subagent', 'Running'],
+          ['Stop + monitor-only bg tasks', 'current.type=monitor + outcome=partial', 'Success'],
+          ['Stop empty bg / idle_prompt', 'attention.reason=input', 'Attention'],
+          ['idle_prompt + shell/agent toast', 'current.type=subagent', 'Running'],
+          ['idle_prompt + monitor toast', 'current.type=monitor + partial', 'Success'],
+          ['PermissionRequest / permission_prompt', 'attention.reason=approval', 'Attention'],
+          ['SessionEnd', 'ended + endReason (+ success|cancelled)', 'Leaves panel'],
+          ['SessionStart (new id, same UI slot)', 'previous id → ended (superseded)', 'Old row leaves'],
+          ['Other Notification (no type)', 'active + info', 'Running'],
+        ],
+      },
+      {
+        type: 'ul',
+        items: [
+          'Fail-open: if Nerve is down, hooks exit 0 and never block the agent.',
+          'No environment variables. Ingest URL is fixed: http://127.0.0.1:17890.',
+          'Mostly stateless: each event posts a full job snapshot. A tiny temp-dir slot map remembers the last session_id per UI/process so /new without SessionEnd still closes the previous row.',
+          'Snapshots include extensions.slot + extensions.pid (when known) so the app can supersede ghosts and reap closed terminals on this Mac.',
+          'UserPromptSubmit also sends extensions.lastPrompt (+ lastPromptAt), trimmed to 400 characters. Only that one hook run sees the prompt, so the hub carries it forward onto later snapshots — both surfaces show it: the tmux sidebar’s Prompt panel, and the Prompt block in an expanded panel row on macOS.',
+          'Local actions: Open / Focus (location) first, then Copy. Rows leave via SessionEnd, slot supersede, or PID reap — no Dismiss / Approve / submit_input.',
+          'location.openURL + focusHint on every snapshot so the panel can jump back to the agent UI.',
+          'Alias = free-form machine label (prefer Bonjour LocalHostName on macOS).',
+          'Status is never inferred from free-text — only event name + structured fields.',
+        ],
+      },
+      { type: 'h2', text: 'Development' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `python3 sources/agents/tests/test_nerve_hook.py`,
+      },
+      {
+        type: 'p',
+        text: 'sources/agents/nerve_hook.py is a symlink to plugins/nerve/hooks/nerve_hook.py. Prefer marketplace install over the legacy sources/agents/codex/hooks.json template.',
+      },
+    ],
+  },
+  {
+    slug: 'machines',
+    title: 'Machines & remotes',
+    lede: 'Settings → Machines manages SSH reverse tunnels so a remote’s loopback ingest reaches the Mac running Nerve.',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Machines in Settings are for tunnels only. Any free-form alias in a snapshot is shown in the panel — there is no allow-list.',
+      },
+      { type: 'h2', text: 'On the Mac running Nerve' },
+      {
+        type: 'ol',
+        items: [
+          'Open Settings → Machines',
+          'This Mac is always present (alias = hostname short name / Bonjour LocalHostName)',
+          'Remote list is loaded from your ~/.ssh/config — use the refresh control to re-read Hosts',
+          'Enable a Host, then Connect. Nerve only injects RemoteForward; connection details stay in your SSH config',
+        ],
+      },
+      {
+        type: 'callout',
+        title: 'known_hosts & OTP / captcha clusters',
+        text: 'Host keys come from local known_hosts. For MFA/captcha: run `ssh <alias>` in Terminal first so ControlMaster is up; Connect uses `ssh -O forward` on that master when available.',
+      },
+      {
+        type: 'callout',
+        title: 'Alias tip',
+        text: 'Use the remote hostname short name as the alias so hooks match without extra setup. Campus DHCP hostnames often differ from Bonjour LocalHostName — mismatch can drop snapshots.',
+      },
+      { type: 'h2', text: 'On the remote' },
+      {
+        type: 'ol',
+        items: [
+          'Install the nerve marketplace plugin',
+          'Run sessions as usual',
+          'Hooks POST to http://127.0.0.1:17890 — the tunnel forwards that to the host Nerve',
+        ],
+      },
+      { type: 'h2', text: 'A remote job in the panel' },
+      {
+        type: 'p',
+        text: 'A job reported by another machine keeps that machine’s alias, and its workspace path belongs to that machine — so nothing here tries to open it locally. The panel’s primary action says where it goes (“Open on arrhenius1”) and opens an ssh session to that machine instead, through whatever you have registered for ssh: URLs (Terminal by default). The Host comes from your own ~/.ssh/config, matched against the alias by name, so ssh Arrhenius reaches a machine that calls itself arrhenius1. IDE deep links (cursor://, vscode://) are still opened as they are — those route to their own remote. With no matching Host, Nerve copies the location rather than pretend it opened something.',
+      },
+      {
+        type: 'p',
+        text: 'The tmux sidebar answers the same question its own way: Enter on a remote job jumps to the pane you are already ssh’d into that machine from. Neither surface ever matches a remote pid or a remote path against something local.',
+      },
+    ],
+  },
+  {
+    slug: 'tmux',
+    title: 'tmux plugin',
+    lede: 'The menu bar and tmux read the same live updates, so both stay current without depending on each other.',
+    blocks: [
+      {
+        type: 'callout',
+        title: 'Quick setup',
+        text: 'From a repo checkout, one command builds the helper, wires the tmux entry point, and reloads tmux.',
+      },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `./scripts/nerve.sh --build --tmux --tmux-reload`,
+      },
+      {
+        type: 'p',
+        text: 'nerve-tmux-surface opens a sidebar pane (aligned with tmux-agent-sidebar): a status filter bar, scrollable job list, and a foldable Prompt/Git panel — Prompt shows what you last asked that agent, which is the one thing a status row cannot tell you. prefix + e toggles it. Data comes from nerve-hub over SSE — the same frames the menu-bar app reads. No menu bar required, so this works on a headless Linux box too.',
+      },
+      { type: 'h2', text: 'Install the helper' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `cargo install --path crates/nerve-tmux-surface`,
+      },
+      {
+        type: 'p',
+        text: 'That puts nerve-tmux-surface in ~/.cargo/bin. Working from a checkout you do not have to install at all — the plugin looks in the repo’s own target/release first, then /opt/homebrew/bin, /usr/local/bin, ~/.cargo/bin, and finally PATH.',
+      },
+      { type: 'h2', text: 'Wire it into tmux' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `# ~/.tmux.conf — from a checkout
+run-shell ~/src/nerve/surfaces/tmux/nerve.tmux
+
+# ~/.tmux.conf — with TPM handling the clone and updates
+set -g @plugin 'Roy-Kid/nerve'
+run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
+      },
+      {
+        type: 'callout',
+        title: 'Why TPM needs the second line',
+        text: 'TPM auto-sources only the *.tmux files at the root of a plugin repo. Nerve is a monorepo and the entry point lives at surfaces/tmux/nerve.tmux, so @plugin does the cloning and updating while run-shell points at the entry point. The run-shell line alone is enough if you would rather clone it yourself.',
+      },
+      {
+        type: 'p',
+        text: 'Sourcing it more than once is safe: keybindings are rebound, and a second sidebar toggle is a no-op when one already exists in the window.',
+      },
+      { type: 'h2', text: 'Keys' },
+      {
+        type: 'table',
+        headers: ['Key', 'Action'],
+        rows: [
+          ['prefix + e', 'Sidebar cycle: open (focused) → unfocus → focus. Auto-created sidebars open unfocused, so a new window leaves you typing where you were'],
+          ['j / k', 'Move the selection — the pane beside the sidebar follows it, on this machine or another'],
+          ['(walk into a pane)', 'The reverse also holds: focus a pane yourself and the highlight comes to the job running there'],
+          ['Enter', 'Jump to that job’s real session/window/pane — or, for a job on another machine, the pane you are ssh’d into it from, with that machine’s tmux selecting the job’s own window'],
+          ['h / l / Tab', 'Cycle status filter'],
+          ['Shift+Tab', 'Prompt ⇄ Git bottom panel'],
+          ['Ctrl-d / Ctrl-u, PgDn / PgUp', 'Scroll the bottom panel — the selection never leaves the job list'],
+          ['Space', 'Fold the panel to its title line (click the title does the same)'],
+        ],
+      },
+      { type: 'h2', text: 'Options' },
+      {
+        type: 'table',
+        headers: ['Option', 'Default', 'What it sets'],
+        rows: [
+          ['@nerve_sidebar_width', '15%', 'Sidebar width (columns or %)'],
+          ['@nerve_sidebar_position', 'left', 'left or right'],
+          ['@nerve_sidebar_bottom_height', '20', 'Bottom panel height (0 hides)'],
+          ['@nerve_sidebar_auto_create', 'on', 'Auto-create sidebar on new windows'],
+          ['@nerve_sidebar_key', 'e', 'Toggle key after prefix'],
+          ['@nerve_sidebar_close_key', 'q', 'Close key after prefix'],
+        ],
+      },
+      {
+        type: 'callout',
+        title: 'Display only',
+        text: 'Enter jumps to the matched tmux session/window/pane for that job. There is no approve, cancel, or submit — and tmux never opens a Finder folder.',
+      },
+      { type: 'h2', text: 'How it relates to the hub' },
+      {
+        type: 'ul',
+        items: [
+          'The helper is a consumer, not an authority. It looks for nerve-hub (/opt/homebrew/bin → /usr/local/bin → ~/.cargo/bin → PATH) and starts one if nothing answers 127.0.0.1:17890, at most once every 10s.',
+          'The sidebar pane holds exactly one GET /v1/stream?surface=tmux. That open connection is this surface’s hub refcount.',
+          'One sidebar per window (auto-created by default). Kill the pane and the hub loses a subscriber.',
+          'Nothing is written to disk: no launchd job, no systemd unit, no state file. What state there is lives in tmux options, which die with the tmux server.',
+        ],
+      },
+      { type: 'h2', text: 'Remote hosts get this for free' },
+      {
+        type: 'p',
+        text: 'If a machine already has a RemoteForward tunnel back to your Mac (see Machines & remotes), then 127.0.0.1:17890 on that remote already is your Mac’s hub. Install the helper there, add the run-shell line, and the remote’s tmux shows your jobs. The helper has no concept of “remote” to configure — no host, no port, no env var. It is the same design that lets agent hooks on a remote POST to loopback and mean this Mac.',
+      },
+      {
+        type: 'p',
+        text: 'A job reported by another machine has no pane on this one, so it is matched by the session you are watching it through: the pane running ssh to that host. Enter jumps there — the honest local answer to “take me back to that agent”. The host is matched against the machine alias the producer reported, through your ~/.ssh/config when the Host you typed is spelled differently (ssh Arrhenius → arrhenius1).',
+      },
+      {
+        type: 'p',
+        text: 'That pane is a route to the machine, not to the job: every job on that machine resolves to the same ssh session. So moving the highlight onto a remote job does two things at once — the ssh pane comes beside the sidebar, and that machine’s tmux is asked to turn to the job — which is what makes one shared session show the row under the cursor rather than whatever it was left on.',
+      },
+      {
+        type: 'p',
+        text: 'Enter does the same thing, and lands you there: it focuses the ssh pane, then runs one command on that machine — the same pid → tty → pane resolution, then select-window / select-pane — so the far side turns to the job you picked instead of whatever it was showing. Over a live ControlMaster that lands in a few hundred milliseconds; it never blocks the sidebar, never asks for a password (BatchMode), and does nothing when the agent is not in a tmux pane there. If more than one client is attached to that remote tmux, the window is selected but no one’s view is dragged along — yours cannot be told from theirs.',
+      },
+      {
+        type: 'callout',
+        title: 'A remote pid is never matched locally',
+        text: 'The pid and workspace path on a remote job describe another machine’s process and another machine’s filesystem, so neither is compared against a local pane — the same rule the hub follows before it reaps a job whose process is gone.',
+      },
+      { type: 'h2', text: 'Notifications stay on macOS' },
+      {
+        type: 'p',
+        text: 'Attention in the sidebar is colour in the filter bar and list rows — not a system notification. Banners belong to the menu-bar app.',
+      },
+      { type: 'h2', text: 'When the sidebar is not what you expect' },
+      {
+        type: 'table',
+        headers: ['You see', 'It means'],
+        rows: [
+          ['No sidebar', 'Run prefix + e, or check nerve-tmux-surface is installed'],
+          ['nerve: offline', 'Hub not reachable — it retries automatically'],
+          ['nerve: no jobs', 'Hub is up but nothing is reporting'],
+          ['… is another machine — no ssh pane here', 'That job runs elsewhere and no pane here is ssh’d into it. Open an ssh session to it (or run the sidebar on that machine — the tunnel already carries the jobs both ways)'],
+          ['no local pane for …', 'The job runs on this machine, but its agent is not in any tmux pane — an IDE terminal, say'],
+        ],
+      },
+      {
+        type: 'p',
+        text: 'nerve.tmux always exits 0 and never blocks tmux, whatever it fails to find — a status instrument that breaks your terminal is worse than no instrument. ./scripts/nerve.sh --verify-tmux proves the whole path end to end against an isolated tmux server, so it never touches the one you are using.',
+      },
+    ],
+  },
+  {
+    slug: 'status',
+    title: 'Status & lifecycle',
+    lede: 'Display status is derived from structured facets only. One continuous ribbon; sessions leave on SessionEnd.',
+    blocks: [
+      { type: 'h2', text: 'Where status lives' },
+      {
+        type: 'p',
+        text: 'The authority is nerve-hub, a small local daemon on fixed loopback 127.0.0.1:17890. Producers POST there; it holds every job and its timeline in memory and fans the whole set out to surfaces over SSE. The menu-bar app is a pure surface — it paints what the hub streams and derives no truth of its own, so the jobs outlive any single window.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The port is fixed and not configurable: binding 17890 is itself the single-instance lock, so there is no port field in Settings (only the endpoint, shown for copying) and no NERVE_* env to set.',
+          'The app auto-spawns the nerve-hub binary bundled inside Nerve.app when nothing answers on the port, and attaches to the running hub otherwise.',
+          'Surfaces are reference-counted. When the last SSE subscriber disconnects, the hub waits out a grace period (30s by default) and exits on its own. Producer POSTs do not keep it alive.',
+          'Every surface — menu bar, tmux plugin, plain curl — reads the same frames, so status never depends on which one you have open.',
+        ],
+      },
+      { type: 'h2', text: 'Display statuses' },
+      {
+        type: 'table',
+        headers: ['Status', 'Default', 'Meaning'],
+        rows: [
+          ['Problem', 'Red', 'Failed / cannot continue'],
+          ['Attention', 'Orange', 'Needs input, auth, or decision'],
+          ['Waiting', 'Purple', 'Waiting on system / resources / deps'],
+          ['Running', 'Blue', 'Actively executing'],
+          ['Success', 'Green', 'Monitor waiting for feedback, or ended success'],
+          ['Inactive', 'Gray', 'Ready (no turn yet), paused, or unknown'],
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Open agent sessions stay on the panel while lifecycle is active. On SessionEnd the job is removed immediately. Shell / subagent still running is Running (never Attention). Monitor-only background work is Success green — a phase finished and the stream is waiting for feedback. Your turn (next prompt or approval) is Attention — continue in the agent UI; Nerve never types or approves. SessionStart is Ready/Inactive (not “waiting on you”). Closed terminals on this Mac are reaped via producer PID when present.',
+      },
+      { type: 'h2', text: 'Main-session lifecycle' },
+      {
+        type: 'table',
+        headers: ['Phase', 'Facet', 'Ribbon'],
+        rows: [
+          ['Start', 'starting (“Ready”)', 'Inactive'],
+          ['Work', 'thinking · tool', 'Running'],
+          ['Your turn', 'idle · attention.reason=input', 'Attention'],
+          ['Approval in agent', 'waiting · attention.reason=approval', 'Attention'],
+          ['Background shell / subagent', 'subagent (+ background_tasks)', 'Running'],
+          ['Background monitor only', 'monitor + outcome=partial', 'Success'],
+          ['End', 'ended (+ endReason)', 'Leaves panel'],
+        ],
+      },
+      { type: 'h2', text: 'Focus (A+B — not control)' },
+      {
+        type: 'ul',
+        items: [
+          'Snapshots carry location.openURL (IDE deep link when hosted in Cursor/VS Code, else workspace file://) and location.focusHint (producer · project · host · path).',
+          'Panel primary action is Open / Focus — jumps to the agent workspace. Copy is secondary. No Approve / Type here.',
+          'Notification click selects the job, expands it in the panel, and runs Open/Focus.',
+          'Attention copy is honest: “Your turn in agent” / “Approval needed in agent” — return to the agent UI to continue.',
+        ],
+      },
+      { type: 'h2', text: 'How a session leaves the panel' },
+      {
+        type: 'ul',
+        items: [
+          'SessionEnd (clear, logout, prompt_input_exit, …) — authoritative.',
+          'Same UI slot + new SessionStart — previous id ended as superseded (/new · /clear without SessionEnd).',
+          'Local producer PID gone — app reaps as process_gone (closed terminal / kill).',
+        ],
+      },
+      { type: 'h2', text: 'Design notes' },
+      {
+        type: 'ul',
+        items: [
+          'Jobs, not agents — machines are tunnels; producers report jobs.',
+          'Memory-only runtime for jobs, timelines, and pending actions.',
+          'Fail-open hooks; fixed loopback ingest; no project env vars.',
+          'Out of scope: multi-display ribbons, cloud sync, disk history, in-app agent chat, submit_input / approve from Nerve.',
+        ],
+      },
+    ],
+  },
+  {
+    slug: 'ingest',
+    title: 'Ingest API',
+    lede: 'Loopback only: http://127.0.0.1:17890. The port is fixed, not a setting. Remotes reach it through SSH reverse tunnels.',
+    blocks: [
+      {
+        type: 'p',
+        text: 'This contract belongs to nerve-hub, a small local daemon that holds the jobs. Producers POST into it; the menu-bar app and the tmux plugin are surfaces that read from it. Any alias is accepted — there is no allow-list.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The port is not a setting. 17890 is fixed because binding it is the single-instance lock, so producers can hard-code the address and there is no NERVE_* env to read. The macOS app shows the endpoint under Settings → Local Endpoint but offers no port field to change.',
+          'You do not start the hub by hand. The menu-bar app spawns the nerve-hub binary bundled inside Nerve.app when nothing answers on the port, and attaches to the already-running hub otherwise.',
+        ],
+      },
+      { type: 'h2', text: 'Endpoints' },
+      {
+        type: 'table',
+        headers: ['Method', 'Path', 'Purpose'],
+        rows: [
+          ['GET', '/v1/health', 'Liveness'],
+          ['GET', '/v1/jobs', 'Current jobs (in memory), each with its timeline'],
+          ['GET', '/v1/stream', 'SSE — full frames for surfaces'],
+          ['POST', '/v1/snapshot', 'Full job snapshot(s) — requires alias'],
+          ['POST', '/v1/events', 'Incremental events — requires alias when creating jobs'],
+          ['POST', '/v1/demo', 'Built-in demo jobs'],
+          ['POST', '/v1/clear', 'Clear in-memory jobs'],
+          ['GET', '/v1/actions/pending?producerId=', 'Poll action queue'],
+          ['POST', '/v1/actions/result?producerId=', 'Report action completion'],
+        ],
+      },
+      { type: 'h2', text: 'Snapshot body' },
+      {
+        type: 'code',
+        lang: 'json',
+        code: `{
+  "alias": "gpu-box",
+  "machineKind": "linux",
+  "jobs": [
+    {
+      "id": "claude-code:sess_1",
+      "kind": "session",
+      "name": "nerve",
+      "alias": "gpu-box",
+      "producer": {
+        "id": "claude-code",
+        "name": "Claude Code",
+        "kind": "agent.claude"
+      },
+      "lifecycle": "active",
+      "current": { "type": "thinking", "summary": "…" },
+      "attention": { "level": "none" },
+      "health": "ok",
+      "progress": { "kind": "none" },
+      "createdAt": "…",
+      "updatedAt": "…",
+      "version": 1
+    }
+  ]
+}`,
+      },
+      {
+        type: 'ul',
+        items: [
+          'alias — free-form machine label shown in the panel',
+          'kind — job shape (session, build, test, …), not “agent”',
+          'producer — who reported the job',
+          'name — typically project basename (cwd); status lives in current / attention',
+        ],
+      },
+      { type: 'h2', text: 'Surface stream' },
+      {
+        type: 'p',
+        text: 'GET /v1/stream is Server-Sent Events. Every frame carries the whole truth — there is no delta protocol.',
+      },
+      {
+        type: 'code',
+        lang: 'json',
+        code: `{ "jobs": [ … ], "departed": [ … ] }`,
+      },
+      {
+        type: 'ul',
+        items: [
+          'jobs — the authoritative full set. The first frame arrives on connect.',
+          'departed — terminal states of jobs evicted since the previous frame (lifecycle ended, endedAt, outcome). A hint so surfaces do not lose the ending; jobs stays the authority.',
+          'Reconnecting is resyncing — drop the connection and the next first frame is the full set again.',
+          'Every job in a frame has the same shape as one from /v1/jobs, including the timeline the hub keeps for it: up to 40 entries, heartbeats excluded.',
+          '?surface=<label> tags the connection in hub logs; it does not change what a frame contains.',
+        ],
+      },
+      {
+        type: 'callout',
+        title: 'The stream is the lifecycle',
+        text: 'An open subscription is a surface being present. nerve-hub counts them: when the last one disconnects it waits out a grace period (30s by default) and exits. Producer POSTs do not keep it alive.',
+      },
+      { type: 'h2', text: 'Action protocol (producers poll themselves)' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `curl -s 'http://127.0.0.1:17890/v1/actions/pending?producerId=my-producer'
+curl -s -X POST 'http://127.0.0.1:17890/v1/actions/result?producerId=my-producer' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"id":"<pending-id>","state":"succeeded","message":"ok"}'`,
+      },
+      {
+        type: 'p',
+        text: 'There is no /v1/actions/invoke — the hub answers 404. Running an action (Open / Focus, Copy) is a surface capability: the hub echoes the actions a producer declares and derives none of its own.',
+      },
+      {
+        type: 'p',
+        text: 'Wire sample in the repo: fixtures/demo_snapshot.json — `./scripts/nerve.sh --demo` POSTs it to /v1/snapshot.',
+      },
+    ],
+  },
+  {
+    slug: 'privacy',
+    title: 'Privacy',
+    lede: 'You do not have to trust the privacy claim, you can read the source that proves it.',
+    blocks: [
+      {
+        type: 'ul',
+        items: [
+          'Jobs, timelines, and pending actions are memory-only for the nerve-hub process',
+          'Your last prompt per job (extensions.lastPrompt, 400 characters) travels in the same loopback snapshot and lives in hub RAM only — it dies with the job and with the hub',
+          'Quitting Nerve clears runtime state completely',
+          'Only preferences (machines, colors, notifications, coach flags) use UserDefaults',
+          'Tunnel Hosts prefer your existing ~/.ssh/config + known_hosts; Nerve’s managed block only adds RemoteForward',
+          'Ingest never leaves 127.0.0.1',
+          'Remotes only via SSH reverse tunnels you configure',
+          'Hooks fail open — agents never block on Nerve',
+        ],
+      },
+      {
+        type: 'callout',
+        text: 'There is no “save names/summaries” toggle because nothing is persisted for jobs. Demo and clear are HTTP ingest only.',
+      },
+    ],
+  },
+];
+
+const zhPluginPage: DocPage = {
+    slug: 'plugin',
+    title: 'Agent 插件',
+    lede: '一个市场插件会把会话生命周期作为任务报告给 Nerve。失败开放、无状态，不需要项目环境变量。',
+    blocks: [
+      {
+        type: 'callout',
+        title: '每个会话一个任务',
+        text: '任务 id 是 {producer}:{session_id}（永远不追加 agent_id）。Subagent 不会成为面板中的独立行——它们只更新主会话的 current 切面。设置了 agent_id 时，subagent 内的工具噪声会被忽略。应用还会丢弃旧的子行（parentJobId / role=subagent / 多段 id）。Stop 表示等待输入；SessionEnd 会移除该行。如果主机在 /new · /clear · fork 时跳过 SessionEnd，同一 UI slot 下一个 SessionStart 会为之前的 session_id 发送 ended 快照。本地快照会携带 pid，因此关闭的终端可以自动清理。',
+      },
+      { type: 'h2', text: '安装' },
+      {
+        type: 'table',
+        headers: ['Harness', '安装', 'Producer id'],
+        rows: [
+          [
+            'Claude Code',
+            '/plugin marketplace add Roy-Kid/nerve → /plugin install nerve@nerve',
+            'claude-code',
+          ],
+          [
+            'Codex',
+            'codex plugin marketplace add Roy-Kid/nerve → codex plugin add nerve@nerve',
+            'codex',
+          ],
+          ['Grok', '使用同一个兼容 Claude 的市场 / 插件', 'grok'],
+        ],
+      },
+      { type: 'h3', text: 'Claude Code' },
+      {
+        type: 'code',
+        lang: 'text',
+        code: `/plugin marketplace add Roy-Kid/nerve
+/plugin install nerve@nerve`,
+      },
+      { type: 'h3', text: 'Codex CLI' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `codex plugin marketplace add Roy-Kid/nerve
+codex plugin add nerve@nerve
+
+# local development
+codex plugin marketplace add /ABS/PATH/TO/nerve
+codex plugin add nerve@nerve`,
+      },
+      {
+        type: 'p',
+        text: '交互式 Codex：/plugins → nerve → install。如果收到提示，请用 /hooks 信任钩子。',
+      },
+      { type: 'h2', text: '钩子会报告什么' },
+      {
+        type: 'table',
+        headers: ['Hook', '主会话切面', '状态条'],
+        rows: [
+          ['SessionStart', 'active + starting (“Ready”)', '未活动'],
+          ['UserPromptSubmit', 'active + thinking', '运行中'],
+          ['PreToolUse / PostToolUse（主线程）', 'active + tool / subagent', '运行中'],
+          ['SubagentStart', 'active + current.type=subagent', '运行中'],
+          ['SubagentStop（没有其他后台工作）', 'active + thinking', '运行中'],
+          ['Stop + shell/subagent 后台任务', 'current.type=subagent', '运行中'],
+          ['Stop + 仅 monitor 后台任务', 'current.type=monitor + outcome=partial', '已完成'],
+          ['Stop 空后台 / idle_prompt', 'attention.reason=input', '需要你'],
+          ['idle_prompt + shell/agent toast', 'current.type=subagent', '运行中'],
+          ['idle_prompt + monitor toast', 'current.type=monitor + partial', '已完成'],
+          ['PermissionRequest / permission_prompt', 'attention.reason=approval', '需要你'],
+          ['SessionEnd', 'ended + endReason (+ success|cancelled)', '离开面板'],
+          ['SessionStart（同一 UI slot 下的新 id）', '之前的 id → ended (superseded)', '旧行离开'],
+          ['其他 Notification（没有 type）', 'active + info', '运行中'],
+        ],
+      },
+      {
+        type: 'ul',
+        items: [
+          '失败开放：如果 Nerve 未运行，钩子会以 0 退出，永远不会阻塞 agent。',
+          '无环境变量。接入 URL 固定为 http://127.0.0.1:17890。',
+          '几乎无状态：每个事件都会发送完整的任务快照。一个很小的临时目录 slot map 会记住每个 UI/进程的最后一个 session_id，因此没有 SessionEnd 的 /new 仍然能关闭之前的行。',
+          '快照会包含 extensions.slot + extensions.pid（已知时），以便应用替换幽灵行，并清理这台 Mac 上已关闭的终端。',
+          'UserPromptSubmit 还会发送 extensions.lastPrompt（以及 lastPromptAt），截断为 400 个字符。只有这次钩子运行能看到该提示，因此 hub 会把它延续到后续快照中——两个 surface 都会显示它：tmux 侧边栏的 Prompt 面板，以及 macOS 展开面板行里的 Prompt 块。',
+          '本地操作：先是 Open / Focus，然后是 Copy。行通过 SessionEnd、slot supersede 或 PID reap 离开——没有 Dismiss / Approve / submit_input。',
+          '每个快照都有 location.openURL + focusHint，因此面板可以跳回 agent UI。',
+          'Alias = 自由形式的机器标签（在 macOS 上优先使用 Bonjour LocalHostName）。',
+          '状态永远不会从自由文本推断——只使用事件名和结构化字段。',
+        ],
+      },
+      { type: 'h2', text: '开发' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `python3 sources/agents/tests/test_nerve_hook.py`,
+      },
+      {
+        type: 'p',
+        text: 'sources/agents/nerve_hook.py 是指向 plugins/nerve/hooks/nerve_hook.py 的符号链接。请优先使用市场安装，而不是旧的 sources/agents/codex/hooks.json 模板。',
+      },
+    ],
+  };
+
+const zhMachinesPage: DocPage = {
+  slug: 'machines',
+  title: '机器与远程主机',
+  lede: '设置 → 机器会管理 SSH 反向隧道，让远程机器的本地回环接入能到达正在运行 Nerve 的 Mac。',
+  blocks: [
+    {
+      type: 'p',
+      text: '设置中的机器只用于隧道。快照中任何自由形式的 alias 都会显示在面板中——没有允许列表。',
+    },
+    { type: 'h2', text: '在运行 Nerve 的 Mac 上' },
+    {
+      type: 'ol',
+      items: [
+        '打开设置 → 机器',
+        '这台 Mac 始终存在（alias = hostname 短名 / Bonjour LocalHostName）',
+        '远程列表从你的 ~/.ssh/config 加载——使用刷新控件重新读取 Hosts',
+        '启用一个 Host，然后点击连接。Nerve 只会注入 RemoteForward；连接详情仍保留在你的 SSH 配置中',
+      ],
+    },
+    {
+      type: 'callout',
+      title: 'known_hosts 与 OTP / 验证码集群',
+      text: '主机密钥来自本地 known_hosts。对于 MFA/验证码：先在终端中运行 `ssh <alias>` 以启动 ControlMaster；可用时，连接会在该 master 上使用 `ssh -O forward`。',
+    },
+    {
+      type: 'callout',
+      title: 'Alias 提示',
+      text: '使用远程主机的 hostname 短名作为 alias，这样钩子无需额外设置就能匹配。校园 DHCP hostname 经常与 Bonjour LocalHostName 不同——不匹配可能会丢弃快照。',
+    },
+    { type: 'h2', text: '在远程机器上' },
+    {
+      type: 'ol',
+      items: [
+        '安装 nerve 市场插件',
+        '照常运行会话',
+        '钩子会 POST 到 http://127.0.0.1:17890——隧道会把请求转发到运行 Nerve 的主机',
+      ],
+    },
+    { type: 'h2', text: '面板里的远程任务' },
+    {
+      type: 'p',
+      text: '来自另一台机器的任务会保留那台机器的 alias，它的工作区路径也属于那台机器——所以这里不会去本地打开它。面板的主操作会写明去向（“Open on arrhenius1”），改为打开一个到那台机器的 ssh 会话，交给你为 ssh: 注册的应用（默认是终端）。Host 取自你自己的 ~/.ssh/config，按名字与 alias 匹配，所以 ssh Arrhenius 能连到自称 arrhenius1 的机器。IDE 深链（cursor://、vscode://）仍按原样打开——它们自己会路由到各自的远程。如果配置里没有匹配的 Host，Nerve 会复制位置，而不是假装打开了什么。',
+    },
+    {
+      type: 'p',
+      text: 'tmux 侧边栏用自己的方式回答同一个问题：在远程任务上按 Enter，会跳到你已经 ssh 进那台机器的那个 pane。那个 pane 通向的是**机器**而不是某个任务——同一台机器上的每个任务都会解析到同一个 ssh 会话，所以把高亮移到远程任务上会同时做两件事：那个 ssh pane 被搬到侧边栏旁边，同时请那台机器的 tmux 切到该任务——这样一个共享的会话显示的才是光标所在的那一行，而不是它上次停在的地方。Enter 做同一件事并把你送过去：聚焦那个 pane，然后在那台机器上跑一条命令（同样的 pid → tty → pane，然后 select-window / select-pane）。有活的 ControlMaster 时几百毫秒内完成，不阻塞侧边栏、不会索要密码；如果 agent 不在对面的 tmux 里就什么也不做。两个 surface 都不会拿远程的 pid 或远程路径去和本地的东西匹配。',
+    },
+  ],
+};
+
+const zhTmuxPage: DocPage = {
+  slug: 'tmux',
+  title: 'tmux 插件',
+  lede: '菜单栏和 tmux 读取同一份实时更新，因此两者无需相互依赖也能保持最新。',
+  blocks: [
+    {
+      type: 'callout',
+      title: '快速设置',
+      text: '从仓库 checkout 出发，一条命令就会构建 helper、连好 tmux 入口并重新加载 tmux。',
+    },
+    {
+      type: 'code',
+      lang: 'bash',
+      code: `./scripts/nerve.sh --build --tmux --tmux-reload`,
+    },
+    {
+      type: 'p',
+      text: 'nerve-tmux-surface 会打开一个侧边栏 pane（与 tmux-agent-sidebar 对齐）：状态筛选栏、可滚动的任务列表，以及可折叠的 Prompt/Git 面板——Prompt 会显示你最后向该 agent 提出的内容，这正是状态行无法告诉你的一件事。prefix + e 用来切换它。数据通过 SSE 来自 nerve-hub——与菜单栏应用读取的 frame 相同。不需要菜单栏，因此它也能在无界面的 Linux 机器上工作。',
+    },
+    { type: 'h2', text: '安装 helper' },
+    {
+      type: 'code',
+      lang: 'bash',
+      code: `cargo install --path crates/nerve-tmux-surface`,
+    },
+    {
+      type: 'p',
+      text: '这会把 nerve-tmux-surface 放到 ~/.cargo/bin。从 checkout 开发时，你完全不必安装——插件会先查找仓库自己的 target/release，然后依次查找 /opt/homebrew/bin、/usr/local/bin、~/.cargo/bin，最后是 PATH。',
+    },
+    { type: 'h2', text: '接入 tmux' },
+    {
+      type: 'code',
+      lang: 'bash',
+      code: `# ~/.tmux.conf — from a checkout
+run-shell ~/src/nerve/surfaces/tmux/nerve.tmux
+
+# ~/.tmux.conf — with TPM handling the clone and updates
+set -g @plugin 'Roy-Kid/nerve'
+run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
+    },
+    {
+      type: 'callout',
+      title: '为什么 TPM 需要第二行',
+      text: 'TPM 只会自动 source 插件仓库根目录下的 *.tmux 文件。Nerve 是 monorepo，入口点位于 surfaces/tmux/nerve.tmux，因此 @plugin 负责 clone 和更新，run-shell 则指向入口点。如果你愿意自己 clone，只有 run-shell 那一行就够了。',
+    },
+    {
+      type: 'p',
+      text: '重复 source 是安全的：按键绑定会重新设置，当窗口中已有侧边栏时，再次切换不会执行任何操作。',
+    },
+    { type: 'h2', text: '按键' },
+    {
+      type: 'table',
+      headers: ['按键', '操作'],
+      rows: [
+        ['prefix + e', '侧边栏循环：打开+聚焦 → 取消聚焦 → 关闭'],
+        ['j / k', '移动选择；右侧 pane 预览该任务'],
+        ['Enter', '跳转到该任务的真实 session/window/pane'],
+        ['h / l / Tab', '循环切换状态筛选器'],
+        ['Shift+Tab', '底部面板在 Prompt ⇄ Git 之间切换'],
+        ['Ctrl-d / Ctrl-u, PgDn / PgUp', '滚动底部面板——选择始终留在任务列表中'],
+        ['Space', '把面板折叠到标题行（点击标题效果相同）'],
+      ],
+    },
+    { type: 'h2', text: '选项' },
+    {
+      type: 'table',
+      headers: ['选项', '默认值', '用途'],
+      rows: [
+        ['@nerve_sidebar_width', '15%', '侧边栏宽度（列数或 %）'],
+        ['@nerve_sidebar_position', 'left', 'left 或 right'],
+        ['@nerve_sidebar_bottom_height', '20', '底部面板高度（0 表示隐藏）'],
+        ['@nerve_sidebar_auto_create', 'on', '在新窗口中自动创建侧边栏'],
+        ['@nerve_sidebar_key', 'e', 'prefix 之后的切换键'],
+        ['@nerve_sidebar_close_key', 'q', 'prefix 之后的关闭键'],
+      ],
+    },
+    {
+      type: 'callout',
+      title: '仅用于显示',
+      text: 'Enter 会跳转到与该任务匹配的 tmux session/window/pane。这里没有 approve、cancel 或 submit，tmux 也永远不会打开 Finder 文件夹。',
+    },
+    { type: 'h2', text: '它与 hub 的关系' },
+    {
+      type: 'ul',
+      items: [
+        'helper 是 consumer，不是 authority。它会查找 nerve-hub（/opt/homebrew/bin → /usr/local/bin → ~/.cargo/bin → PATH）；如果 127.0.0.1:17890 没有响应，就启动一个，且最快每 10s 尝试一次。',
+        '侧边栏 pane 只保持一条 GET /v1/stream?surface=tmux。这条打开的连接就是该 surface 的 hub refcount。',
+        '每个窗口一个侧边栏（默认自动创建）。关闭该 pane，hub 就会失去一个 subscriber。',
+        '任何内容都不会写入磁盘：没有 launchd job、systemd unit 或 state file。存在的少量状态位于 tmux options 中，它们会随 tmux server 一起消失。',
+      ],
+    },
+    { type: 'h2', text: '远程主机无需额外配置' },
+    {
+      type: 'p',
+      text: '如果一台机器已经有一条 RemoteForward 隧道连回你的 Mac（参见机器与远程主机），那么远程主机上的 127.0.0.1:17890 就已经是你 Mac 的 hub。在那里安装 helper、添加 run-shell 行，远程主机的 tmux 就会显示你的任务。helper 没有需要配置的“远程”概念——没有 host、port 或 env var。这与远程 agent 钩子 POST 到 loopback 却指向这台 Mac 是同一套设计。',
+    },
+    { type: 'h2', text: '系统通知仍留在 macOS' },
+    {
+      type: 'p',
+      text: '侧边栏中的 Attention 会以筛选栏和列表行的颜色呈现，而不是系统通知。通知横幅属于菜单栏应用。',
+    },
+    { type: 'h2', text: '当侧边栏不符合预期时' },
+    {
+      type: 'table',
+      headers: ['你看到的内容', '它的含义'],
+      rows: [
+        ['没有侧边栏', '运行 prefix + e，或检查 nerve-tmux-surface 是否已安装'],
+        ['nerve: offline', 'Hub 无法访问——它会自动重试'],
+        ['nerve: no jobs', 'Hub 已启动，但没有任务正在报告'],
+      ],
+    },
+    {
+      type: 'p',
+      text: '无论 nerve.tmux 找不到什么，它都会以 0 退出，永远不阻塞 tmux——会破坏终端的状态工具，还不如没有。./scripts/nerve.sh --verify-tmux 会针对一个隔离的 tmux server 端到端验证整条路径，因此它永远不会碰你正在使用的那一个。',
+    },
+  ],
+};
+
+const zhStatusPage: DocPage = {
+  slug: 'status',
+  title: '状态与生命周期',
+  lede: '显示状态只从结构化切面推导。一条连续状态条；会话在 SessionEnd 时离开。',
+  blocks: [
+    { type: 'h2', text: '状态存在哪里' },
+    {
+      type: 'p',
+      text: '权威来源是 nerve-hub：一个运行在固定本地回环 127.0.0.1:17890 上的小型守护进程。Producer 向它 POST；它在内存中保存每个任务及其时间线，并通过 SSE 把整个集合广播给 surface。菜单栏应用是纯 surface——它只绘制 hub 推送的内容，不会自行推导事实，因此任务的寿命不受任何单一窗口影响。',
+    },
+    {
+      type: 'ul',
+      items: [
+        '端口固定且不可配置：绑定 17890 本身就是单实例锁，因此设置中没有端口字段（只显示可复制的 endpoint），也没有要设置的 NERVE_* env。',
+        '当端口没有响应时，应用会自动启动 Nerve.app 中捆绑的 nerve-hub binary；否则就连接已运行的 hub。',
+        'Surface 使用引用计数。最后一个 SSE subscriber 断开后，hub 会等待一段宽限时间（默认 30s），然后自行退出。Producer POST 不会让它保持运行。',
+        '每个 surface——菜单栏、tmux 插件、普通 curl——都读取同一份 frame，因此状态永远不依赖你打开了哪一个 surface。',
+      ],
+    },
+    { type: 'h2', text: '显示状态' },
+    {
+      type: 'table',
+      headers: ['状态', '默认颜色', '含义'],
+      rows: [
+        ['Problem', '红色', '失败 / 无法继续'],
+        ['Attention', '橙色', '需要输入、认证或决策'],
+        ['Waiting', '紫色', '等待系统 / 资源 / 依赖'],
+        ['Running', '蓝色', '正在积极执行'],
+        ['Success', '绿色', 'Monitor 等待反馈，或已成功结束'],
+        ['Inactive', '灰色', '就绪（尚未开始 turn）、已暂停或未知'],
+      ],
+    },
+    {
+      type: 'p',
+      text: '当 lifecycle 是 active 时，打开的 agent 会话会留在面板中。SessionEnd 时任务会立即移除。仍在运行的 Shell / subagent 是 Running（永远不是 Attention）。仅 monitor 的后台工作是绿色 Success——一个阶段已结束，stream 正在等待反馈。轮到你（下一条 prompt 或 approval）时是 Attention——请在 agent UI 中继续；Nerve 永远不会代你输入或批准。SessionStart 是 Ready/Inactive（不是“正在等你”）。如果 producer PID 存在，这台 Mac 上已关闭的终端会被清理。',
+    },
+    { type: 'h2', text: '主会话生命周期' },
+    {
+      type: 'table',
+      headers: ['阶段', 'Facet', '状态条'],
+      rows: [
+        ['开始', 'starting (“Ready”)', 'Inactive'],
+        ['工作', 'thinking · tool', 'Running'],
+        ['轮到你', 'idle · attention.reason=input', 'Attention'],
+        ['在 agent 中批准', 'waiting · attention.reason=approval', 'Attention'],
+        ['后台 shell / subagent', 'subagent (+ background_tasks)', 'Running'],
+        ['仅后台 monitor', 'monitor + outcome=partial', 'Success'],
+        ['结束', 'ended (+ endReason)', '离开面板'],
+      ],
+    },
+    { type: 'h2', text: '聚焦（A+B——不是控制）' },
+    {
+      type: 'ul',
+      items: [
+        '快照会携带 location.openURL（宿主为 Cursor/VS Code 时是 IDE deep link，否则是工作区 file://）以及 location.focusHint（producer · project · host · path）。',
+        '面板的主操作是 Open / Focus——跳转到 agent 工作区。Copy 是次要操作。没有 Approve / Type here。',
+        '点击通知会选中任务、在面板中展开它，并执行 Open/Focus。',
+        'Attention 文案会如实说明：“Your turn in agent” / “Approval needed in agent”——返回 agent UI 继续。',
+      ],
+    },
+    { type: 'h2', text: '会话如何离开面板' },
+    {
+      type: 'ul',
+      items: [
+        'SessionEnd（clear、logout、prompt_input_exit、…）——权威信号。',
+        '同一 UI slot + 新 SessionStart——之前的 id 会以 superseded 结束（没有 SessionEnd 的 /new · /clear）。',
+        '本地 producer PID 消失——应用会以 process_gone 清理（关闭终端 / kill）。',
+      ],
+    },
+    { type: 'h2', text: '设计说明' },
+    {
+      type: 'ul',
+      items: [
+        '对象是任务，不是 agent——机器是隧道；producer 报告任务。',
+        '任务、时间线和 pending actions 的运行时数据只存在内存中。',
+        '钩子失败开放；固定本地回环接入；没有项目 env vars。',
+        '范围外：多显示器状态条、云同步、磁盘历史、应用内 agent chat、从 Nerve 执行 submit_input / approve。',
+      ],
+    },
+  ],
+};
+
+const zhIngestPage: DocPage = {
+  slug: 'ingest',
+  title: '接入 API',
+  lede: '仅本地回环：http://127.0.0.1:17890。端口是固定的，不是设置项。远程机器通过 SSH 反向隧道访问它。',
+  blocks: [
+    {
+      type: 'p',
+      text: '这份契约属于 nerve-hub：一个保存任务的小型本地守护进程。Producer 向它 POST；菜单栏应用和 tmux 插件是从它读取的 surface。任何 alias 都会被接受——没有允许列表。',
+    },
+    {
+      type: 'ul',
+      items: [
+        '端口不是设置项。17890 是固定的，因为绑定它本身就是单实例锁；因此 producer 可以硬编码该地址，也没有要读取的 NERVE_* env。macOS 应用会在设置 → 本地端点下显示 endpoint，但不提供可修改的端口字段。',
+        '你不需要手动启动 hub。当端口没有响应时，菜单栏应用会启动 Nerve.app 中捆绑的 nerve-hub binary；否则就连接已运行的 hub。',
+      ],
+    },
+    { type: 'h2', text: '端点' },
+    {
+      type: 'table',
+      headers: ['Method', 'Path', '用途'],
+      rows: [
+        ['GET', '/v1/health', '存活检查'],
+        ['GET', '/v1/jobs', '当前任务（内存中），每个任务都带有时间线'],
+        ['GET', '/v1/stream', 'SSE——向 surface 发送完整 frame'],
+        ['POST', '/v1/snapshot', '完整任务快照——需要 alias'],
+        ['POST', '/v1/events', '增量事件——创建任务时需要 alias'],
+        ['POST', '/v1/demo', '内置演示任务'],
+        ['POST', '/v1/clear', '清除内存中的任务'],
+        ['GET', '/v1/actions/pending?producerId=', '轮询 action queue'],
+        ['POST', '/v1/actions/result?producerId=', '报告 action 完成'],
+      ],
+    },
+    { type: 'h2', text: '快照请求体' },
+    {
+      type: 'code',
+      lang: 'json',
+      code: `{
+  "alias": "gpu-box",
+  "machineKind": "linux",
+  "jobs": [
+    {
+      "id": "claude-code:sess_1",
+      "kind": "session",
+      "name": "nerve",
+      "alias": "gpu-box",
+      "producer": {
+        "id": "claude-code",
+        "name": "Claude Code",
+        "kind": "agent.claude"
+      },
+      "lifecycle": "active",
+      "current": { "type": "thinking", "summary": "…" },
+      "attention": { "level": "none" },
+      "health": "ok",
+      "progress": { "kind": "none" },
+      "createdAt": "…",
+      "updatedAt": "…",
+      "version": 1
+    }
+  ]
+}`,
+    },
+    {
+      type: 'ul',
+      items: [
+        'alias——显示在面板中的自由形式机器标签',
+        'kind——任务形态（session、build、test、…），不是“agent”',
+        'producer——报告任务的一方',
+        'name——通常是项目 basename（cwd）；状态存在于 current / attention',
+      ],
+    },
+    { type: 'h2', text: 'Surface stream' },
+    {
+      type: 'p',
+      text: 'GET /v1/stream 使用 Server-Sent Events。每个 frame 都携带完整事实——没有 delta protocol。',
+    },
+    {
+      type: 'code',
+      lang: 'json',
+      code: `{ "jobs": [ … ], "departed": [ … ] }`,
+    },
+    {
+      type: 'ul',
+      items: [
+        'jobs——权威的完整集合。连接时会收到第一个 frame。',
+        'departed——自上一个 frame 以来已移除任务的终止状态（lifecycle ended、endedAt、outcome）。它是一个提示，让 surface 不会丢失结尾；jobs 仍是权威来源。',
+        '重新连接就是重新同步——断开连接后，下一个第一 frame 仍然是完整集合。',
+        'frame 中的每个任务都与 /v1/jobs 返回的任务形状相同，包括 hub 为它保存的时间线：最多 40 个条目，不包含 heartbeat。',
+        '?surface=<label> 会在 hub 日志中标记该连接；它不会改变 frame 包含的内容。',
+      ],
+    },
+    {
+      type: 'callout',
+      title: 'Stream 就是生命周期',
+      text: '一个打开的 subscription 就表示一个 surface 存在。nerve-hub 会对它们计数：当最后一个断开时，它会等待宽限期（默认 30s），然后退出。Producer POST 不会让它保持运行。',
+    },
+    { type: 'h2', text: 'Action 协议（producer 自行轮询）' },
+    {
+      type: 'code',
+      lang: 'bash',
+      code: `curl -s 'http://127.0.0.1:17890/v1/actions/pending?producerId=my-producer'
+curl -s -X POST 'http://127.0.0.1:17890/v1/actions/result?producerId=my-producer' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"id":"<pending-id>","state":"succeeded","message":"ok"}'`,
+    },
+    {
+      type: 'p',
+      text: '不存在 /v1/actions/invoke——hub 会回答 404。执行 action（Open / Focus、Copy）是 surface capability：hub 只回显 producer 声明的 actions，自己不会推导任何 action。',
+    },
+    {
+      type: 'p',
+      text: '仓库中的 wire sample：fixtures/demo_snapshot.json——`./scripts/nerve.sh --demo` 会将它 POST 到 /v1/snapshot。',
+    },
+  ],
+};
+
+const zhPrivacyPage: DocPage = {
+  slug: 'privacy',
+  title: '隐私',
+  lede: '你不必盲目相信隐私声明，可以直接阅读证明它的源码。',
+  blocks: [
+    {
+      type: 'ul',
+      items: [
+        '任务、时间线和 pending actions 只存在于 nerve-hub 进程内存中',
+        '每个任务的最后一条 prompt（extensions.lastPrompt，400 个字符）会在同一个本地回环快照中传输，且只存在于 hub RAM——它会随任务和 hub 一起消失',
+        '退出 Nerve 会完全清除运行时状态',
+        '只有偏好设置（machines、colors、notifications、coach flags）使用 UserDefaults',
+        '隧道 Hosts 优先使用你现有的 ~/.ssh/config + known_hosts；Nerve 的受管块只会添加 RemoteForward',
+        '接入永远不会离开 127.0.0.1',
+        '远程主机只通过你配置的 SSH 反向隧道连接',
+        '钩子失败开放——agent 永远不会因 Nerve 而阻塞',
+      ],
+    },
+    {
+      type: 'callout',
+      text: '没有“保存名称/摘要”开关，因为任务数据根本不会持久化。Demo 和 clear 也只是 HTTP ingest。',
+    },
+  ],
+};
+
+const zhDocPages: DocPage[] = [
+  {
+    slug: 'get-started',
+    title: '开始使用',
+    lede: 'Nerve 通过开放的本地回环协议，汇总 agent 已经在推送的状态；你也可以自己实现这套协议。',
+    blocks: [
+      { type: 'h2', text: '系统要求' },
+      {
+        type: 'ul',
+        items: [
+          'macOS 14+',
+          'Xcode 15+（从源码构建应用时需要）',
+          'Python 3（仅 agent 钩子插件需要）',
+          'OpenSSH 客户端（用于远程机器）',
+        ],
+      },
+      { type: 'h2', text: '从仓库运行' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `./scripts/nerve.sh --run
+
+# optional: demo jobs (hub must already be running)
+./scripts/nerve.sh --demo
+
+# optional smoke checks
+./scripts/nerve.sh --verify-loop`,
+      },
+      {
+        type: 'p',
+        text: 'macOS 菜单栏会出现一条连续状态条——没有 Dock 图标，也没有悬浮窗口。',
+      },
+      { type: 'h2', text: '状态条操作' },
+      {
+        type: 'table',
+        headers: ['操作', '效果'],
+        rows: [
+          ['左键点击', '打开状态面板（↑/↓，Enter 展开；展开行会显示最后一条提示、详情、时间线和操作）'],
+          ['右键点击', '打开设置…或退出 Nerve'],
+        ],
+      },
+      {
+        type: 'p',
+        text: '设置：通用（菜单栏、面板、端点）· 机器（SSH 隧道）· 外观（状态条尺寸与颜色）· 通知 · 关于。',
+      },
+      { type: 'h2', text: '网站（本站）' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `cd index
+npm install
+npm run dev      # local preview
+npm run build    # static → index/dist/`,
+      },
+    ],
+  },
+  zhPluginPage,
+  zhMachinesPage,
+  zhTmuxPage,
+  zhStatusPage,
+  zhIngestPage,
+  zhPrivacyPage,
+];
+
+export const docNavByLocale: Record<Locale, DocNavItem[]> = {
+  en: docNav,
+  zh: zhDocNav,
+};
+
+export const docPagesByLocale: Record<Locale, DocPage[]> = {
+  en: docPages,
+  zh: zhDocPages,
+};
+
+export function getDocNav(locale: Locale): DocNavItem[] {
+  return docNavByLocale[locale];
+}
+
+export function getDocPage(slug: string, locale: Locale = 'en'): DocPage | undefined {
+  return docPagesByLocale[locale].find((p) => p.slug === slug);
+}

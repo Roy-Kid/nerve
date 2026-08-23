@@ -1,6 +1,6 @@
 [package]
 name = "nerve-tmux-surface"
-description = "tmux status-line surface for the Nerve hub"
+description = "tmux sidebar surface for the Nerve hub"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -35,6 +35,9 @@ time = { version = "0.3", features = ["formatting", "parsing", "macros", "serde"
 # `nerve-hub` already reaps producer pids with — so this adds no crate to the
 # tree and no new resolution.
 rustix = { version = "1", features = ["process"] }
+ratatui = "0.30"
+crossterm = "0.29"
+unicode-width = "0.2"
 
 # No `tokio`, on purpose. Every port in this crate is blocking:
 #   * `stream::FrameSource` is pull-based (`open` / `next_frame`),

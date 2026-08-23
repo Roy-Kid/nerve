@@ -4,8 +4,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
+import socket
+import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -580,6 +584,60 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(self._posted[-1]["jobs"][0]["id"], "claude-code:s-b")
         self.assertEqual(self._posted[-1]["jobs"][0]["lifecycle"], "active")
 
+    def test_user_prompt_travels_as_a_durable_extension(self):
+        """The prompt outlives `current`: only this hook run ever sees it."""
+        job = self.mod.process(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "p-1",
+                "cwd": "/tmp/p",
+                "prompt": "  fix   the sidebar\n  preview  ",
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["extensions"]["lastPrompt"], "fix the sidebar preview")
+        self.assertTrue(job["extensions"]["lastPromptAt"])
+        # Same text still drives the one-line row summary.
+        self.assertEqual(job["current"]["summary"], "fix the sidebar preview")
+
+    def test_long_prompt_is_capped_for_display(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "p-2",
+                "cwd": "/tmp/p",
+                "prompt": "x" * 900,
+            }
+        )
+        assert job is not None
+        self.assertEqual(len(job["extensions"]["lastPrompt"]), self.mod.PROMPT_MAX)
+        self.assertTrue(job["extensions"]["lastPrompt"].endswith("\u2026"))
+
+    def test_other_events_do_not_carry_a_prompt(self):
+        """Only UserPromptSubmit reports one — the hub keeps it from there on."""
+        job = self.mod.process(
+            {
+                "hook_event_name": "PreToolUse",
+                "session_id": "p-3",
+                "cwd": "/tmp/p",
+                "tool_name": "Bash",
+            }
+        )
+        assert job is not None
+        self.assertNotIn("lastPrompt", job["extensions"])
+
+    def test_empty_prompt_reports_no_extension(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "session_id": "p-4",
+                "cwd": "/tmp/p",
+                "prompt": "   ",
+            }
+        )
+        assert job is not None
+        self.assertNotIn("lastPrompt", job["extensions"])
+
     def test_new_session_after_stop_without_end_still_supersedes(self):
         """Stop leaves the row active; a later SessionStart must still close it."""
         self.mod.process(
@@ -665,6 +723,137 @@ class NerveHookTests(unittest.TestCase):
         self.assertNotIn("type", env["jobs"][0])
         self.assertNotIn("source", env["jobs"][0])
         self.assertIn("producer", env["jobs"][0])
+
+
+class IngestTransportTests(unittest.TestCase):
+    """The hand-written loopback POST, against a real socket.
+
+    Every other test replaces ``_post_snapshot`` outright, so without this the
+    transport that actually reaches ``nerve-hub`` would have no coverage at all.
+    """
+
+    def setUp(self):
+        self.mod = load_hook()
+        self.requests: list[bytes] = []
+        self.answer = b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\n{\"applied\":1}"
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.bind(("127.0.0.1", 0))
+        self.server.listen(1)
+        # Point the hook at this one-shot stand-in for the hub.
+        self.mod.INGEST_HOST, self.mod.INGEST_PORT = self.server.getsockname()
+        self.thread = threading.Thread(target=self._serve_once, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.thread.join(timeout=2)
+        self.server.close()
+
+    def _serve_once(self):
+        try:
+            conn, _ = self.server.accept()
+        except OSError:
+            return
+        with conn:
+            received = b""
+            conn.settimeout(2)
+            while b"\r\n\r\n" not in received:
+                piece = conn.recv(4096)
+                if not piece:
+                    break
+                received += piece
+            head, _, body = received.partition(b"\r\n\r\n")
+            length = 0
+            for line in head.split(b"\r\n"):
+                if line.lower().startswith(b"content-length:"):
+                    length = int(line.split(b":", 1)[1])
+            while len(body) < length:
+                piece = conn.recv(4096)
+                if not piece:
+                    break
+                body += piece
+            self.requests.append(head + b"\r\n\r\n" + body)
+            conn.sendall(self.answer)
+
+    def test_post_sends_a_well_formed_request_and_reads_the_status(self):
+        status, _ = self.mod._post_json("/v1/snapshot", {"alias": "box", "jobs": []})
+        self.assertEqual(status, 200)
+
+        self.thread.join(timeout=2)
+        raw = self.requests[0]
+        head, _, body = raw.partition(b"\r\n\r\n")
+        lines = head.split(b"\r\n")
+        self.assertEqual(lines[0], b"POST /v1/snapshot HTTP/1.1")
+        headers = {
+            k.strip().lower(): v.strip()
+            for k, _, v in (line.partition(b":") for line in lines[1:])
+        }
+        self.assertEqual(headers[b"content-type"], b"application/json")
+        self.assertEqual(headers[b"connection"], b"close")
+        # Content-Length must count bytes, not characters, or a job name with
+        # any non-ASCII in it truncates the body the hub reads.
+        self.assertEqual(int(headers[b"content-length"]), len(body))
+        self.assertEqual(json.loads(body), {"alias": "box", "jobs": []})
+
+    def test_a_refusal_is_reported_with_its_body_and_never_raises(self):
+        self.answer = (
+            b"HTTP/1.1 400 Bad Request\r\nContent-Length: 26\r\n\r\n"
+            b'{"error":"alias required"}'
+        )
+        status, detail = self.mod._post_json("/v1/snapshot", {"jobs": []})
+        self.assertEqual(status, 400)
+        self.assertIn("alias required", detail)
+
+    def test_no_hub_listening_fails_open(self):
+        self.server.close()
+        self.thread.join(timeout=2)
+        # A closed port must reach the caller as an exception it can swallow,
+        # never as a hook that blocks or dies.
+        posted = self.mod._post_snapshot("box", "darwin", {"id": "claude-code:s1"})
+        self.assertFalse(posted)
+
+
+class ProcessProbeTests(unittest.TestCase):
+    """One hook run is one event; the machine it runs on cannot change inside it."""
+
+    def setUp(self):
+        self.mod = load_hook()
+
+    def test_the_alias_probe_runs_once_per_process(self):
+        first = self.mod._machine_alias()
+        calls = {"n": 0}
+        real = subprocess.check_output
+
+        def counting(*a, **kw):
+            calls["n"] += 1
+            return real(*a, **kw)
+
+        subprocess.check_output = counting
+        try:
+            for _ in range(5):
+                self.assertEqual(self.mod._machine_alias(), first)
+            self.assertEqual(self.mod._machine_kind(), self.mod._machine_kind())
+        finally:
+            subprocess.check_output = real
+        self.assertEqual(calls["n"], 0, "alias/kind must be answered from cache")
+
+    def test_the_process_climb_asks_about_each_pid_once(self):
+        self.mod._agent_process_pid()
+        calls = {"n": 0}
+        real = subprocess.check_output
+
+        def counting(*a, **kw):
+            calls["n"] += 1
+            return real(*a, **kw)
+
+        subprocess.check_output = counting
+        try:
+            for _ in range(4):
+                self.mod._agent_process_pid()
+                self.mod._host_slot_token()
+        finally:
+            subprocess.check_output = real
+        self.assertEqual(calls["n"], 0, "the pid climb must not re-spawn `ps`")
 
 
 if __name__ == "__main__":

@@ -9,11 +9,11 @@ Full handbook (install, hook map, noise rules, remotes):
 → **Website** `/docs/plugin` — from repo root:
 
 ```bash
-cd index-page && npm run dev
+cd index && npm run dev
 # http://localhost:3000/docs/plugin
 ```
 
-Body source: [`index-page/src/docs/content.ts`](../../index-page/src/docs/content.ts).
+Body source: [`index/src/docs/content.ts`](../../index/src/docs/content.ts).
 
 ## Install
 
