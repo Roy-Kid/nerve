@@ -1,7 +1,7 @@
 //! The only place this crate talks to tmux.
 //!
 //! Every invocation is an arg array — there is no shell anywhere in this crate,
-//! the same rule `plugins/nerve/hooks/nerve_hook.py` follows. A segment holds
+//! the same rule host ingest follows (arg array, no shell). A segment holds
 //! spaces and `#[…]` markers and must arrive as one argument, which a shell
 //! line could never guarantee.
 //!

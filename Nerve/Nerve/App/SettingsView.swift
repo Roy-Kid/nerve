@@ -506,7 +506,7 @@ struct PreferencesView: View {
                 }
 
                 Section {
-                    ForEach(Status.allCases, id: \.self) { status in
+                    ForEach(Status.painted, id: \.self) { status in
                         ColorPicker(
                             selection: Binding(
                                 get: { settings.statusColors.color(for: status).color },
@@ -747,10 +747,10 @@ struct PreferencesView: View {
     private func statusColorHint(_ status: Status) -> String {
         switch status {
         case .problem: return "Failed or cannot continue"
-        case .attention: return "Needs input or a decision"
-        case .waiting: return "Blocked on resources or dependencies"
+        case .attention, .waiting: return "Needs you, or blocked on the system"
         case .running: return "Actively working"
-        case .success: return "Done, or monitor waiting for feedback"
+        case .monitor: return "Watching a background stream"
+        case .success: return "Finished successfully"
         case .inactive: return "Ready, paused, or unknown"
         }
     }
@@ -758,9 +758,9 @@ struct PreferencesView: View {
     private func statusSymbol(_ status: Status) -> String {
         switch status {
         case .problem: return "xmark.circle.fill"
-        case .attention: return "exclamationmark.circle.fill"
-        case .waiting: return "clock.fill"
+        case .attention, .waiting: return "exclamationmark.circle.fill"
         case .running: return "play.circle.fill"
+        case .monitor: return "dot.radiowaves.left.and.right"
         case .success: return "checkmark.circle.fill"
         case .inactive: return "pause.circle.fill"
         }

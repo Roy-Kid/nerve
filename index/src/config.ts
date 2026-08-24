@@ -5,7 +5,7 @@ export const site = {
   name: 'Nerve',
   /** Primary hero line (split for display). */
   headline: ['Every job.', 'One glance.'],
-  subhead: 'Running, waiting, or broken—right in the menu bar.',
+  subhead: 'Running, needs you, or broken—right in the menu bar.',
   github: 'https://github.com/Roy-Kid/nerve',
   /** Replace with the live App Store product URL when published. */
   appStore: 'https://apps.apple.com/app/nerve',
@@ -26,27 +26,30 @@ export function getTmuxGuidePath(locale: Locale) {
   return locale === 'zh' ? site.tmuxGuideZh : site.tmuxGuideEn;
 }
 
+/** Mock jobs for every ribbon and screenshot. Painted order, one of each hue. */
 export const jobs = [
+  { id: 'deploy', label: 'deploy edge', status: 'problem' as const, alias: 'edge' },
+  { id: 'codex', label: 'Codex · refactor', status: 'attention' as const, alias: 'gpu-box' },
   { id: 'claude', label: 'Claude Code', status: 'running' as const, alias: 'studio' },
-  { id: 'build', label: 'xcodebuild Nerve', status: 'attention' as const, alias: 'studio' },
-  { id: 'codex', label: 'Codex · refactor', status: 'waiting' as const, alias: 'gpu-box' },
-  { id: 'tests', label: 'pytest suite', status: 'running' as const, alias: 'ci' },
-  { id: 'fail', label: 'deploy edge', status: 'problem' as const, alias: 'edge' },
+  { id: 'stream', label: 'build log', status: 'monitor' as const, alias: 'ci' },
+  { id: 'build', label: 'xcodebuild Nerve', status: 'success' as const, alias: 'studio' },
+  { id: 'watch', label: 'Local watcher', status: 'inactive' as const, alias: 'ci' },
 ] as const;
 
 export type JobStatus = (typeof jobs)[number]['status'];
-export type StatusTone = JobStatus | 'inactive' | 'success';
+export type StatusTone = JobStatus;
 
+/** Six painted hues. Rainbow red / orange / blue / violet / green, plus gray idle. */
 export const statusMeta: Record<
   StatusTone,
   { label: string; color: string; hint: string }
 > = {
-  problem: { label: 'Problem', color: '#ff453a', hint: 'Failed / blocked' },
-  attention: { label: 'Attention', color: '#ff9f0a', hint: 'Needs you' },
-  waiting: { label: 'Waiting', color: '#bf5af2', hint: 'System / deps' },
+  problem: { label: 'Problem', color: '#ff3b30', hint: 'Failed / cannot continue' },
+  attention: { label: 'Attention', color: '#ff9f0a', hint: 'Needs you, or stuck' },
   running: { label: 'Running', color: '#0a84ff', hint: 'In flight' },
-  success: { label: 'Success', color: '#30d158', hint: 'Monitor wait / done' },
-  inactive: { label: 'Inactive', color: '#8e8e93', hint: 'Ready / unknown' },
+  monitor: { label: 'Monitor', color: '#bf5af2', hint: 'Watching a background stream' },
+  success: { label: 'Success', color: '#30d158', hint: 'Finished' },
+  inactive: { label: 'Inactive', color: '#8e8e93', hint: 'Ready / quiet' },
 };
 
 export const truths = [
@@ -56,7 +59,7 @@ export const truths = [
   },
   {
     title: 'Only when it matters.',
-    body: 'Running, waiting, and failed stay distinct.',
+    body: 'Running, needs you, and failed stay distinct.',
   },
   {
     title: 'Open and local.',
@@ -100,8 +103,8 @@ export const lifecycle = [
   {
     phase: 'Monitor',
     facet: 'monitor',
-    ribbon: 'success' as const,
-    note: 'Monitor open: phase done, waiting for stream feedback (green).',
+    ribbon: 'monitor' as const,
+    note: 'Monitor open: phase done, watching the stream (purple).',
   },
   {
     phase: 'End',

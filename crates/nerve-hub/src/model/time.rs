@@ -1,7 +1,7 @@
 //! The one date shape the hub speaks on the wire.
 //!
 //! Every producer and every surface exchanges ISO8601 **second precision, no
-//! fraction, `Z`** — the spelling `plugins/nerve/hooks/nerve_hook.py:103` emits
+//! fraction, `Z`** — the spelling `crates/nerve-hub/src/hook/` emits
 //! and Swift's `.iso8601` strategy accepts. Owning that in a single type keeps
 //! the rule out of every struct that carries a date.
 

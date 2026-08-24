@@ -1,4 +1,5 @@
-//! The six-state display derivation, mirrored from Swift.
+//! Display derivation, mirrored from Swift. Six painted hues: waiting shares
+//! attention; monitor is purple (watching a stream, not executing).
 //!
 //! The hub deliberately publishes no derived `status`
 //! (`crates/nerve-hub/src/model/job.rs:4`) — it stores facets, surfaces paint
@@ -47,24 +48,30 @@ const IDLE_KINDS: [&str; 3] = ["idle", "starting", "booting"];
 ///
 /// Variants are declared in priority order, so the derived `Ord` *is* the
 /// priority (`CoreTypes.swift:244-267`):
-/// problem > attention > waiting > running > success > inactive.
+/// problem > attention > waiting > running > monitor > success > inactive.
+///
+/// `Waiting` stays in the enum for that order, the `{waiting}` summary token,
+/// and saved palettes. Derivation never returns it: those jobs are Attention
+/// so the user learns one “needs a look” color, not two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StatusClass {
     Problem,
     Attention,
     Waiting,
     Running,
+    Monitor,
     Success,
     Inactive,
 }
 
 impl StatusClass {
     /// Every class, most urgent first.
-    pub const ALL: [StatusClass; 6] = [
+    pub const ALL: [StatusClass; 7] = [
         Self::Problem,
         Self::Attention,
         Self::Waiting,
         Self::Running,
+        Self::Monitor,
         Self::Success,
         Self::Inactive,
     ];
@@ -76,6 +83,7 @@ impl StatusClass {
             Self::Attention => "attention",
             Self::Waiting => "waiting",
             Self::Running => "running",
+            Self::Monitor => "monitor",
             Self::Success => "success",
             Self::Inactive => "inactive",
         }
@@ -116,26 +124,16 @@ impl StatusClass {
 
     /// `Subject.swift:43-66` — what the job is asking of a human.
     fn from_attention(job: &JobView) -> Option<Self> {
-        // :43 — elevated attention is attention or waiting, never running.
+        // :43 — elevated attention is attention, never running.
         if job.attention.level >= AttentionLevel::Suggested {
-            let Some(reason) = Self::reason(job) else {
-                return Some(Self::Attention); // :53
-            };
-            return Some(if names(reason, &WAIT_REASONS) {
-                Self::Waiting // :46
-            } else {
-                Self::Attention // :49
-            });
+            return Some(Self::Attention);
         }
 
-        // :56 — informational needs a reason to say anything at all.
+        // Informational needs a reason to say anything at all.
         if job.attention.level >= AttentionLevel::Informational {
             let reason = Self::reason(job)?;
-            if names(reason, &ASK_REASONS) {
-                return Some(Self::Attention); // :58
-            }
-            if names(reason, &WAIT_REASONS) {
-                return Some(Self::Waiting); // :60
+            if names(reason, &ASK_REASONS) || names(reason, &WAIT_REASONS) {
+                return Some(Self::Attention);
             }
         }
         // :64 — anything else falls through to the stage ladder.
@@ -159,15 +157,15 @@ impl StatusClass {
             return Some(Self::Inactive);
         }
         if matches!(job.lifecycle, Lifecycle::Pending | Lifecycle::Created) {
-            return Some(Self::Waiting);
+            return Some(Self::Attention);
         }
         if job.health == Health::Degraded {
-            return Some(Self::Waiting);
+            return Some(Self::Attention);
         }
 
-        // :77 — open session, partial outcome: a monitor waiting for feedback.
+        // :77 — open session, partial outcome: a monitor holding the stream.
         if job.lifecycle == Lifecycle::Active && job.outcome == Some(Outcome::Partial) {
-            return Some(Self::Success);
+            return Some(Self::Monitor);
         }
         None
     }
@@ -183,12 +181,12 @@ impl StatusClass {
             // :84
             return (job.lifecycle == Lifecycle::Active).then_some(Self::Running);
         }
-        // :86 — phase complete, waiting on stream feedback.
+        // :86 — watching a background stream, not executing.
         if names(kind, &["monitor"]) {
-            return Some(Self::Success);
+            return Some(Self::Monitor);
         }
         if names(kind, &["waiting"]) {
-            return Some(Self::Waiting); // :88
+            return Some(Self::Attention);
         }
         // :92 — `starting` is Ready (open, no turn yet); never Running.
         if names(kind, &IDLE_KINDS) {

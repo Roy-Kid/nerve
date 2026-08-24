@@ -8,8 +8,7 @@
 //! "is this job even on my machine?" — because a foreign pid and a foreign
 //! workspace path can both collide with a local pane by accident.
 //!
-//! Resolution copies the two implementations that already agree: the hook
-//! (`plugins/nerve/hooks/nerve_hook.py::_machine_alias`) and the hub
+//! Resolution copies the hub
 //! (`crates/nerve-hub/src/state/machine.rs`) — Bonjour LocalHostName on macOS,
 //! else the short hostname. Unlike the hub there is no `local` fallback: a
 //! machine that will not name itself answers `None`, and nothing is foreign to

@@ -1,6 +1,6 @@
 //! Finding the `nerve-hub` binary.
 //!
-//! The order copies `plugins/nerve/hooks/run.sh`: Homebrew on Apple silicon
+//! The order copies the hub binary search: Homebrew on Apple silicon
 //! first, Intel Homebrew second, a `cargo install` third, and only then
 //! whatever the user's shell would have found. Not finding it is a fail-open
 //! state, not an error — the surface paints its offline placeholder and tmux

@@ -134,9 +134,9 @@ final class JobStore {
         countOpen(where: { $0.status == .running })
     }
 
-    /// Open jobs with `status == .attention`. Same number painted orange.
+    /// Open jobs painted orange (attention, and waiting which shares that hue).
     var attentionCount: Int {
-        countOpen(where: { $0.status == .attention })
+        countOpen(where: { $0.status == .attention || $0.status == .waiting })
     }
 
     private func countOpen(where pred: (Job) -> Bool) -> Int {
@@ -146,12 +146,12 @@ final class JobStore {
     }
 
     /// Priority-mode bucket for a status (Attention / Active / Recent). View grouping only.
-    /// Open Success (monitor waiting for feedback) stays Active — Recent is unused
+    /// Open Monitor (watching a stream) stays Active — Recent is unused
     /// because SessionEnd removes the row immediately.
     private func priorityGroup(for status: Status) -> PanelGroup {
         switch status {
         case .problem, .attention, .waiting: return .attention
-        case .running, .inactive, .success: return .active
+        case .running, .monitor, .inactive, .success: return .active
         }
     }
 
@@ -220,7 +220,7 @@ final class JobStore {
         for job in list {
             buckets[job.status, default: []].append(job)
         }
-        return Status.allCases.compactMap { status in
+        return Status.painted.compactMap { status in
             guard let items = buckets[status], !items.isEmpty else { return nil }
             return StatusSection(id: "status:\(status.rawValue)", title: status.title, jobs: items)
         }

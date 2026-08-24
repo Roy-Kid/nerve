@@ -18,10 +18,10 @@
 
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::frame::JobView;
 use crate::machine;
+use crate::procs::{self, normalize_tty};
 use crate::ssh::{self, SshHosts};
 use crate::state::job_path;
 use crate::tmux::{self, SIDEBAR_ROLE};
@@ -55,9 +55,11 @@ impl SidebarPane {
         if id.is_empty() {
             return Self::none();
         }
+        let info = tmux::display_message(&id, "#{session_name}\t#{window_id}");
+        let (session, window) = info.split_once('\t').unwrap_or(("", ""));
         Self {
-            session: tmux::display_message(&id, "#{session_name}"),
-            window: tmux::display_message(&id, "#{window_id}"),
+            session: session.to_string(),
+            window: window.to_string(),
             id,
         }
     }
@@ -158,7 +160,10 @@ impl JobTarget {
             });
         }
         let workspace = job_path(job).map(|path| normalize_path(&path));
-        let tty = job.extensions.pid.and_then(tty_of_pid);
+        let tty = job
+            .extensions
+            .pid
+            .and_then(|pid| procs::ProcTable::current().tty_of(pid).map(str::to_string));
         // Nothing to match on — the job never said where it runs.
         (workspace.is_some() || tty.is_some()).then_some(Self::Local { workspace, tty })
     }
@@ -188,7 +193,7 @@ pub(crate) fn find_pane_for_target(
             panes.as_str(),
             sidebar,
             alias,
-            &SshHosts::load(),
+            SshHosts::load(),
             &ssh::destination_on_tty,
         )
         .map(|route| route.pane),
@@ -202,7 +207,7 @@ pub(crate) fn find_ssh_route(alias: &str, sidebar: &SidebarPane) -> Option<SshRo
         &panes,
         sidebar,
         alias,
-        &SshHosts::load(),
+        SshHosts::load(),
         &ssh::destination_on_tty,
     )
 }
@@ -327,56 +332,13 @@ fn locality(pane: &PaneRow<'_>, sidebar: &SidebarPane) -> PaneRank {
     }
 }
 
-/// Every pid on a pane's terminal — the reverse of [`tty_of_pid`].
+/// Every pid on a pane's terminal — the reverse of the pid → tty lookup.
 ///
-/// One `ps` for the whole pane rather than one per job: the question is "who is
-/// running here", and the answer is a handful of pids the caller matches
-/// against what the hub reported.
+/// One process-table snapshot for the whole pane rather than one `ps` per job:
+/// the question is "who is running here", and the answer is a handful of pids
+/// the caller matches against what the hub reported.
 pub(crate) fn pids_on_tty(tty: &str) -> Vec<u32> {
-    let terminal = tty.trim().trim_start_matches("/dev/");
-    if terminal.is_empty() {
-        return Vec::new();
-    }
-    let Ok(output) = Command::new("ps")
-        .args(["-t", terminal, "-o", "pid="])
-        .output()
-    else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| line.trim().parse().ok())
-        .collect()
-}
-
-/// Which tty a process is attached to, normalised — `None` when the process is
-/// gone or has no controlling terminal (a remote job's pid means nothing here).
-fn tty_of_pid(pid: u32) -> Option<String> {
-    let output = Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "tty="])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let tty = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if tty.is_empty() || tty.starts_with('?') || tty == "-" {
-        return None;
-    }
-    Some(normalize_tty(&tty))
-}
-
-/// `/dev/ttys001`, `ttys001` and `s001` are one terminal; `ps` and tmux each
-/// spell it their own way.
-fn normalize_tty(tty: &str) -> String {
-    let tty = tty.trim().trim_start_matches("/dev/");
-    match tty.strip_prefix("tty") {
-        Some(rest) if !rest.is_empty() => rest.to_string(),
-        _ => tty.to_string(),
-    }
+    procs::ProcTable::current().pids_on_tty(tty)
 }
 
 fn normalize_path(path: &Path) -> PathBuf {

@@ -29,13 +29,13 @@ enum RibbonRenderer {
         case .transitionsOnly:
             return false
         case .breathe:
-            return segments.contains { $0.status == .running || $0.status == .waiting }
+            return segments.contains { $0.status == .running || $0.status == .waiting || $0.status == .monitor }
         case .shimmer:
             return true
         case .statusPulse, .full:
             return segments.contains {
                 switch $0.status {
-                case .problem, .attention, .running, .waiting: return true
+                case .problem, .attention, .running, .waiting, .monitor: return true
                 default: return false
                 }
             }
@@ -266,6 +266,8 @@ enum RibbonRenderer {
             switch status {
             case .running, .waiting:
                 return wave(period: 2.2, amplitude: 0.14)
+            case .monitor:
+                return wave(period: 2.8, amplitude: 0.10)
             default:
                 return 0
             }
@@ -273,6 +275,8 @@ enum RibbonRenderer {
             switch status {
             case .running, .waiting:
                 return wave(period: 2.2, amplitude: 0.12)
+            case .monitor:
+                return wave(period: 2.8, amplitude: 0.10)
             case .attention:
                 return wave(period: 1.4, amplitude: 0.16)
             case .problem:

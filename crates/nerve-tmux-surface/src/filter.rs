@@ -67,7 +67,7 @@ impl StatusFilter {
         match self {
             Self::All => true,
             Self::Running => class == StatusClass::Running,
-            Self::Background => background,
+            Self::Background => background || class == StatusClass::Monitor,
             Self::Waiting => matches!(class, StatusClass::Waiting | StatusClass::Attention),
             Self::Idle => matches!(class, StatusClass::Inactive | StatusClass::Success),
             Self::Error => class == StatusClass::Problem,

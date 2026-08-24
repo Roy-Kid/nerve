@@ -12,7 +12,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::ser::SerializeSeq;
+use serde::{Serialize, Serializer};
 use serde_json::Value;
 
 use crate::clock::Clock;
@@ -70,6 +71,25 @@ impl<'a> JobView<'a> {
     }
 }
 
+/// The live job set as a serde sequence, borrowed from the store.
+///
+/// A frame serialises this instead of collecting a `Vec<JobView>` it would
+/// drop immediately after writing.
+pub struct JobsSeq<'a>(pub &'a JobStore);
+
+impl Serialize for JobsSeq<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut seq = serializer.serialize_seq(Some(self.0.jobs.len()))?;
+        for job in self.0.jobs.values() {
+            seq.serialize_element(&JobView {
+                job,
+                timeline: self.0.timelines.of(&job.id),
+            })?;
+        }
+        seq.end()
+    }
+}
+
 impl JobStore {
     pub fn new(clock: Arc<dyn Clock>, machine_alias: String, probe: Arc<dyn PidProbe>) -> Self {
         Self {
@@ -82,6 +102,11 @@ impl JobStore {
             seen: SeenEvents::default(),
             departed: Vec::new(),
         }
+    }
+
+    /// The clock this store was assembled with.
+    pub(crate) fn clock(&self) -> &dyn crate::clock::Clock {
+        &*self.clock
     }
 
     // ── Ingest ──────────────────────────────────────────────────────────────
@@ -474,10 +499,15 @@ impl JobStore {
 
     // ── Publication ─────────────────────────────────────────────────────────
 
+    /// How many jobs a frame will name — used to size the render buffer.
+    pub(crate) fn job_count(&self) -> usize {
+        self.jobs.len()
+    }
+
     /// Every stored job in the published shape, borrowed from the store.
     ///
-    /// The frame renderer serialises these directly; `jobs_json` is the same
-    /// list for the one caller that genuinely wants a `Value`.
+    /// `GET /v1/jobs` and the state tests still want a `Value`; the SSE frame
+    /// path serialises [`JobsSeq`] instead of collecting this.
     pub(crate) fn job_views(&self) -> Vec<JobView<'_>> {
         self.jobs
             .values()

@@ -1,9 +1,11 @@
-//! Git summary for the bottom panel — shortstat + file list.
+//! Git summary for the bottom panel — one `status --porcelain` instead of five
+//! subprocesses (branch, ahead/behind, staged, unstaged, untracked).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct GitSnapshot {
     pub branch: String,
     pub ahead: u32,
@@ -36,29 +38,15 @@ pub fn snapshot_for_path(path: &Path) -> GitSnapshot {
             ..GitSnapshot::default()
         };
     };
-    let (behind, ahead) = git_output(
+    match git_output(
         &repo,
-        &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
-    )
-    .map(|counts| {
-        let mut parts = counts.split_whitespace();
-        let behind = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
-        let ahead = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
-        (behind, ahead)
-    })
-    .unwrap_or((0, 0));
-    GitSnapshot {
-        branch: git_output(&repo, &["rev-parse", "--abbrev-ref", "HEAD"])
-            .unwrap_or_else(|| "-".into()),
-        ahead,
-        behind,
-        staged: git_lines(&repo, &["diff", "--cached", "--name-status"]),
-        unstaged: git_lines(&repo, &["diff", "--name-status"]),
-        untracked: git_lines(&repo, &["ls-files", "--others", "--exclude-standard"])
-            .into_iter()
-            .map(|line| format!("? {line}"))
-            .collect(),
-        error: None,
+        &["status", "--porcelain=v1", "-b", "--untracked-files=normal"],
+    ) {
+        Some(text) => parse_porcelain(&text),
+        None => GitSnapshot {
+            error: Some("git status failed".to_string()),
+            ..GitSnapshot::default()
+        },
     }
 }
 
@@ -72,7 +60,7 @@ fn find_git_root(mut path: &Path) -> Option<PathBuf> {
 }
 
 fn git_output(repo: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+    let output = Command::new(git_binary())
         .args(args)
         .current_dir(repo)
         .output()
@@ -80,13 +68,136 @@ fn git_output(repo: &Path, args: &[&str]) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!text.is_empty()).then_some(text)
+    Some(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// At most [`LIST_CAP`] lines — the panel never renders more.
-fn git_lines(repo: &Path, args: &[&str]) -> Vec<String> {
-    git_output(repo, args)
-        .map(|text| text.lines().take(LIST_CAP).map(str::to_string).collect())
-        .unwrap_or_default()
+fn git_binary() -> &'static str {
+    static BIN: OnceLock<String> = OnceLock::new();
+    BIN.get_or_init(|| {
+        for candidate in [
+            "/opt/homebrew/bin/git",
+            "/usr/local/bin/git",
+            "/usr/bin/git",
+        ] {
+            if Path::new(candidate).is_file() {
+                return candidate.to_string();
+            }
+        }
+        "git".to_string()
+    })
+    .as_str()
+}
+
+/// Porcelain v1 with `-b`: a `##` header, then `XY path` rows.
+pub(crate) fn parse_porcelain(text: &str) -> GitSnapshot {
+    let mut snapshot = GitSnapshot::default();
+    for line in text.lines() {
+        if let Some(header) = line.strip_prefix("## ") {
+            parse_branch_header(header, &mut snapshot);
+            continue;
+        }
+        if line.len() < 3 {
+            continue;
+        }
+        let index = line.as_bytes()[0];
+        let worktree = line.as_bytes()[1];
+        let path = line[2..].trim();
+        if path.is_empty() {
+            continue;
+        }
+        if index == b'?' && worktree == b'?' {
+            push_capped(&mut snapshot.untracked, format!("? {path}"));
+            continue;
+        }
+        if index != b' ' && index != b'?' {
+            push_capped(&mut snapshot.staged, format!("{}\t{path}", index as char));
+        }
+        if worktree != b' ' && worktree != b'?' {
+            push_capped(
+                &mut snapshot.unstaged,
+                format!("{}\t{path}", worktree as char),
+            );
+        }
+    }
+    if snapshot.branch.is_empty() {
+        snapshot.branch = "-".into();
+    }
+    snapshot
+}
+
+fn parse_branch_header(header: &str, snapshot: &mut GitSnapshot) {
+    let name = header
+        .split_once("...")
+        .map(|(head, _)| head)
+        .unwrap_or(header);
+    let name = name.split_whitespace().next().unwrap_or(name).trim();
+    if !name.is_empty() {
+        snapshot.branch = name.to_string();
+    }
+    if let Some(start) = header.find('[') {
+        let inside = header[start + 1..].trim_end_matches(']');
+        snapshot.ahead = field_count(inside, "ahead");
+        snapshot.behind = field_count(inside, "behind");
+    }
+}
+
+fn field_count(inside: &str, label: &str) -> u32 {
+    let mut tokens = inside.split(|c: char| c == ',' || c.is_whitespace());
+    while let Some(token) = tokens.next() {
+        if token == label {
+            if let Some(n) = tokens.next().and_then(|n| n.parse().ok()) {
+                return n;
+            }
+        }
+    }
+    0
+}
+
+fn push_capped(rows: &mut Vec<String>, row: String) {
+    if rows.len() < LIST_CAP {
+        rows.push(row);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn porcelain_fills_branch_ahead_behind_and_three_lists() {
+        let snapshot = parse_porcelain(
+            "\
+## main...origin/main [ahead 2, behind 1]
+M  staged.rs
+ M unstaged.rs
+MM both.rs
+?? untracked.rs
+",
+        );
+        assert_eq!(snapshot.branch, "main");
+        assert_eq!(snapshot.ahead, 2);
+        assert_eq!(snapshot.behind, 1);
+        assert_eq!(snapshot.staged, vec!["M\tstaged.rs", "M\tboth.rs"]);
+        assert_eq!(snapshot.unstaged, vec!["M\tunstaged.rs", "M\tboth.rs"]);
+        assert_eq!(snapshot.untracked, vec!["? untracked.rs"]);
+        assert_eq!(snapshot.error, None);
+    }
+
+    #[test]
+    fn a_branch_with_no_upstream_has_zero_ahead_behind() {
+        let snapshot = parse_porcelain("## feature\n");
+        assert_eq!(snapshot.branch, "feature");
+        assert_eq!(snapshot.ahead, 0);
+        assert_eq!(snapshot.behind, 0);
+    }
+
+    #[test]
+    fn lists_stop_at_the_panel_cap() {
+        let mut body = String::from("## main\n");
+        for i in 0..10 {
+            body.push_str(&format!("?? f{i}.rs\n"));
+        }
+        let snapshot = parse_porcelain(&body);
+        assert_eq!(snapshot.untracked.len(), LIST_CAP);
+    }
 }

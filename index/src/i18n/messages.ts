@@ -74,7 +74,10 @@ type PreviewJobCopy = {
 };
 
 type PreviewCopy = {
-  status: Record<'problem' | 'attention' | 'waiting' | 'running' | 'success' | 'inactive', string>;
+  status: Record<
+    'problem' | 'attention' | 'running' | 'monitor' | 'success' | 'inactive',
+    string
+  >;
   mac: {
     livePreview: string;
     terminalReady: string;
@@ -161,7 +164,7 @@ export const messages: Record<Locale, Messages> = {
     },
     macos: {
       headline: ['Every job.', 'One glance.'],
-      subhead: 'Running, waiting, or broken—right in the menu bar.',
+      subhead: 'Running, needs you, or broken—right in the menu bar.',
       openDocs: 'Open docs',
       ribbonPreviewLabel: 'Live ribbon preview',
       storyTitle: 'Status without another window.',
@@ -169,7 +172,7 @@ export const messages: Record<Locale, Messages> = {
         { title: 'One live ribbon.', body: 'See every job at a glance.' },
         {
           title: 'Only when it matters.',
-          body: 'Running, waiting, and failed stay distinct.',
+          body: 'Running, needs you, and failed stay distinct.',
         },
         {
           title: 'Open and local.',
@@ -195,8 +198,8 @@ export const messages: Record<Locale, Messages> = {
       status: {
         problem: 'Problem',
         attention: 'Attention',
-        waiting: 'Waiting',
         running: 'Running',
+        monitor: 'Monitor',
         success: 'Success',
         inactive: 'Inactive',
       },
@@ -213,8 +216,8 @@ export const messages: Record<Locale, Messages> = {
         jobs: [
           { name: 'Deploy preview', detail: 'Health check failed', time: '8 min' },
           { name: 'Unit tests', detail: 'Approval required', time: '1 min' },
-          { name: 'Nerve', detail: 'Waiting for input', time: '10 sec' },
           { name: 'Claude Code', detail: 'Editing website', time: '18 sec' },
+          { name: 'Build log', detail: 'Watching stream', time: '3 min' },
           { name: 'Build archive', detail: 'Finished cleanly', time: '2 min' },
           { name: 'Local watcher', detail: 'No recent signal', time: '12 min' },
         ],
@@ -223,10 +226,11 @@ export const messages: Record<Locale, Messages> = {
         label: 'tmux sidebar preview',
         filter: 'all',
         jobs: [
-          { name: 'checkout', detail: 'Implementing auth', time: '3m' },
+          { name: 'deploy', detail: 'Deploy failed', time: '4m' },
           { name: 'nerve', detail: 'Needs your review', time: 'now' },
+          { name: 'checkout', detail: 'Implementing auth', time: '3m' },
+          { name: 'logs', detail: 'Watching stream', time: '2m' },
           { name: 'ios-build', detail: 'Tests passed', time: '1m' },
-          { name: 'deploy', detail: 'Waiting on API', time: '4m' },
           { name: 'docs', detail: 'Ready', time: '12m' },
         ],
         activity: 'Activity',
@@ -289,13 +293,13 @@ export const messages: Record<Locale, Messages> = {
     },
     macos: {
       headline: ['所有任务。', '一眼看清。'],
-      subhead: '运行、等待还是出错，都在菜单栏里。',
+      subhead: '运行、需要你，还是出错，都在菜单栏里。',
       openDocs: '打开文档',
       ribbonPreviewLabel: '实时状态条预览',
       storyTitle: '状态清楚，不用再开窗口。',
       truths: [
         { title: '一条实时状态条。', body: '所有任务，一眼看清。' },
-        { title: '只在关键时刻找你。', body: '运行、等待和失败，始终分得清。' },
+        { title: '只在关键时刻找你。', body: '运行、需要你和失败，始终分得清。' },
         { title: '开放，且完全本地。', body: '协议和源码都可以自己检查。' },
       ],
       getTitle: '其他细节，都在文档里。',
@@ -317,8 +321,8 @@ export const messages: Record<Locale, Messages> = {
       status: {
         problem: '出问题',
         attention: '需要你',
-        waiting: '等待中',
         running: '运行中',
+        monitor: '监视中',
         success: '已完成',
         inactive: '未活动',
       },
@@ -335,8 +339,8 @@ export const messages: Record<Locale, Messages> = {
         jobs: [
           { name: '预览部署', detail: '健康检查失败', time: '8 分钟' },
           { name: '单元测试', detail: '需要批准', time: '1 分钟' },
-          { name: 'Nerve', detail: '等待输入', time: '10 秒' },
           { name: 'Claude Code', detail: '正在编辑网站', time: '18 秒' },
+          { name: '构建日志', detail: '正在监视输出', time: '3 分钟' },
           { name: '归档构建', detail: '顺利完成', time: '2 分钟' },
           { name: '本地监视器', detail: '最近没有信号', time: '12 分钟' },
         ],
@@ -345,10 +349,11 @@ export const messages: Record<Locale, Messages> = {
         label: 'tmux 侧边栏预览',
         filter: '全部',
         jobs: [
-          { name: 'checkout', detail: '正在实现认证', time: '3m' },
+          { name: 'deploy', detail: '部署失败', time: '4m' },
           { name: 'nerve', detail: '等你审查', time: '现在' },
+          { name: 'checkout', detail: '正在实现认证', time: '3m' },
+          { name: 'logs', detail: '正在监视输出', time: '2m' },
           { name: 'ios-build', detail: '测试通过', time: '1m' },
-          { name: 'deploy', detail: '等待 API', time: '4m' },
           { name: 'docs', detail: '就绪', time: '12m' },
         ],
         activity: '活动',

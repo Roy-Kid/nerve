@@ -20,6 +20,7 @@ pub mod machine;
 pub mod panes;
 pub mod popup;
 pub mod preview;
+mod procs;
 pub mod remote;
 pub mod ssh;
 pub mod state;

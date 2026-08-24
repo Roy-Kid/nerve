@@ -1,5 +1,14 @@
 # Notes
 
+<!-- mol:note:topic:status-palette -->
+## 2026-08-24 — Status colors: five rainbow + gray
+
+Why: waiting-as-purple asked the user to memorize a sixth “needs a look” hue. Monitor is a different job: watching a stream, not blocked and not executing.
+
+**Rule**: shared job status is five rainbow hues (red problem, orange attention, blue running, violet monitor, green success) plus gray idle. Seven is the ceiling. Waiting on the system shares **Attention**. A background shell/subagent still executing is **Running**; only `current.type=monitor` (or active + `outcome=partial`) is **Monitor**. Ended success stays green. Chrome stays gray/slate.
+
+**Surfaces**: `Status.painted` / tmux `colors.rs` / site `statusMeta` are the three copies of the same map. `{waiting}` remains a summary token (always empty from derivation); `{monitor}` is in the default `@nerve_status_format`.
+
 <!-- mol:note:topic:arch-hub-topology -->
 ## 2026-08-23 — State hub topology (supersedes in-app ingest)
 
@@ -126,15 +135,26 @@ Why: the cursor wandered into the Activity panel (nothing to select there), and 
 
 ## 2026-08-23 — Performance pass + oversized-file split
 
-- **Hub frame render** — `sse::Frame` borrows the store and serialises once.
-  It used to build two `serde_json::Value` trees (`jobs_json` +
-  `drain_departed_json`) and walk them again to write the string; a frame is
-  the hub's hottest work (full job set per 150 ms window). `jobs_json()` stays
-  for `GET /v1/jobs` and the state tests.
+- **Hub and tmux surface stay Rust-only.** Wiring, the sidebar TUI, and the
+  hub daemon have no bash/Python on the hot path. `surfaces/tmux/nerve.tmux`
+  is a fail-open trampoline that `exec`s `nerve-tmux-surface install`;
+  `nerve.conf` is gone. TPM still needs a `*.tmux` file.
+- **Hub runtime** — `#[tokio::main(flavor = "current_thread")]`. A handful of
+  loopback connections and a 150 ms pump do not need a worker pool.
+- **Hub frame render** — `sse::Frame` borrows the store and serialises a
+  `JobsSeq` straight into a sized buffer. It used to collect a `Vec<JobView>`
+  (and before that, two `serde_json::Value` trees) just to walk them again; a
+  frame is the hub's hottest work (full job set per 150 ms window).
+  `jobs_json()` stays for `GET /v1/jobs` and the state tests.
 - **tmux sidebar tick** — `refresh_from_hub` re-grouped and re-sorted the whole
   list 5×/s whether or not a frame arrived. It now compares snapshot `Arc`
   identity and rebuilds only on arrival; `now`, pane-follow and git keep their
-  own throttles.
+  own throttles. Ratatui draws on input, a new snapshot, or once a second
+  (relative ages) — not five times a second on a quiet pane.
+- **tmux subprocess tax** — one `ps -ax` snapshot per 250 ms answers pid→tty,
+  tty→pids and ssh destinations (was one spawn per pid / per ssh pane). Git
+  panel is one `status --porcelain=v1 -b` (was five git processes). `~/.ssh/config`
+  is `OnceLock`. Opening the sidebar no longer runs `sh -lc` (login shell).
 - **Status derivation** — `StatusClass::of` no longer lower-cases `reason` /
   `current.type` per job (it is asked once per job for the filter bar, once per
   section and once per row). Vocabulary matching is `eq_ignore_ascii_case`.
@@ -142,15 +162,12 @@ Why: the cursor wandered into the Activity panel (nothing to select there), and 
 - **`percent_decode` was wrong, not just slow** — it pushed each *byte* as a
   `char`, so `/Users/me/项目` decoded to mojibake and the Git panel got a path
   that does not exist. Decodes into bytes now, `from_utf8_lossy` at the end.
-- **Hook (hottest code in the system — one process per agent event)**
-  - `_machine_alias` / `_machine_kind` / `_agent_process_pid` /
-    `_proc_ppid_and_name` are memoised: 5 subprocess spawns per event → 3, and
-    a SessionStart that supersedes now costs 0 extra.
-  - Transport is a hand-written loopback POST on a socket. Importing
-    `urllib.request` (→ `http.client`, `email`, `ssl`) cost ~17 ms per event —
-    more than the request it sent. `tempfile` is imported lazily.
-  - Net: ~23 ms off a ~57 ms event. `IngestTransportTests` covers the new
-    transport against a real socket; every other test replaces `_post_snapshot`.
+- **Hooks are host-native, not rust-only.** Official type + official language:
+  Claude Code `command` exec form (`node` + `args` → `hooks/nerve.js`);
+  Codex `command` (`python3 ${PLUGIN_ROOT}/hooks/nerve.py`, as their docs show);
+  Grok `type: "http"` (Grok POSTs the event; hub `/v1/hook` maps it because
+  there is no user script). Mapping for Claude/Codex is in the native script
+  and POSTs `/v1/snapshot`.
 - **macOS store** — `conversationJobs` / `openJobs` are derived once per write
   (`rederive()`), pre-sorted. Eight readers used to filter the dictionary and
   re-sort; a filter keeps order, so every section now inherits the sort.

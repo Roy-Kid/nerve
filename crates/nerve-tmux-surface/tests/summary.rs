@@ -15,7 +15,7 @@
 //!     pub const DEFAULT_TEMPLATE: &'static str =
 //!         "#[fg=red]{problem}!#[default] \
 //!          #[fg=yellow]{attention}?#[default] \
-//!          #[fg=magenta]{waiting}~#[default] \
+//!          #[fg=magenta]{monitor}~#[default] \
 //!          #[fg=blue]{running}>#[default]";
 //!     /// Default `@nerve_status_offline`.
 //!     pub const DEFAULT_OFFLINE: &'static str = "#[fg=brightblack]nerve: offline#[default]";
@@ -35,8 +35,8 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! 1. A template is split on runs of ASCII whitespace into **segments**.
-//! 2. Count tokens are `{problem} {attention} {waiting} {running} {success}
-//!    {inactive} {total}`; each renders as decimal digits.
+//! 2. Count tokens are `{problem} {attention} {waiting} {running} {monitor}
+//!    {success} {inactive} {total}`; each renders as decimal digits.
 //! 3. A segment whose count tokens **all** render `0` is dropped whole —
 //!    colour markers, glyphs and punctuation with it.
 //! 4. A segment containing **no** count token is a literal separator and is
@@ -82,7 +82,7 @@ fn test_default_template_is_the_literal_the_docs_publish() {
     assert_eq!(
         SummaryRenderer::DEFAULT_TEMPLATE,
         "#[fg=red]{problem}!#[default] #[fg=yellow]{attention}?#[default] \
-         #[fg=magenta]{waiting}~#[default] #[fg=blue]{running}>#[default]"
+         #[fg=magenta]{monitor}~#[default] #[fg=blue]{running}>#[default]"
     );
 }
 
@@ -104,8 +104,9 @@ fn test_default_renderer_uses_the_default_template() {
     );
 }
 
-/// One of every class: the default format shows the four that want a human's
-/// eye and stays quiet about `success` / `inactive`.
+/// One of every class: the default format shows problem / attention / monitor /
+/// running and stays quiet about `waiting` (merged into attention), `success`,
+/// and `inactive`.
 #[test]
 fn test_default_template_over_one_of_each_class() {
     let tally = Tally {
@@ -113,6 +114,7 @@ fn test_default_template_over_one_of_each_class() {
         attention: 1,
         waiting: 1,
         running: 1,
+        monitor: 1,
         success: 1,
         inactive: 1,
     };
@@ -177,28 +179,30 @@ fn test_total_counts_every_class_not_just_the_painted_ones() {
         attention: 1,
         waiting: 1,
         running: 1,
+        monitor: 1,
         success: 1,
         inactive: 1,
     };
 
-    assert_eq!(renderer.render(&tally), "6");
+    assert_eq!(renderer.render(&tally), "7");
 }
 
 #[test]
 fn test_every_count_token_is_substitutable() {
     let renderer = SummaryRenderer::new(
-        "{problem}-{attention}-{waiting}-{running}-{success}-{inactive}-{total}",
+        "{problem}-{attention}-{waiting}-{running}-{monitor}-{success}-{inactive}-{total}",
     );
     let tally = Tally {
         problem: 1,
         attention: 2,
         waiting: 3,
         running: 4,
-        success: 5,
-        inactive: 6,
+        monitor: 5,
+        success: 6,
+        inactive: 7,
     };
 
-    assert_eq!(renderer.render(&tally), "1-2-3-4-5-6-21");
+    assert_eq!(renderer.render(&tally), "1-2-3-4-5-6-7-28");
 }
 
 /// A segment carrying no count token is a separator the user asked for.

@@ -282,7 +282,7 @@ final class MenuBarRibbonNSView: NSView {
         }
         return [
             c(map.problem), c(map.attention), c(map.waiting),
-            c(map.running), c(map.success), c(map.inactive),
+            c(map.running), c(map.monitor), c(map.success), c(map.inactive),
         ].joined(separator: "|")
     }
 }

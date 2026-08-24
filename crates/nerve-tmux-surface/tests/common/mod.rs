@@ -28,9 +28,9 @@ use nerve_tmux_surface::frame::{Frame, JobView};
 /// |----|--------|-------|-------|
 /// | `claude-code:problem` | `outcome=failure` | problem | `Subject.swift:39` |
 /// | `claude-code:attention` | `attention{required,input}` | attention | `Subject.swift:43-52` |
-/// | `claude-code:waiting` | `attention{suggested,resource}` | waiting | `Subject.swift:44-49` |
+/// | `claude-code:waiting` | `attention{suggested,resource}` | attention | `Subject.swift:43` |
 /// | `claude-code:running` | `current.type=thinking`, poisoned summary | running | `Subject.swift:81-85` |
-/// | `claude-code:success` | `active` + `outcome=partial` | success | `Subject.swift:77-79` |
+/// | `claude-code:success` | `active` + `outcome=partial` + `monitor` | monitor | `Subject.swift:66-77` |
 /// | `claude-code:inactive` | `current.type=starting` | inactive | `Subject.swift:92-93` |
 /// | `claude-code:departed` | `ended` + `outcome=failure` | (never counted) | — |
 ///

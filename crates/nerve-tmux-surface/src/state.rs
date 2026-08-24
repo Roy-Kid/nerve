@@ -132,7 +132,11 @@ impl AppState {
     /// pointer identity is the whole test. The cheap half still runs every
     /// tick: `now` ages the rows, and the pane follow / preview / git calls
     /// carry throttles of their own.
-    pub fn refresh_from_hub(&mut self) {
+    ///
+    /// Returns `true` when the drawn contents changed (new snapshot, or the
+    /// highlight followed a pane the human walked into) so the loop can skip
+    /// a ratatui pass on idle ticks.
+    pub fn refresh_from_hub(&mut self) -> bool {
         let next = self.store.snapshot();
         let arrived = !Arc::ptr_eq(&next, &self.snapshot);
         self.snapshot = next;
@@ -143,9 +147,10 @@ impl AppState {
             // it was on is what it keeps.
             self.restore_selection(self.selected_index);
         }
-        self.follow_focused_pane();
+        let followed = self.follow_focused_pane();
         self.sync_preview();
         self.refresh_git_if_due();
+        arrived || followed
     }
 
     /// Group, sort and flatten the current snapshot once. Every reader below
@@ -290,21 +295,22 @@ impl AppState {
     /// follows, so a pane the human focuses themselves should bring the
     /// highlight to it. Identity again — the pids on that pane's terminal, one
     /// of which the producer reported.
-    fn follow_focused_pane(&mut self) {
+    fn follow_focused_pane(&mut self) -> bool {
         let Some(pids) = self.preview.newly_focused_pids() else {
-            return;
+            return false;
         };
         let Some(id) = job_running_as(&self.snapshot.jobs, &pids) else {
-            return;
+            return false;
         };
         // Already there: never fight a cursor that agrees.
         if self.selected_id.as_deref() == Some(id.as_str()) {
-            return;
+            return false;
         }
         self.selected_id = Some(id);
         self.restore_selection(self.selected_index);
         self.bottom_scroll = 0;
         self.invalidate_git();
+        true
     }
 
     /// Mirror the selection into the sibling pane, cloning the job only when

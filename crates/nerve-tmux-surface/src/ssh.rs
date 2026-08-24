@@ -19,7 +19,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::sync::OnceLock;
 
 /// Commands that mean "this pane is somewhere else".
 ///
@@ -42,25 +42,10 @@ pub fn is_remote_client(command: &str) -> bool {
 
 /// Where the ssh session on `tty` is connected, as the human spelled it.
 ///
-/// `ps -t` rather than a walk of the process tree: the pane's shell and the ssh
-/// it launched share one controlling terminal, and tmux already told us which.
+/// Reads the same process-table snapshot the pane scan uses, so an ssh pane
+/// does not cost a second `ps`.
 pub fn destination_on_tty(tty: &str) -> Option<String> {
-    let terminal = tty.trim().trim_start_matches("/dev/");
-    if terminal.is_empty() {
-        return None;
-    }
-    let output = Command::new("ps")
-        .args(["-t", terminal, "-o", "args="])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let listing = String::from_utf8_lossy(&output.stdout);
-    listing
-        .lines()
-        .find_map(parse_destination)
-        .map(str::to_string)
+    crate::procs::ProcTable::current().destination_on_tty(tty)
 }
 
 /// The destination in one `ps` line, or `None` if that line is not a session
@@ -196,8 +181,16 @@ pub struct SshHosts {
 }
 
 impl SshHosts {
-    /// Read `~/.ssh/config`, or nothing at all if it cannot be read.
-    pub fn load() -> Self {
+    /// Read `~/.ssh/config` once per process.
+    ///
+    /// The file does not change while a sidebar is open in any way that would
+    /// justify re-parsing it on every remote-job scan.
+    pub fn load() -> &'static Self {
+        static HOSTS: OnceLock<SshHosts> = OnceLock::new();
+        HOSTS.get_or_init(Self::read)
+    }
+
+    fn read() -> Self {
         let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
             return Self::default();
         };

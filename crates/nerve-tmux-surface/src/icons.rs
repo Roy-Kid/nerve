@@ -27,6 +27,7 @@ pub fn status_icon(class: StatusClass) -> &'static str {
         StatusClass::Attention => WAITING,
         StatusClass::Waiting => WAITING,
         StatusClass::Running => RUNNING,
+        StatusClass::Monitor => BACKGROUND,
         StatusClass::Success => BACKGROUND,
         StatusClass::Inactive => IDLE,
     }

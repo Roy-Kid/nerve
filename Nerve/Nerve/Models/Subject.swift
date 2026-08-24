@@ -39,27 +39,17 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         if outcome == .failure { return .problem }
         if health == .unresponsive { return .problem }
 
-        // Elevated attention → attention or waiting, never running.
+        // Elevated attention → needs a look (you or the system). One color.
         if attention.level >= .suggested {
-            if let reason = attention.reason?.lowercased() {
-                switch reason {
-                case "resource", "dependency", "queue", "system", "lock",
-                     "throttle", "rate", "capacity", "failure":
-                    return .waiting
-                default:
-                    return .attention
-                }
-            }
             return .attention
         }
 
         if attention.level >= .informational, let reason = attention.reason?.lowercased() {
             switch reason {
-            case "input", "approval", "auth", "permission", "decision", "elicitation":
-                return .attention
-            case "resource", "dependency", "queue", "system", "lock",
+            case "input", "approval", "auth", "permission", "decision", "elicitation",
+                 "resource", "dependency", "queue", "system", "lock",
                  "throttle", "rate", "capacity", "failure":
-                return .waiting
+                return .attention
             default:
                 break
             }
@@ -70,23 +60,23 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
             return .inactive
         }
         if lifecycle == .suspended || lifecycle == .unknown { return .inactive }
-        if lifecycle == .pending || lifecycle == .created { return .waiting }
-        if health == .degraded { return .waiting }
+        if lifecycle == .pending || lifecycle == .created { return .attention }
+        if health == .degraded { return .attention }
 
-        // Open session, partial outcome (monitor waiting for feedback) → Success.
+        // Open session, partial outcome: a monitor holding the stream.
         if lifecycle == .active, outcome == .partial {
-            return .success
+            return .monitor
         }
 
         switch current?.type.lowercased() {
         case "subagent", "tool", "thinking", "info":
-            // Shell / subagent still running → Running (never Attention).
+            // Shell / subagent still running → Running (never Monitor).
             if lifecycle == .active { return .running }
         case "monitor":
-            // Monitor open: phase complete, waiting on stream feedback → green.
-            return .success
+            // Watching a background stream — not executing, not done.
+            return .monitor
         case "waiting":
-            return .waiting
+            return .attention
         // starting = Ready (session open, no turn yet). idle = your_turn facet
         // without elevated attention (rare). Never paint Running for these.
         case "idle", "starting", "booting":

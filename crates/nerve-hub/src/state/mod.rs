@@ -17,4 +17,4 @@ pub mod timeline;
 pub use dedupe::{MAX_SEEN_EVENTS, SEEN_EVENT_EVICT_BATCH};
 pub use machine::LocalAlias;
 pub use reaper::{PidProbe, PidState, SignalProbe};
-pub use store::{JobStore, JobView};
+pub use store::{JobStore, JobView, JobsSeq};

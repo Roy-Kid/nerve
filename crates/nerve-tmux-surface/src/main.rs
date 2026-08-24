@@ -13,6 +13,7 @@ nerve-tmux-surface - the tmux sidebar surface of the Nerve hub
 
 Usage:
   nerve-tmux-surface            Run the sidebar TUI (inside a tmux split pane).
+  nerve-tmux-surface install    Wire keys, options and hooks into this tmux.
   nerve-tmux-surface toggle     Open or toggle focus on the sidebar in one window.
   nerve-tmux-surface close      Close the sidebar when its pane is focused.
   nerve-tmux-surface auto-close Close a window that only has the sidebar left.

@@ -37,7 +37,7 @@
   --color-label-2: #6e6e73;
   --color-label-3: #86868b;
 
-  /* Status hues. The same six the surfaces paint with. */
+  /* Page chrome (Apple system). Job status is --color-status-*, not these. */
   --color-blue: #007aff;
   --color-blue-pressed: #0071e3;
   --color-cyan: #57c7eb;
@@ -45,6 +45,14 @@
   --color-green: #34c759;
   --color-amber: #ff9500;
   --color-red: #ff3b30;
+
+  /* Job status — same six hues the surfaces paint. */
+  --color-status-problem: #ff3b30;
+  --color-status-attention: #ff9f0a;
+  --color-status-running: #0a84ff;
+  --color-status-monitor: #bf5af2;
+  --color-status-success: #30d158;
+  --color-status-inactive: #8e8e93;
 
   /* Where the nav collapses, and where a three-up grid becomes one column.
      Neither lands on Tailwind's own scale, so both are named here. */

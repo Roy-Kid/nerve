@@ -254,7 +254,7 @@ fn status_filter_color(filter: StatusFilter) -> u8 {
     match filter {
         StatusFilter::All => colors::ALL,
         StatusFilter::Running => colors::RUNNING,
-        StatusFilter::Background => colors::SUCCESS,
+        StatusFilter::Background => colors::MONITOR,
         StatusFilter::Waiting => colors::WAITING,
         StatusFilter::Idle => colors::IDLE,
         StatusFilter::Error => colors::PROBLEM,
@@ -267,6 +267,7 @@ fn status_color(class: StatusClass) -> u8 {
         StatusClass::Attention => colors::ATTENTION,
         StatusClass::Waiting => colors::WAITING,
         StatusClass::Running => colors::RUNNING,
+        StatusClass::Monitor => colors::MONITOR,
         StatusClass::Success => colors::SUCCESS,
         StatusClass::Inactive => colors::IDLE,
     }

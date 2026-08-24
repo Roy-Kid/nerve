@@ -301,7 +301,7 @@ class NerveHookTests(unittest.TestCase):
                 self.assertEqual(job["current"]["type"], "subagent")
 
     def test_idle_prompt_monitor_wait_is_success_not_attention(self):
-        """Monitor-only toast → Success (green), not Attention or Running."""
+        """Monitor-only toast → current.type=monitor, not Attention or Running."""
         for msg in (
             "1 monitor still running",
             "Waiting for monitor",
@@ -367,8 +367,46 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(job["outcome"], "partial")
         self.assertEqual(job["attention"]["level"], "none")
 
+    def test_precompact_without_background_is_thinking(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "PreCompact",
+                "session_id": "scompact",
+                "cwd": "/tmp/y",
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "thinking")
+        self.assertEqual(job["current"]["summary"], "Compacting context")
+        self.assertEqual(job["attention"]["level"], "none")
+
+    def test_postcompact_without_background_is_your_turn(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "PostCompact",
+                "session_id": "scompact2",
+                "cwd": "/tmp/y",
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "idle")
+        self.assertEqual(job["attention"]["reason"], "input")
+
+    def test_postcompact_with_monitor_stays_monitor(self):
+        job = self.mod.process(
+            {
+                "hook_event_name": "PostCompact",
+                "session_id": "scompact3",
+                "cwd": "/tmp/y",
+                "background_tasks": [{"id": "m1", "type": "monitor"}],
+            }
+        )
+        assert job is not None
+        self.assertEqual(job["current"]["type"], "monitor")
+        self.assertEqual(job["outcome"], "partial")
+
     def test_stop_with_mixed_shell_and_monitor_is_running(self):
-        """Shell (or subagent) + monitor → Running; only pure monitor is green."""
+        """Shell (or subagent) + monitor → Running; only pure monitor is Monitor."""
         job = self.mod.process(
             {
                 "hook_event_name": "Stop",

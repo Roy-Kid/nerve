@@ -1,22 +1,17 @@
+import { jobs } from '../config';
 import { cn } from '../lib/utils';
 import type { StatusRibbonSegment } from '../lib/statusRibbon';
 import { StatusRibbonBand } from './StatusRibbonBand';
 import { useLocale } from '../i18n/locale';
 
-const previewJobTones = [
-  'problem',
-  'attention',
-  'waiting',
-  'running',
-  'success',
-  'inactive',
-] as const;
-
-const previewRibbon: StatusRibbonSegment[] = previewJobTones.map((tone) => ({
-  id: tone,
-  status: tone,
+const previewRibbon: StatusRibbonSegment[] = jobs.map((job) => ({
+  id: job.id,
+  status: job.status,
   weight: 1,
 }));
+
+const runningCount = jobs.filter((job) => job.status === 'running').length;
+const attentionCount = jobs.filter((job) => job.status === 'attention').length;
 
 type MacDevicePreviewProps = {
   variant?: 'default' | 'hero' | 'card';
@@ -30,8 +25,9 @@ export function MacDevicePreview({
   className,
 }: MacDevicePreviewProps) {
   const { t } = useLocale();
-  const previewJobs = previewJobTones.map((tone, index) => ({
-    tone,
+  const previewJobs = jobs.map((job, index) => ({
+    id: job.id,
+    tone: job.status,
     ...t.preview.mac.jobs[index],
   }));
 
@@ -106,10 +102,10 @@ export function MacDevicePreview({
             <header className="popover-toolbar">
               <div className="popover-counts" aria-label={t.preview.mac.countsLabel}>
                 <span className="count-running">
-                  <i aria-hidden="true">▶</i> 1
+                  <i aria-hidden="true">▶</i> {runningCount}
                 </span>
                 <span className="count-attention">
-                  <i aria-hidden="true">!</i> 1
+                  <i aria-hidden="true">!</i> {attentionCount}
                 </span>
               </div>
               <div className="popover-actions" aria-hidden="true">
@@ -123,7 +119,7 @@ export function MacDevicePreview({
 
             <ul className="preview-jobs">
               {previewJobs.map((job) => (
-                <li key={job.name}>
+                <li key={job.id}>
                   <i className={`job-dot job-dot--${job.tone}`} aria-hidden="true" />
                   <strong>{job.name}</strong>
                   <span>{job.detail}</span>

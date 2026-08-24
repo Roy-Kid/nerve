@@ -1,24 +1,20 @@
-import { statusMeta } from '../config';
+import { jobs, statusMeta, type StatusTone } from '../config';
 import { cn } from '../lib/utils';
 import { useLocale } from '../i18n/locale';
 
-const jobPresentation = [
-  { tone: 'running', active: false },
-  { tone: 'attention', active: true },
-  { tone: 'success', active: false },
-  { tone: 'waiting', active: false },
-  { tone: 'inactive', active: false },
-] as const;
+const selectedId = jobs.find((job) => job.status === 'attention')?.id ?? jobs[0].id;
 
-// The status palette has one owner (`config.ts`); the preview must not paint
-// the same status a different green than the ribbon beside it.
-const toneColor: Record<(typeof jobPresentation)[number]['tone'], string> = {
-  running: statusMeta.running.color,
-  success: statusMeta.success.color,
-  inactive: statusMeta.inactive.color,
-  attention: statusMeta.attention.color,
-  waiting: statusMeta.waiting.color,
-};
+function tmuxFilterChips(statuses: readonly StatusTone[]) {
+  const n = (status: StatusTone) => statuses.filter((item) => item === status).length;
+  return [
+    { icon: '≡', count: statuses.length, color: null as string | null },
+    { icon: '●', count: n('running'), color: statusMeta.running.color },
+    { icon: '◎', count: n('monitor'), color: statusMeta.monitor.color },
+    { icon: '◐', count: n('attention'), color: statusMeta.attention.color },
+    { icon: '○', count: n('inactive') + n('success'), color: statusMeta.inactive.color },
+    { icon: '✕', count: n('problem'), color: statusMeta.problem.color },
+  ];
+}
 
 type TmuxSidebarPreviewProps = {
   /** How large the surrounding section wants the terminal.
@@ -32,10 +28,12 @@ export function TmuxSidebarPreview({
   className,
 }: TmuxSidebarPreviewProps) {
   const { t } = useLocale();
-  const jobs = jobPresentation.map((presentation, index) => ({
-    ...presentation,
+  const rows = jobs.map((job, index) => ({
+    ...job,
     ...t.preview.tmux.jobs[index],
+    active: job.id === selectedId,
   }));
+  const chips = tmuxFilterChips(jobs.map((job) => job.status));
 
   return (
     <div
@@ -58,13 +56,21 @@ export function TmuxSidebarPreview({
       <div className="tmux-demo-workspace">
         <aside className="tmux-demo-sidebar">
           <div className="tmux-demo-counts" aria-hidden="true">
-            <b>≡5</b><b>●3</b><span>◎0</span><b>○1</b><span>×0</span>
+            {chips.map((chip) => {
+              const Tag = chip.count > 0 ? 'b' : 'span';
+              return (
+                <Tag key={chip.icon} style={chip.color ? { color: chip.color } : undefined}>
+                  {chip.icon}
+                  {chip.count}
+                </Tag>
+              );
+            })}
           </div>
           <div className="tmux-demo-filter" aria-hidden="true">▾ {t.preview.tmux.filter}</div>
           <ul className="tmux-demo-jobs">
-            {jobs.map((job) => (
-              <li key={`${job.name}-${job.detail}`} className={cn(job.active && 'is-active')}>
-                <i style={{ background: toneColor[job.tone] }} aria-hidden="true" />
+            {rows.map((job) => (
+              <li key={job.id} className={cn(job.active && 'is-active')}>
+                <i style={{ background: statusMeta[job.status].color }} aria-hidden="true" />
                 <strong>{job.name}</strong>
                 <span>{job.detail}</span>
                 <time>{job.time}</time>

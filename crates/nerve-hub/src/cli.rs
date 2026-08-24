@@ -23,10 +23,13 @@ nerve-hub - Nerve status hub daemon
 
 Usage:
   nerve-hub serve [--grace-secs N]
+  nerve-hub hook
 
 Commands:
   serve                Bind 127.0.0.1:17890 and serve the ingest + stream
                        contract in the foreground.
+  hook                 Codex command hook: read one host event from stdin
+                       and POST it to the local hub. Always exits 0.
 
 Options:
       --grace-secs N   Seconds to keep running after the last surface
@@ -42,6 +45,7 @@ holds it, this one prints a note and exits 0.";
 #[derive(Debug)]
 pub enum Command {
     Serve(ServeArgs),
+    Hook,
     Help,
 }
 
@@ -65,8 +69,9 @@ impl Command {
                 }
                 ServeArgs::parse(rest).map(Self::Serve)
             }
+            "hook" => Ok(Self::Hook),
             other => Err(UsageError::new(format!(
-                "unknown command `{other}`; expected `serve`"
+                "unknown command `{other}`; expected `serve` or `hook`"
             ))),
         }
     }

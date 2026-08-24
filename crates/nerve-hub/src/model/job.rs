@@ -61,7 +61,7 @@ pub struct Job {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<WireTime>,
     pub updated_at: WireTime,
-    /// Millisecond stamp from the producer (`nerve_hook.py:107`). Higher wins.
+    /// Millisecond stamp from the producer. Higher wins.
     pub version: u64,
 
     #[serde(default)]

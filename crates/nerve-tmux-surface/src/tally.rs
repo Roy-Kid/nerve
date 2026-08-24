@@ -18,6 +18,7 @@ pub struct Tally {
     pub attention: usize,
     pub waiting: usize,
     pub running: usize,
+    pub monitor: usize,
     pub success: usize,
     pub inactive: usize,
 }
@@ -39,6 +40,7 @@ impl Tally {
             StatusClass::Attention => self.attention,
             StatusClass::Waiting => self.waiting,
             StatusClass::Running => self.running,
+            StatusClass::Monitor => self.monitor,
             StatusClass::Success => self.success,
             StatusClass::Inactive => self.inactive,
         }
@@ -46,7 +48,13 @@ impl Tally {
 
     /// Every counted job, whatever its class.
     pub fn total(&self) -> usize {
-        self.problem + self.attention + self.waiting + self.running + self.success + self.inactive
+        self.problem
+            + self.attention
+            + self.waiting
+            + self.running
+            + self.monitor
+            + self.success
+            + self.inactive
     }
 
     /// Whether there is nothing at all to paint.
@@ -60,6 +68,7 @@ impl Tally {
             StatusClass::Attention => &mut self.attention,
             StatusClass::Waiting => &mut self.waiting,
             StatusClass::Running => &mut self.running,
+            StatusClass::Monitor => &mut self.monitor,
             StatusClass::Success => &mut self.success,
             StatusClass::Inactive => &mut self.inactive,
         }

@@ -22,11 +22,11 @@ const bandPadding = 'px-[var(--page-gutter)] py-[clamp(92px,12vw,152px)] max-sm:
 
 const sectionInner = 'mx-auto w-[min(100%,var(--container-page))]';
 
-/** The dot beside a priority label — the same three hues the surfaces paint. */
+/** The dot beside a priority label — the same hues the surfaces paint. */
 const toneDot: Record<string, string> = {
-  running: 'bg-[#58a6ff]',
-  attention: 'bg-[#ffbd45]',
-  problem: 'bg-[#ff5f57]',
+  running: 'bg-status-running',
+  attention: 'bg-status-attention',
+  problem: 'bg-status-problem',
 };
 
 export function TmuxGuidePage() {
@@ -156,7 +156,7 @@ export function TmuxGuidePage() {
             <h2 id="tmux-closing-title" className={bandTitle}>
               {guide.closing.title}
             </h2>
-            <Link to="/docs/tmux" className={cn(homeLink, 'mt-7 text-[#58a6ff]')}>
+            <Link to="/docs/tmux" className={cn(homeLink, 'mt-7 text-blue')}>
               {guide.closing.cta}
               <span aria-hidden="true" className={homeLinkChevron}>
                 {' '}

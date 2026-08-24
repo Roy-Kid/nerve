@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@rstest/core';
 import { designNotes, jobs, lifecycle, site, sources, statusMeta, truths } from './config';
+import { messages } from './i18n/messages';
 
 describe('site config', () => {
   it('exposes product name and GitHub URL', () => {
@@ -15,13 +16,29 @@ describe('site config', () => {
     expect(site.headline).toHaveLength(2);
   });
 
-  it('defines demo jobs for the live ribbon', () => {
-    expect(jobs.length).toBeGreaterThanOrEqual(4);
+  it('demo jobs paint every status once, in ribbon order', () => {
+    expect(jobs.map((job) => job.status)).toEqual(Object.keys(statusMeta));
+  });
+
+  it('mac and tmux screenshot rows follow the same demo jobs', () => {
+    for (const locale of ['en', 'zh'] as const) {
+      expect(messages[locale].preview.mac.jobs).toHaveLength(jobs.length);
+      expect(messages[locale].preview.tmux.jobs).toHaveLength(jobs.length);
+    }
   });
 
   it('covers the status palette', () => {
+    expect(Object.keys(statusMeta)).toEqual([
+      'problem',
+      'attention',
+      'running',
+      'monitor',
+      'success',
+      'inactive',
+    ]);
     expect(statusMeta.running.label).toBe('Running');
-    expect(statusMeta.problem.color).toMatch(/^#/);
+    expect(statusMeta.problem.color).toBe('#ff3b30');
+    expect(statusMeta.attention.color).toBe('#ff9f0a');
   });
 
   it('lists product truths and sources', () => {

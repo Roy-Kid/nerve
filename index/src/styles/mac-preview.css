@@ -107,12 +107,12 @@
     }
 
     .mac-screen {
-      --preview-problem: #ff453a;
-      --preview-attention: #ff9f0a;
-      --preview-waiting: #bf5af2;
-      --preview-running: #0a84ff;
-      --preview-success: #30d158;
-      --preview-inactive: #8e8e93;
+      --preview-problem: var(--color-status-problem);
+      --preview-attention: var(--color-status-attention);
+      --preview-running: var(--color-status-running);
+      --preview-monitor: var(--color-status-monitor);
+      --preview-success: var(--color-status-success);
+      --preview-inactive: var(--color-status-inactive);
       position: relative;
       aspect-ratio: var(--mac-screen-ratio);
       overflow: hidden;
@@ -466,14 +466,14 @@
       animation: job-pulse 2.4s ease-in-out infinite;
     }
 
+    .job-dot--monitor {
+      background: var(--preview-monitor);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--preview-monitor) 44%, transparent);
+    }
+
     .job-dot--attention {
       background: var(--preview-attention);
       box-shadow: 0 0 10px color-mix(in srgb, var(--preview-attention) 44%, transparent);
-    }
-
-    .job-dot--waiting {
-      background: var(--preview-waiting);
-      box-shadow: 0 0 10px color-mix(in srgb, var(--preview-waiting) 44%, transparent);
     }
 
     .job-dot--problem {
@@ -588,10 +588,14 @@
       animation: status-ribbon-shimmer 1.8s linear infinite;
     }
 
-    .status-ribbon-band.is-animated > .status-ribbon-segment--running::before,
-    .status-ribbon-band.is-animated > .status-ribbon-segment--waiting::before {
+    .status-ribbon-band.is-animated > .status-ribbon-segment--running::before {
       --status-ribbon-pulse: 0.12;
       animation: status-ribbon-pulse 2.2s ease-in-out infinite;
+    }
+
+    .status-ribbon-band.is-animated > .status-ribbon-segment--monitor::before {
+      --status-ribbon-pulse: 0.10;
+      animation: status-ribbon-pulse 2.8s ease-in-out infinite;
     }
 
     .status-ribbon-band.is-animated > .status-ribbon-segment--attention::before {

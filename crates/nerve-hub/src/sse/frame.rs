@@ -17,7 +17,7 @@
 use serde::Serialize;
 
 use crate::model::Job;
-use crate::state::{JobStore, JobView};
+use crate::state::{JobStore, JobView, JobsSeq};
 
 /// One frame: two keys, forever.
 pub struct Frame<'a> {
@@ -28,9 +28,12 @@ pub struct Frame<'a> {
 }
 
 /// The wire shape, assembled only for the length of one [`Frame::render`].
+///
+/// `jobs` is a seq wrapper so the renderer never materialises a `Vec<JobView>`
+/// just to throw it away after `serde` walks it.
 #[derive(Serialize)]
 struct Wire<'a> {
-    jobs: Vec<JobView<'a>>,
+    jobs: JobsSeq<'a>,
     departed: Vec<JobView<'a>>,
 }
 
@@ -63,12 +66,19 @@ impl<'a> Frame<'a> {
     /// it means, so the frame must never be pretty-printed.
     pub fn render(&self) -> String {
         let wire = Wire {
-            jobs: self.store.job_views(),
+            jobs: JobsSeq(self.store),
             departed: self.departed.iter().map(JobView::departed).collect(),
         };
+        // Sized for a quiet hub (empty set) and grown by serde; a busy one
+        // still writes once into this buffer instead of building a Value tree.
+        let mut buf = Vec::with_capacity(64 + self.store.job_count() * 384);
         // Plain data borrowed from the store: serialising it cannot fail. The
         // fallback keeps the shape rather than the content, because a frame
         // with the wrong keys would break a surface's parser outright.
-        serde_json::to_string(&wire).unwrap_or_else(|_| r#"{"jobs":[],"departed":[]}"#.to_string())
+        match serde_json::to_writer(&mut buf, &wire) {
+            Ok(()) => String::from_utf8(buf)
+                .unwrap_or_else(|_| r#"{"jobs":[],"departed":[]}"#.to_string()),
+            Err(_) => r#"{"jobs":[],"departed":[]}"#.to_string(),
+        }
     }
 }

@@ -11,6 +11,7 @@
 mod actions;
 mod admin;
 mod guard;
+mod hook;
 mod ingest;
 mod routes;
 mod stream;

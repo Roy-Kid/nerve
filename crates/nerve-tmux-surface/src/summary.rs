@@ -4,8 +4,8 @@
 //! The template language, whole:
 //!
 //! 1. A template is split on runs of ASCII whitespace into **segments**.
-//! 2. Count tokens are `{problem} {attention} {waiting} {running} {success}
-//!    {inactive} {total}`; each renders as decimal digits.
+//! 2. Count tokens are `{problem} {attention} {waiting} {running} {monitor}
+//!    {success} {inactive} {total}`; each renders as decimal digits.
 //! 3. A segment whose count tokens **all** render `0` is dropped whole —
 //!    colour markers, glyphs and punctuation with it.
 //! 4. A segment containing **no** count token is a literal separator and is
@@ -41,7 +41,7 @@ impl SummaryRenderer {
     /// Default `@nerve_status_format`.
     pub const DEFAULT_TEMPLATE: &'static str = "#[fg=red]{problem}!#[default] \
          #[fg=yellow]{attention}?#[default] \
-         #[fg=magenta]{waiting}~#[default] \
+         #[fg=magenta]{monitor}~#[default] \
          #[fg=blue]{running}>#[default]";
 
     /// Default `@nerve_status_offline`.
@@ -99,6 +99,7 @@ impl SummaryRenderer {
             "attention" => Some(tally.attention),
             "waiting" => Some(tally.waiting),
             "running" => Some(tally.running),
+            "monitor" => Some(tally.monitor),
             "success" => Some(tally.success),
             "inactive" => Some(tally.inactive),
             "total" => Some(tally.total()),

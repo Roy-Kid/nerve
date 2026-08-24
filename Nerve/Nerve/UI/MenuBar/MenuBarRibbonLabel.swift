@@ -221,12 +221,14 @@ struct MenuBarRibbonLabel: View {
         case .breathe:
             switch status {
             case .running, .waiting: return wave(period: 2.2, amplitude: 0.14)
+            case .monitor: return wave(period: 2.8, amplitude: 0.10)
             default: return 0
             }
         case .statusPulse, .full:
             // Full mode also runs shimmer — keep body pulse subtle so they don't stack to white.
             switch status {
             case .running, .waiting: return wave(period: 2.2, amplitude: 0.12)
+            case .monitor: return wave(period: 2.8, amplitude: 0.10)
             case .attention: return wave(period: 1.4, amplitude: 0.16)
             case .problem: return wave(period: 0.9, amplitude: 0.18)
             default: return 0

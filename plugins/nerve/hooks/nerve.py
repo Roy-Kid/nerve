@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Nerve hook — push Claude Code / Grok / Codex lifecycle into Nerve as jobs.
+"""Nerve hook — Codex official command hook (python3 ${PLUGIN_ROOT}/hooks/nerve.py).
 
 Reads one JSON hook event from stdin, maps it to a single **main-session** Job
 snapshot (id = {producer}:{session_id}), and POSTs to the fixed local ingest
 URL. Always exit 0 (observability must never block the agent).
+
+Claude Code uses hooks/nerve.js (Node exec form). Grok uses type: http.
 
 Design (one job per conversation)
 ---------------------------------
@@ -30,12 +32,15 @@ Orthogonal event → facet map (no free-text status inference)
 | SubagentStop + bg    | active           | subagent         | none          |
 | SubagentStop no bg   | active           | thinking         | none          |
 | Stop + shell/subagent bg | active      | subagent         | none (Running)|
-| Stop + monitor-only bg   | active      | monitor + partial| none (Success)|
+| Stop + monitor-only bg   | active      | monitor + partial| none (Monitor)|
 | Stop empty bg        | active           | idle             | input         |
 | idle_prompt (no bg)  | active           | idle             | input         |
 | idle_prompt + shell/agent toast | active | subagent     | none (Running)|
-| idle_prompt + monitor toast     | active | monitor      | none (Success)|
+| idle_prompt + monitor toast     | active | monitor      | none (Monitor)|
 | Permission*          | active           | waiting          | approval      |
+| PreCompact           | active           | thinking | bg     | none (Running / Monitor) |
+| PostCompact + bg     | active           | subagent | monitor | none          |
+| PostCompact no bg    | active           | idle             | input         |
 | SessionEnd           | ended + success  | idle             | none          |
 +----------------------+------------------+------------------+---------------+
 Stop / idle ≠ leave panel. Only SessionEnd (or a superseding SessionStart
@@ -338,7 +343,7 @@ def _classify_bg_wait_toast(text: str) -> str | None:
     """Classify known bg-wait toasts → ``\"running\"`` | ``\"monitor\"`` | None.
 
     - shell / subagent / agent still in flight → Running (blue)
-    - monitor-only waiting for feedback → Success (green, partial complete)
+    - monitor-only waiting for feedback → Monitor (purple, watching the stream)
     - shell/monitor combined → Running (shell is active work)
     Unknown free text → None (do not invent Attention from arbitrary strings).
     """
@@ -417,7 +422,7 @@ def _running_background_facets(summary: str, *, name: str = "background") -> dic
 
 
 def _monitor_wait_facets(summary: str, *, name: str = "monitor") -> dict[str, Any]:
-    """Monitor waiting for feedback — partial phase done → Success (green).
+    """Monitor waiting for feedback — partial phase done → Monitor (purple).
 
     Not Attention: nothing needs the human yet; a background monitor is open.
     Not Running: main turn is idle while the monitor holds the stream.
@@ -437,7 +442,7 @@ def _monitor_wait_facets(summary: str, *, name: str = "monitor") -> dict[str, An
 
 
 def _facets_for_bg_wait_toast(summary: str) -> dict[str, Any]:
-    """Map a known harness bg-wait toast string → Running or Success facets."""
+    """Map a known harness bg-wait toast string → Running or Monitor facets."""
     kind = _classify_bg_wait_toast(summary)
     if kind == "monitor":
         return _monitor_wait_facets(summary)
@@ -448,7 +453,7 @@ def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[s
     """Structured facets while background_tasks is non-empty.
 
     - Any shell / subagent still running → Running (blue)
-    - Monitor-only → Success green (partial complete, waiting for feedback)
+    - Monitor-only → Monitor purple (watching the stream, not executing)
     """
     n = len(tasks)
     kinds = {_task_work_kind(t) for t in tasks}
@@ -467,7 +472,7 @@ def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[s
     if desc:
         summary = f"{summary}: {_truncate(str(desc), 100)}"
 
-    # Pure monitor queue → green Success; mix with shell/subagent → Running.
+    # Pure monitor queue → Monitor (purple); mix with shell/subagent → Running.
     if kinds and kinds <= {"monitor"}:
         return _monitor_wait_facets(summary, name=str(label or "monitor"))
     if "shell" in kinds and "subagent" not in kinds:
@@ -737,7 +742,7 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             if bg:
                 return _background_work_facets(payload, bg)
             # agent_needs_input: a (background) agent needs the human → Attention.
-            # idle_prompt + bg-wait toast: shell/subagent → Running; monitor → Success.
+            # idle_prompt + bg-wait toast: shell/subagent → Running; monitor → Monitor.
             if ntype == "idle_prompt" and _is_harness_background_wait_toast(summary):
                 return _facets_for_bg_wait_toast(summary)
             # Honest copy: Nerve signals “go back to agent UI”, never “type here”.
@@ -780,8 +785,44 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "stop":
-        # Non-empty background_tasks ⇒ still in flight (Running or monitor Success),
+        # Non-empty background_tasks ⇒ still in flight (Running or Monitor),
         # never Attention. Empty queue ⇒ human’s turn in the agent UI (not in Nerve).
+        bg = _background_tasks(payload)
+        if bg:
+            return _background_work_facets(payload, bg)
+        return {
+            "lifecycle": "active",
+            "current": {
+                "type": "idle",
+                "summary": "Your turn — continue in the agent UI",
+            },
+            "attention": {
+                "level": "suggested",
+                "reason": "input",
+                "title": "Your turn in agent",
+                "summary": "Return to the agent to continue",
+            },
+            "health": "ok",
+        }
+
+    if event == "precompact":
+        # Compacting is work. Keep any reported background tasks; otherwise thinking.
+        bg = _background_tasks(payload)
+        if bg:
+            return _background_work_facets(payload, bg)
+        return {
+            "lifecycle": "active",
+            "current": {
+                "type": "thinking",
+                "summary": "Compacting context",
+                "startedAt": _now_iso(),
+            },
+            "attention": {"level": "none"},
+            "health": "ok",
+        }
+
+    if event == "postcompact":
+        # Same as Stop: remaining bg work keeps Running/Monitor; otherwise your turn.
         bg = _background_tasks(payload)
         if bg:
             return _background_work_facets(payload, bg)
@@ -1316,17 +1357,34 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
 
     if event not in {
         "sessionstart",
+        "setup",
         "sessionend",
         "userpromptsubmit",
+        "userpromptexpansion",
         "pretooluse",
         "posttooluse",
         "posttoolusefailure",
+        "posttoolbatch",
         "permissionrequest",
+        "permissiondenied",
         "notification",
+        "messagedisplay",
         "stop",
         "stopfailure",
         "subagentstart",
         "subagentstop",
+        "taskcreated",
+        "taskcompleted",
+        "teammateidle",
+        "instructionsloaded",
+        "configchange",
+        "cwdchanged",
+        "directoryadded",
+        "filechanged",
+        "precompact",
+        "postcompact",
+        "elicitation",
+        "elicitationresult",
     }:
         return None
 

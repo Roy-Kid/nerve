@@ -12,6 +12,7 @@ use axum::routing::{get, post};
 use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
 
+use crate::hook::SlotMap;
 use crate::sse::ChangeSignal;
 use crate::state::JobStore;
 
@@ -26,6 +27,7 @@ use super::{actions, admin, guard, ingest};
 #[derive(Clone)]
 pub struct HubState {
     store: Arc<Mutex<JobStore>>,
+    slots: Arc<Mutex<SlotMap>>,
     changes: ChangeSignal,
 }
 
@@ -42,7 +44,11 @@ impl HubState {
 
     /// The same routes over a store the runtime also renders frames from.
     pub fn from_shared(store: Arc<Mutex<JobStore>>, changes: ChangeSignal) -> Self {
-        Self { store, changes }
+        Self {
+            store,
+            slots: Arc::new(Mutex::new(SlotMap::new())),
+            changes,
+        }
     }
 
     /// Lock the store for the length of one handler.
@@ -59,6 +65,10 @@ impl HubState {
     /// changed nothing.
     pub(super) fn changed(&self) {
         self.changes.raise();
+    }
+
+    pub(super) fn slots(&self) -> MutexGuard<'_, SlotMap> {
+        self.slots.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -77,6 +87,7 @@ pub fn router(state: HubState) -> Router {
         .route("/v1/subjects", get(admin::jobs))
         .route("/v1/snapshot", post(ingest::snapshot))
         .route("/v1/events", post(ingest::events))
+        .route("/v1/hook", post(super::hook::ingest))
         .route("/v1/actions/pending", get(actions::pending))
         .route("/v1/actions/result", post(actions::result))
         .route("/v1/demo", post(admin::demo))

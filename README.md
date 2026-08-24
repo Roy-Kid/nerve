@@ -38,7 +38,9 @@ Agent-facing layout: [`CLAUDE.md`](./CLAUDE.md) · [`AGENTS.md`](./AGENTS.md).
 ./scripts/nerve.sh --help                        # dev launcher (explicit flags)
 ./scripts/nerve.sh --run                         # build + open Nerve.app
 ./scripts/nerve.sh --demo                        # sample jobs (hub must be up)
-python3 sources/agents/tests/test_nerve_hook.py  # hook tests
+cargo test --workspace
+python3 sources/agents/tests/test_nerve_hook.py
+node --test plugins/nerve/hooks/nerve.test.js
 cd index && npm test && npm run build            # site
 ```
 
@@ -47,8 +49,8 @@ cd index && npm test && npm run build            # site
 ```
 CLAUDE.md / AGENTS.md   Agent harness (router)
 .claude/notes/          Passive agent notes
-plugins/nerve/          Marketplace hooks → :17890
-sources/agents/         Hook tests (symlink to plugin)
+plugins/nerve/          Marketplace hooks (Claude Node, Codex Python, Grok HTTP)
+crates/nerve-hub/       Hub daemon (+ Grok HTTP mapper at POST /v1/hook)
 Nerve/                  macOS menu-bar app (surface)
 crates/                 Rust: nerve-hub daemon + nerve-tmux-surface helper
 surfaces/tmux/          tmux plugin surface (TPM entry)

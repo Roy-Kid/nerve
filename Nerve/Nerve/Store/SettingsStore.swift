@@ -41,22 +41,65 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     var attention: RGBColor
     var waiting: RGBColor
     var running: RGBColor
+    var monitor: RGBColor
     var success: RGBColor
     var inactive: RGBColor
 
+    /// Rainbow violet `#BF5AF2` — used when a saved palette predates `monitor`.
+    private static let monitorDefault = RGBColor(r: 0.749, g: 0.353, b: 0.949)
+
     static let `default` = StatusColorMap(
-        problem: RGBColor(r: 1.000, g: 0.271, b: 0.227),   // #FF453A
-        attention: RGBColor(r: 1.000, g: 0.624, b: 0.039), // #FF9F0A
-        waiting: RGBColor(r: 0.749, g: 0.353, b: 0.949),   // #BF5AF2
-        running: RGBColor(r: 0.039, g: 0.518, b: 1.000), // #0A84FF
-        success: RGBColor(r: 0.188, g: 0.820, b: 0.345), // #30D158
-        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)  // #8E8E93
+        problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),   // #FF3B30 rainbow red
+        attention: RGBColor(r: 1.000, g: 0.624, b: 0.039), // #FF9F0A rainbow orange
+        waiting: RGBColor(r: 1.000, g: 0.624, b: 0.039),   // same as attention
+        running: RGBColor(r: 0.039, g: 0.518, b: 1.000),   // #0A84FF rainbow blue
+        monitor: monitorDefault,                           // #BF5AF2 rainbow violet
+        success: RGBColor(r: 0.188, g: 0.820, b: 0.345),   // #30D158 rainbow green
+        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)    // #8E8E93 gray, not rainbow
     )
+
+    init(
+        problem: RGBColor,
+        attention: RGBColor,
+        waiting: RGBColor,
+        running: RGBColor,
+        monitor: RGBColor = monitorDefault,
+        success: RGBColor,
+        inactive: RGBColor
+    ) {
+        self.problem = problem
+        self.attention = attention
+        self.waiting = waiting
+        self.running = running
+        self.monitor = monitor
+        self.success = success
+        self.inactive = inactive
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        problem = try c.decode(RGBColor.self, forKey: .problem)
+        attention = try c.decode(RGBColor.self, forKey: .attention)
+        waiting = try c.decode(RGBColor.self, forKey: .waiting)
+        running = try c.decode(RGBColor.self, forKey: .running)
+        monitor = try c.decodeIfPresent(RGBColor.self, forKey: .monitor) ?? Self.monitorDefault
+        success = try c.decode(RGBColor.self, forKey: .success)
+        inactive = try c.decode(RGBColor.self, forKey: .inactive)
+    }
 
     /// Every palette that used to be `default`, newest first. An install still
     /// sitting on one of these never customized its colors, so it is safe to
     /// move forward — add a row here when `default` changes, nothing else.
     static let retiredDefaults: [StatusColorMap] = [
+        // Six distinct hues, waiting was purple.
+        StatusColorMap(
+            problem: RGBColor(r: 1.000, g: 0.271, b: 0.227),
+            attention: RGBColor(r: 1.000, g: 0.624, b: 0.039),
+            waiting: RGBColor(r: 0.749, g: 0.353, b: 0.949),
+            running: RGBColor(r: 0.039, g: 0.518, b: 1.000),
+            success: RGBColor(r: 0.188, g: 0.820, b: 0.345),
+            inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+        ),
         // Before the vivid alignment pass.
         StatusColorMap(
             problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),
@@ -80,9 +123,9 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     func color(for status: Status) -> RGBColor {
         switch status {
         case .problem: return problem
-        case .attention: return attention
-        case .waiting: return waiting
+        case .attention, .waiting: return attention
         case .running: return running
+        case .monitor: return monitor
         case .success: return success
         case .inactive: return inactive
         }
@@ -91,9 +134,9 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     mutating func set(_ color: RGBColor, for status: Status) {
         switch status {
         case .problem: problem = color
-        case .attention: attention = color
-        case .waiting: waiting = color
+        case .attention, .waiting: attention = color
         case .running: running = color
+        case .monitor: monitor = color
         case .success: success = color
         case .inactive: inactive = color
         }

@@ -11,13 +11,13 @@
 //!
 //! /// Derived display status. Variants are declared in priority order, so the
 //! /// derived `Ord` *is* the priority (`CoreTypes.swift:244-267`):
-//! /// problem > attention > waiting > running > success > inactive.
+//! /// problem > attention > waiting > running > monitor > success > inactive.
 //! #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-//! pub enum StatusClass { Problem, Attention, Waiting, Running, Success, Inactive }
+//! pub enum StatusClass { Problem, Attention, Waiting, Running, Monitor, Success, Inactive }
 //!
 //! impl StatusClass {
 //!     /// Every class, most urgent first.
-//!     pub const ALL: [StatusClass; 6];
+//!     pub const ALL: [StatusClass; 7];
 //!     /// The one derivation, ported line for line from `Subject.swift:38-100`.
 //!     pub fn of(job: &frame::JobView) -> StatusClass;
 //!     /// Lower-case spelling, equal to Swift's `Status.rawValue`.
@@ -37,26 +37,22 @@
 //! ```text
 //! :39  outcome == failure                       -> problem
 //! :40  health  == unresponsive                  -> problem
-//! :43  attention.level >= suggested
-//! :46      reason in WAIT_REASONS               -> waiting
-//! :49      reason otherwise                     -> attention
-//! :53      no reason                            -> attention
-//! :56  attention.level >= informational, reason
-//! :58      reason in ASK_REASONS                -> attention
-//! :60      reason in WAIT_REASONS               -> waiting
+//! :43  attention.level >= suggested             -> attention
+//! :47  attention.level >= informational, reason
+//! :48      reason in ASK_REASONS or WAIT_REASONS -> attention
 //! :64      otherwise                            -> (fall through)
 //! :68  lifecycle == ended
 //! :69      outcome in {success, partial}        -> success
 //! :70      otherwise                            -> inactive
 //! :72  lifecycle in {suspended, unknown}        -> inactive
-//! :73  lifecycle in {pending, created}          -> waiting
-//! :74  health == degraded                       -> waiting
-//! :77  lifecycle == active && outcome == partial -> success
+//! :73  lifecycle in {pending, created}          -> attention
+//! :74  health == degraded                       -> attention
+//! :77  lifecycle == active && outcome == partial -> monitor
 //! :81  current.type (lower-cased)
 //! :82      subagent | tool | thinking | info
 //! :84          && lifecycle == active           -> running
-//! :86      monitor                              -> success
-//! :88      waiting                              -> waiting
+//! :86      monitor                              -> monitor
+//! :88      waiting                              -> attention
 //! :92      idle | starting | booting            -> inactive
 //! :94      otherwise                            -> (fall through)
 //! :98  lifecycle == active                      -> running
@@ -66,10 +62,11 @@
 //! ASK_REASONS  = input approval auth permission decision elicitation
 //! ```
 //!
-//! Both reason sets are matched on the *lower-cased* reason (`:44`, `:56`), and
-//! `attention.reason = "failure"` is a WAIT reason — a job blocked on a failed
-//! dependency waits, it is not itself a problem. That asymmetry is Swift's, and
-//! is pinned below rather than smoothed over.
+//! Waiting is not a painted class. ASK and WAIT reasons, pending/created,
+//! degraded health, and `current.type=waiting` all land on Attention — one
+//! orange “needs a look” hue. `attention.reason = "failure"` is still a WAIT
+//! reason (blocked on a failed dependency), not a problem; `outcome` is what
+//! says the job itself failed. That asymmetry is Swift's, and is pinned below.
 //!
 //! `:99` is unreachable: `:68`–`:73` already consume every lifecycle except
 //! `active`, which `:98` answers. It is transcribed for fidelity, untested.
@@ -100,6 +97,7 @@ fn test_classes_are_ordered_most_urgent_first() {
             StatusClass::Attention,
             StatusClass::Waiting,
             StatusClass::Running,
+            StatusClass::Monitor,
             StatusClass::Success,
             StatusClass::Inactive,
         ]
@@ -120,6 +118,7 @@ fn test_labels_match_the_swift_raw_values() {
             "attention",
             "waiting",
             "running",
+            "monitor",
             "success",
             "inactive"
         ]
@@ -208,7 +207,7 @@ fn test_line_49_an_unrecognised_reason_at_suggested_is_attention() {
 }
 
 #[test]
-fn test_line_46_every_wait_reason_at_required_is_waiting() {
+fn test_line_43_every_wait_reason_at_required_is_attention() {
     for reason in [
         "resource",
         "dependency",
@@ -226,8 +225,8 @@ fn test_line_46_every_wait_reason_at_required_is_waiting() {
                 "lifecycle": "active",
                 "attention": { "level": "required", "reason": reason }
             })),
-            StatusClass::Waiting,
-            "attention.reason `{reason}` at required must wait"
+            StatusClass::Attention,
+            "attention.reason `{reason}` at required must be attention"
         );
     }
 }
@@ -242,22 +241,22 @@ fn test_line_44_reason_matching_ignores_case() {
             "lifecycle": "active",
             "attention": { "level": "required", "reason": "Dependency" }
         })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
 /// `attention.reason = "failure"` is a WAIT reason (`:47`), not a problem: the
 /// job is blocked on something that failed, `outcome` is what says the job
-/// itself failed.
+/// itself failed. Painted as Attention with every other wait.
 #[test]
-fn test_line_47_an_attention_reason_of_failure_waits_rather_than_alarms() {
+fn test_line_47_an_attention_reason_of_failure_asks_rather_than_alarms() {
     assert_eq!(
         class(json!({
             "id": "a",
             "lifecycle": "active",
             "attention": { "level": "urgent", "reason": "failure" }
         })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
@@ -286,14 +285,14 @@ fn test_line_58_every_ask_reason_at_informational_is_attention() {
 }
 
 #[test]
-fn test_line_60_a_wait_reason_at_informational_is_waiting() {
+fn test_line_48_a_wait_reason_at_informational_is_attention() {
     assert_eq!(
         class(json!({
             "id": "a",
             "lifecycle": "active",
             "attention": { "level": "informational", "reason": "queue" }
         })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
@@ -375,36 +374,36 @@ fn test_line_72_an_unknown_lifecycle_is_inactive() {
 }
 
 #[test]
-fn test_line_73_a_pending_job_is_waiting() {
+fn test_line_73_a_pending_job_is_attention() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "pending" })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
 #[test]
-fn test_line_73_a_created_job_is_waiting() {
+fn test_line_73_a_created_job_is_attention() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "created" })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
 #[test]
-fn test_line_74_a_degraded_job_is_waiting() {
+fn test_line_74_a_degraded_job_is_attention() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "active", "health": "degraded" })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
-/// An open session reporting a partial outcome is a monitor waiting for
-/// feedback: green, not blue (`.claude/notes/notes.md` 2026-07-22).
+/// An open session reporting a partial outcome is a monitor holding the
+/// stream: purple, not green (ended success) and not blue (still executing).
 #[test]
-fn test_line_77_an_open_job_with_a_partial_outcome_is_success() {
+fn test_line_77_an_open_job_with_a_partial_outcome_is_monitor() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "active", "outcome": "partial" })),
-        StatusClass::Success
+        StatusClass::Monitor
     );
 }
 
@@ -438,26 +437,26 @@ fn test_line_81_current_type_matching_ignores_case() {
 }
 
 #[test]
-fn test_line_86_an_open_monitor_is_success() {
+fn test_line_86_an_open_monitor_is_monitor() {
     assert_eq!(
         class(json!({
             "id": "a",
             "lifecycle": "active",
             "current": { "type": "monitor" }
         })),
-        StatusClass::Success
+        StatusClass::Monitor
     );
 }
 
 #[test]
-fn test_line_88_a_waiting_activity_is_waiting() {
+fn test_line_88_a_waiting_activity_is_attention() {
     assert_eq!(
         class(json!({
             "id": "a",
             "lifecycle": "active",
             "current": { "type": "waiting" }
         })),
-        StatusClass::Waiting
+        StatusClass::Attention
     );
 }
 
@@ -554,9 +553,10 @@ fn test_calm_prose_does_not_hide_a_structured_problem() {
 
 // ── The published frame, class by class ─────────────────────────────────────
 
-/// Each row of `common::SIX_STATE_FRAME` lands on the class its id promises.
+/// Each live row of `common::SIX_STATE_FRAME` lands on a painted class.
+/// The `waiting` id is Attention: waiting shares that hue.
 #[test]
-fn test_the_six_state_frame_lands_one_job_on_each_class() {
+fn test_the_six_state_frame_paints_waiting_as_attention() {
     let decoded = frame(SIX_STATE_FRAME);
 
     let classes: Vec<(&str, StatusClass)> = decoded
@@ -570,9 +570,9 @@ fn test_the_six_state_frame_lands_one_job_on_each_class() {
         vec![
             ("claude-code:problem", StatusClass::Problem),
             ("claude-code:attention", StatusClass::Attention),
-            ("claude-code:waiting", StatusClass::Waiting),
+            ("claude-code:waiting", StatusClass::Attention),
             ("claude-code:running", StatusClass::Running),
-            ("claude-code:success", StatusClass::Success),
+            ("claude-code:success", StatusClass::Monitor),
             ("claude-code:inactive", StatusClass::Inactive),
         ]
     );

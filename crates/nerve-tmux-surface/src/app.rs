@@ -23,6 +23,11 @@ const FILTER_ROW: u16 = 0;
 const DOUBLE_CLICK_MS: u128 = 400;
 /// Rows the detail panel scrolls per wheel notch.
 const WHEEL_LINES: i32 = 2;
+/// How often an idle sidebar redraws so relative ages (`3s`, `1m`) can move.
+///
+/// Input and a new hub frame still draw immediately; between those the loop
+/// only polls. Five ratatui passes a second was the whole CPU of a quiet pane.
+const IDLE_REDRAW: Duration = Duration::from_secs(1);
 
 pub fn run(bottom_height: u16, home: PathBuf) -> io::Result<()> {
     let store = JobsStore::new();
@@ -41,12 +46,20 @@ pub fn run(bottom_height: u16, home: PathBuf) -> io::Result<()> {
     terminal.hide_cursor()?;
 
     let mut last_click: Option<(usize, Instant)> = None;
+    let mut last_draw = Instant::now();
+    let mut dirty = true;
 
     let result = loop {
-        state.refresh_from_hub();
-        let size = terminal.size()?;
-        state.set_viewport(size.width, size.height);
-        terminal.draw(|frame| ui::draw(frame, &state))?;
+        if state.refresh_from_hub() {
+            dirty = true;
+        }
+        if dirty || last_draw.elapsed() >= IDLE_REDRAW {
+            let size = terminal.size()?;
+            state.set_viewport(size.width, size.height);
+            terminal.draw(|frame| ui::draw(frame, &state))?;
+            last_draw = Instant::now();
+            dirty = false;
+        }
         if !event::poll(Duration::from_millis(200))? {
             continue;
         }
@@ -60,9 +73,11 @@ pub fn run(bottom_height: u16, home: PathBuf) -> io::Result<()> {
                         quit = true;
                         break;
                     }
+                    dirty = true;
                 }
                 Event::Mouse(mouse) => {
                     handle_mouse(&mut state, &mut terminal, mouse, &mut last_click)?;
+                    dirty = true;
                 }
                 _ => {}
             }

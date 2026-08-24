@@ -11,6 +11,7 @@ fn main() -> ExitCode {
             println!("{USAGE}");
             ExitCode::from(EXIT_OK)
         }
+        Ok(Command::Hook) => ExitCode::from(nerve_hub::hook::forward_stdin() as u8),
         Ok(Command::Serve(args)) => serve(args),
         Err(err) => {
             eprintln!("nerve-hub: {err}\n\n{USAGE}");
@@ -19,7 +20,7 @@ fn main() -> ExitCode {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn serve(args: ServeArgs) -> ExitCode {
     match Hub::new(args.grace()).serve().await {
         Ok(()) => ExitCode::from(EXIT_OK),

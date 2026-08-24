@@ -16,6 +16,7 @@
 //!     pub attention: usize,
 //!     pub waiting: usize,
 //!     pub running: usize,
+//!     pub monitor: usize,
 //!     pub success: usize,
 //!     pub inactive: usize,
 //! }
@@ -48,17 +49,18 @@ use common::{frame, job, SIX_STATE_FRAME};
 // ── Basics ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn test_the_six_state_frame_counts_one_of_each_class() {
+fn test_the_six_state_frame_folds_waiting_into_attention() {
     let decoded = frame(SIX_STATE_FRAME);
 
     assert_eq!(
         Tally::of(&decoded.jobs),
         Tally {
             problem: 1,
-            attention: 1,
-            waiting: 1,
+            attention: 2,
+            waiting: 0,
             running: 1,
-            success: 1,
+            monitor: 1,
+            success: 0,
             inactive: 1,
         }
     );
@@ -76,9 +78,13 @@ fn test_count_reads_the_same_numbers_as_the_fields() {
     let decoded = frame(SIX_STATE_FRAME);
     let tally = Tally::of(&decoded.jobs);
 
-    for class in StatusClass::ALL {
-        assert_eq!(tally.count(class), 1, "class {}", class.label());
-    }
+    assert_eq!(tally.count(StatusClass::Problem), 1);
+    assert_eq!(tally.count(StatusClass::Attention), 2);
+    assert_eq!(tally.count(StatusClass::Waiting), 0);
+    assert_eq!(tally.count(StatusClass::Running), 1);
+    assert_eq!(tally.count(StatusClass::Monitor), 1);
+    assert_eq!(tally.count(StatusClass::Success), 0);
+    assert_eq!(tally.count(StatusClass::Inactive), 1);
 }
 
 #[test]

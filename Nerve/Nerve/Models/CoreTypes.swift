@@ -244,16 +244,22 @@ struct JobAction: Codable, Sendable, Hashable, Identifiable {
 enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     /// Red — failed or cannot continue.
     case problem
-    /// Orange — needs user input, authorization, or decision.
+    /// Orange — needs a look: you (input/approval) or the system (queue/deps).
     case attention
-    /// Purple — waiting on system, resources, or dependencies.
+    /// Merged into `attention`. Kept so saved palettes and grouping keys still decode.
     case waiting
-    /// Blue — actively executing.
+    /// Blue — actively executing (main thread, or a background shell/subagent).
     case running
-    /// Green — partial complete (e.g. monitor waiting for feedback) or ended success.
+    /// Purple — watching a background stream; phase done, not executing.
+    case monitor
+    /// Green — ended success.
     case success
     /// Gray — ready (no turn yet), paused, or unknown. Not “dead”.
     case inactive
+
+    /// Statuses the ribbon, panel and Settings actually paint. `waiting` shares
+    /// attention so the user learns six hues, not seven.
+    static let painted: [Status] = [.problem, .attention, .running, .monitor, .success, .inactive]
 
     private var order: Int {
         switch self {
@@ -261,8 +267,9 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
         case .attention: return 1
         case .waiting: return 2
         case .running: return 3
-        case .success: return 4
-        case .inactive: return 5
+        case .monitor: return 4
+        case .success: return 5
+        case .inactive: return 6
         }
     }
 
@@ -276,6 +283,7 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
         case .waiting: return "Waiting"
         case .attention: return "Attention"
         case .problem: return "Problem"
+        case .monitor: return "Monitor"
         case .success: return "Success"
         case .inactive: return "Inactive"
         }
@@ -284,7 +292,7 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     /// problem / attention get a minimum segment weight when painting the ribbon.
     var isHighPriority: Bool {
         switch self {
-        case .problem, .attention: return true
+        case .problem, .attention, .waiting: return true
         default: return false
         }
     }
@@ -428,7 +436,7 @@ enum RibbonMotionStyle: String, Codable, CaseIterable, Identifiable, Sendable, H
         case .transitionsOnly:
             return "Ease on change only. Static while settled."
         case .breathe:
-            return "Running and waiting segments gently brighten and dim."
+            return "Running segments gently brighten and dim."
         case .shimmer:
             return "A soft highlight sweeps the ribbon while work is open."
         case .statusPulse:

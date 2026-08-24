@@ -7,7 +7,7 @@
 
 **Nerve** — agent/job status for your machines. Hooks push jobs over loopback HTTP to the **`nerve-hub` daemon** (`127.0.0.1:17890`, state authority); peer **surfaces** render it: the macOS menu-bar app and the tmux plugin. Nerve does **not** run agents.
 
-Stack: `nerve-hub` + tmux helper (Rust, `crates/`), SwiftUI menu-bar app (`Nerve/`), tmux plugin entry (`surfaces/tmux/`), Python marketplace hooks (`plugins/nerve/`), Rsbuild React site + handbook (`index/`).
+Stack: `nerve-hub` + tmux helper (Rust, `crates/`), SwiftUI menu-bar app (`Nerve/`), tmux plugin entry (`surfaces/tmux/`), marketplace hooks (`plugins/nerve/` — Claude Node, Codex Python, Grok HTTP), Rsbuild React site + handbook (`index/`).
 
 ## Where things live
 
@@ -16,8 +16,8 @@ Stack: `nerve-hub` + tmux helper (Rust, `crates/`), SwiftUI menu-bar app (`Nerve
 | State hub daemon | `crates/nerve-hub/` (ingest contract, SSE frames, refcount lifecycle) |
 | macOS app (surface) | `Nerve/Nerve/` (App, Models, Store, Services incl. `Services/Hub/`, UI) |
 | tmux surface | `surfaces/tmux/` (TPM entry) + `crates/nerve-tmux-surface/` (helper) |
-| Marketplace plugin | `plugins/nerve/` (`hooks/nerve_hook.py`, `hooks.json`) |
-| Hook tests (stable path) | `sources/agents/tests/` — `nerve_hook.py` → plugin symlink |
+| Marketplace plugin | `plugins/nerve/` — Claude `hooks/nerve.js`, Codex `hooks/nerve.py`, Grok `hooks/grok.json` (HTTP) |
+| Grok HTTP mapper | `crates/nerve-hub/src/hook/` — `POST /v1/hook` |
 | Website + **public docs** | `index/` → routes `/docs/*`; body `index/src/docs/content.ts` |
 | Demo / scripts | `fixtures/`, `scripts/` |
 | Passive agent notes | `.claude/notes/` |
@@ -40,12 +40,11 @@ cd index && npm run dev   # http://localhost:3000/docs
 ./scripts/nerve.sh --run                            # build + open Nerve.app
 ./scripts/nerve.sh --build --tmux --tmux-reload     # install tmux surface + reload
 ./scripts/nerve.sh --demo                           # POST demo fixture (hub must be up)
-cargo test --workspace                              # hub + tmux-surface tests
+cargo test --workspace                              # hub (incl. hook mapper) + tmux-surface tests
 ./scripts/nerve.sh --verify-loop                    # ingest contract E2E (needs hub)
 ./scripts/nerve.sh --verify-surface                 # macOS surface regression
 ./scripts/nerve.sh --verify-tmux                    # tmux surface E2E (isolated tmux)
 ./scripts/nerve.sh --test-swift                     # Swift value-type unit harness
-python3 sources/agents/tests/test_nerve_hook.py     # hook unit tests
 cd index && npm test && npm run build               # site tests + static build
 ```
 
@@ -63,7 +62,7 @@ cd index && npm test && npm run build               # site tests + static build
 ## Default workflow
 
 1. Product copy / API handbook → `index/src/docs/content.ts` (+ pages under `src/pages/`)
-2. Hook lifecycle → `plugins/nerve/hooks/nerve_hook.py` + `sources/agents/tests/test_nerve_hook.py`
+2. Hook lifecycle → `plugins/nerve/hooks/nerve.js` (Claude) · `nerve.py` (Codex) · hub `/v1/hook` (Grok HTTP)
 3. State semantics / ingest contract → `crates/nerve-hub/` (golden parity tests guard it)
 4. App UI / surface glue → `Nerve/Nerve/`; tmux surface → `surfaces/tmux/` + `crates/nerve-tmux-surface/`
 5. Capture decisions → `.claude/notes/notes.md`

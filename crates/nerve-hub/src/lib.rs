@@ -6,6 +6,7 @@
 
 pub mod cli;
 pub mod clock;
+pub mod hook;
 pub mod http;
 pub mod lifecycle;
 pub mod model;
@@ -30,7 +31,7 @@ use crate::state::{JobStore, LocalAlias, SignalProbe};
 /// The one address the hub ever listens on.
 ///
 /// The port is not configurable on purpose: binding it is the single-instance
-/// lock, and `plugins/nerve/hooks/nerve_hook.py` hard-codes the same value.
+/// lock, and host HTTP hooks POST the same address (`/v1/hook`).
 pub const INGEST_ADDR: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 17890));
 
 /// A configured hub, ready to take over the ingest port.

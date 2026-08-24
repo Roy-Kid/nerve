@@ -19,8 +19,11 @@ cargo install --path crates/nerve-tmux-surface
 ```
 
 ```bash
-# ~/.tmux.conf
+# ~/.tmux.conf — trampoline finds the helper and runs `nerve-tmux-surface install`
 run-shell ~/path/to/nerve/surfaces/tmux/nerve.tmux
+
+# or, if the helper is already on PATH:
+run-shell "nerve-tmux-surface install"
 ```
 
 ## Keys (inside tmux)

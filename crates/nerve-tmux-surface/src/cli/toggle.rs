@@ -182,11 +182,12 @@ fn open_sidebar(window_id: &str, pane_path: &str) -> String {
         .unwrap_or_else(|| window_id.to_string());
     let self_bin = std::env::current_exe()
         .ok()
+        .map(|path| path.canonicalize().unwrap_or(path))
         .and_then(|p| p.to_str().map(str::to_string))
         .unwrap_or_else(|| "nerve-tmux-surface".to_string());
-    let launch = format!(
-        "export PATH=\"/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:${{PATH}}\"; exec \"{self_bin}\""
-    );
+    // The binary itself is the pane command. tmux still wraps it in
+    // `$SHELL -c`, but that is not a login shell — the previous `sh -lc`
+    // loaded the user's profile on every prefix+e.
     let sidebar_pane = tmux::run_tmux(&[
         "split-window",
         split_window_flags(sidebar_position),
@@ -199,9 +200,7 @@ fn open_sidebar(window_id: &str, pane_path: &str) -> String {
         "-P",
         "-F",
         "#{pane_id}",
-        "sh",
-        "-lc",
-        &launch,
+        &self_bin,
     ])
     .map(|s| s.trim().to_string())
     .unwrap_or_default();

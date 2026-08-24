@@ -9,6 +9,7 @@
   "homepage": "https://github.com/Roy-Kid/nerve#documentation-website",
   "repository": "https://github.com/Roy-Kid/nerve",
   "icon": "./icon.png",
+  "hooks": "./hooks/codex.json",
   "keywords": [
     "nerve",
     "status",
