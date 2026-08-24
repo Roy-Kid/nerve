@@ -33,6 +33,12 @@ index/node_modules/
 index/dist/
 index/.rsbuild/
 
+# VS Code surface
+vsc-ext/node_modules/
+vsc-ext/out/
+vsc-ext/out-test/
+vsc-ext/*.vsix
+
 # Rust (cargo workspace)
 /target/
 

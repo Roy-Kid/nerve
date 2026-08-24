@@ -13,31 +13,44 @@ export const site = {
   /** In-site documentation hub (subpages under /docs). */
   docs: '/docs',
   pluginDocs: '/docs/plugin',
-  macos: '/macos',
-  tmuxGuideZh: '/tmux/zh',
-  tmuxGuideEn: '/tmux/en',
+  macos: '/#macos',
+  tmux: '/#tmux',
+  vscode: '/#vscode',
+  tmuxGuideZh: '/#tmux',
+  tmuxGuideEn: '/#tmux',
   requirements: {
     macos: 'macOS 14+',
     xcode: 'Xcode 15+',
   },
 } as const;
 
-export function getTmuxGuidePath(locale: Locale) {
-  return locale === 'zh' ? site.tmuxGuideZh : site.tmuxGuideEn;
+export function getTmuxGuidePath(_locale?: Locale) {
+  return site.tmux;
 }
 
-/** Mock jobs for every ribbon and screenshot. Painted order, one of each hue. */
+/**
+ * Mock jobs for every ribbon and screenshot.
+ *
+ * Chromatic order follows the colour wheel (red → orange → green → blue →
+ * violet) so RGB blends between neighbours stay saturated. Gray idle sits
+ * last, at half weight, so it never appears inside a colour-to-colour ramp.
+ */
 export const jobs = [
   { id: 'deploy', label: 'deploy edge', status: 'problem' as const, alias: 'edge' },
   { id: 'codex', label: 'Codex · refactor', status: 'attention' as const, alias: 'gpu-box' },
+  { id: 'build', label: 'xcodebuild Nerve', status: 'success' as const, alias: 'studio' },
   { id: 'claude', label: 'Claude Code', status: 'running' as const, alias: 'studio' },
   { id: 'stream', label: 'build log', status: 'monitor' as const, alias: 'ci' },
-  { id: 'build', label: 'xcodebuild Nerve', status: 'success' as const, alias: 'studio' },
   { id: 'watch', label: 'Local watcher', status: 'inactive' as const, alias: 'ci' },
 ] as const;
 
 export type JobStatus = (typeof jobs)[number]['status'];
 export type StatusTone = JobStatus;
+
+/** Idle is a rest, not a hue — half the width of every painted status. */
+export function ribbonWeight(status: StatusTone): number {
+  return status === 'inactive' ? 0.5 : 1;
+}
 
 /** Six painted hues. Rainbow red / orange / blue / violet / green, plus gray idle. */
 export const statusMeta: Record<

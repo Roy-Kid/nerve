@@ -9,10 +9,10 @@ export default defineConfig({
     favicon: './public/favicon-64.png',
     meta: {
       description:
-        'Nerve shows every agent and long-running job in the macOS menu bar or tmux, so you know what needs you without checking every window.',
+        'Nerve shows every agent and long-running job in the macOS menu bar, tmux, or VS Code, so you know what needs you without checking every window.',
       'og:title': 'Nerve — local agent status',
       'og:description':
-        'See what is running, what broke, and what needs you from the macOS menu bar or tmux.',
+        'See what is running, what broke, and what needs you from the macOS menu bar, tmux, or VS Code.',
       'og:image': '/logo.png',
       'theme-color': '#f5f5f7',
     },

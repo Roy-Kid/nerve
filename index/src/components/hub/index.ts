@@ -1,4 +1,6 @@
 export { HubDocsSection } from './HubDocsSection';
 export { HubHero } from './HubHero';
+export { HubMacosSection } from './HubMacosSection';
 export { HubSignalStrip } from './HubSignalStrip';
-export { HubSurfacesSection } from './HubSurfacesSection';
+export { HubTmuxSection } from './HubTmuxSection';
+export { HubVscodeSection } from './HubVscodeSection';

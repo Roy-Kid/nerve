@@ -1,0 +1,111 @@
+{
+  "alias": "demo-machine",
+  "machineKind": "darwin",
+  "jobs": [
+    {
+      "id": "surface-demo-deploy",
+      "kind": "deploy",
+      "name": "deploy edge",
+      "alias": "demo-machine",
+      "lifecycle": "active",
+      "current": {
+        "type": "deploying",
+        "summary": "Health check failed",
+        "startedAt": "2026-08-24T09:24:00Z"
+      },
+      "attention": {
+        "level": "suggested",
+        "reason": "stale",
+        "title": "Deploy stalled",
+        "summary": "The edge health check stopped responding"
+      },
+      "health": "unresponsive",
+      "progress": { "kind": "none" },
+      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
+      "capabilities": [],
+      "actions": [],
+      "createdAt": "2026-08-24T09:20:00Z",
+      "startedAt": "2026-08-24T09:20:00Z",
+      "updatedAt": "2026-08-24T09:31:00Z",
+      "version": 1,
+      "extensions": {
+        "demo": true,
+        "lastPrompt": "Investigate the failed edge health check before continuing the rollout."
+      }
+    },
+    {
+      "id": "surface-demo-checkout",
+      "kind": "session",
+      "name": "checkout flow",
+      "alias": "demo-machine",
+      "lifecycle": "active",
+      "current": {
+        "type": "idle",
+        "summary": "Approval required",
+        "startedAt": "2026-08-24T09:29:00Z"
+      },
+      "attention": {
+        "level": "required",
+        "reason": "approval",
+        "title": "Approve the migration",
+        "summary": "Return to the agent to continue"
+      },
+      "health": "ok",
+      "progress": { "kind": "none" },
+      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
+      "capabilities": [],
+      "actions": [],
+      "createdAt": "2026-08-24T09:18:00Z",
+      "startedAt": "2026-08-24T09:18:00Z",
+      "updatedAt": "2026-08-24T09:31:00Z",
+      "version": 1,
+      "extensions": { "demo": true, "lastPrompt": "Review the migration and approve the database change." }
+    },
+    {
+      "id": "surface-demo-build",
+      "kind": "build",
+      "name": "xcodebuild Nerve",
+      "alias": "demo-machine",
+      "lifecycle": "active",
+      "current": {
+        "type": "building",
+        "summary": "Compiling 42 files",
+        "startedAt": "2026-08-24T09:28:00Z"
+      },
+      "attention": { "level": "none" },
+      "health": "ok",
+      "progress": { "kind": "indeterminate", "label": "Building" },
+      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
+      "capabilities": [],
+      "actions": [],
+      "createdAt": "2026-08-24T09:25:00Z",
+      "startedAt": "2026-08-24T09:25:00Z",
+      "updatedAt": "2026-08-24T09:31:00Z",
+      "version": 1,
+      "extensions": { "demo": true }
+    },
+    {
+      "id": "surface-demo-watch",
+      "kind": "process",
+      "name": "release monitor",
+      "alias": "demo-machine",
+      "lifecycle": "active",
+      "current": {
+        "type": "monitor",
+        "summary": "Watching production logs",
+        "startedAt": "2026-08-24T09:12:00Z"
+      },
+      "attention": { "level": "none" },
+      "health": "ok",
+      "progress": { "kind": "none" },
+      "producer": { "id": "demo", "name": "Demo", "kind": "demo" },
+      "capabilities": [],
+      "actions": [],
+      "createdAt": "2026-08-24T09:10:00Z",
+      "startedAt": "2026-08-24T09:10:00Z",
+      "updatedAt": "2026-08-24T09:31:00Z",
+      "version": 1,
+      "extensions": { "demo": true }
+    }
+  ]
+}

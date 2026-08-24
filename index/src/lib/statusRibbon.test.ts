@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@rstest/core';
-import { jobs, statusMeta } from '../config';
+import { jobs, ribbonWeight, statusMeta } from '../config';
 import { buildStatusRibbonGradient } from './statusRibbon';
 
 describe('status ribbon gradient', () => {
@@ -30,13 +30,23 @@ describe('status ribbon gradient', () => {
     );
   });
 
-  it('paints the demo jobs in the shared palette order', () => {
+  it('paints the demo jobs in colour-wheel order with gray last', () => {
     const gradient = buildStatusRibbonGradient(
-      jobs.map((job) => ({ id: job.id, status: job.status, weight: 1 })),
+      jobs.map((job) => ({
+        id: job.id,
+        status: job.status,
+        weight: ribbonWeight(job.status),
+      })),
     );
 
     for (const tone of Object.values(statusMeta)) {
       expect(gradient).toContain(tone.color);
     }
+    const green = gradient.indexOf(statusMeta.success.color);
+    const blue = gradient.indexOf(statusMeta.running.color);
+    const gray = gradient.indexOf(statusMeta.inactive.color);
+    expect(green).toBeGreaterThan(-1);
+    expect(blue).toBeGreaterThan(green);
+    expect(gray).toBeGreaterThan(blue);
   });
 });

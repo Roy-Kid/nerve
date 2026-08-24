@@ -1,5 +1,14 @@
 import { describe, expect, it } from '@rstest/core';
-import { designNotes, jobs, lifecycle, site, sources, statusMeta, truths } from './config';
+import {
+  designNotes,
+  jobs,
+  lifecycle,
+  ribbonWeight,
+  site,
+  sources,
+  statusMeta,
+  truths,
+} from './config';
 import { messages } from './i18n/messages';
 
 describe('site config', () => {
@@ -16,14 +25,25 @@ describe('site config', () => {
     expect(site.headline).toHaveLength(2);
   });
 
-  it('demo jobs paint every status once, in ribbon order', () => {
-    expect(jobs.map((job) => job.status)).toEqual(Object.keys(statusMeta));
+  it('demo jobs follow the colour wheel, with gray last and half-weight', () => {
+    expect(jobs.map((job) => job.status)).toEqual([
+      'problem',
+      'attention',
+      'success',
+      'running',
+      'monitor',
+      'inactive',
+    ]);
+    expect(ribbonWeight('inactive')).toBe(0.5);
+    expect(ribbonWeight('running')).toBe(1);
+    expect(jobs.at(-1)?.status).toBe('inactive');
   });
 
-  it('mac and tmux screenshot rows follow the same demo jobs', () => {
+  it('mac, tmux and vscode screenshot rows follow the same demo jobs', () => {
     for (const locale of ['en', 'zh'] as const) {
       expect(messages[locale].preview.mac.jobs).toHaveLength(jobs.length);
       expect(messages[locale].preview.tmux.jobs).toHaveLength(jobs.length);
+      expect(messages[locale].preview.vscode.jobs).toHaveLength(jobs.length);
     }
   });
 
@@ -55,8 +75,8 @@ describe('site config', () => {
   it('points docs links at in-site subpages', () => {
     expect(site.docs).toBe('/docs');
     expect(site.pluginDocs).toBe('/docs/plugin');
-    expect(site.macos).toBe('/macos');
-    expect(site.tmuxGuideZh).toBe('/tmux/zh');
-    expect(site.tmuxGuideEn).toBe('/tmux/en');
+    expect(site.macos).toBe('/#macos');
+    expect(site.tmux).toBe('/#tmux');
+    expect(site.vscode).toBe('/#vscode');
   });
 });

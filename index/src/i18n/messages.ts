@@ -9,6 +9,7 @@ type NavCopy = {
   home: string;
   macos: string;
   tmux: string;
+  vscode: string;
   docs: string;
   get: string;
   github: string;
@@ -29,14 +30,30 @@ type HubSurfaceCopy = {
 
 type HubCopy = {
   brand: string;
+  kicker: string;
   tagline: string;
-  heroCtaMacos: string;
-  heroCtaTmux: string;
-  signal: { title: string };
-  surfaces: { title: string };
+  product: {
+    kicker: string;
+    title: [string, string];
+    body: string;
+    facts: { title: string; body: string }[];
+    live: string;
+  };
   macos: HubSurfaceCopy;
   tmux: HubSurfaceCopy;
-  docs: { title: string; body: string; cta: string };
+  vscode: HubSurfaceCopy;
+  open: {
+    kicker: string;
+    title: [string, string];
+    body: string;
+    sourceCta: string;
+    protocolCta: string;
+    producers: string;
+    producerRole: string;
+    hub: string;
+    surfaces: string;
+    surfaceRole: string;
+  };
 };
 
 type FooterCopy = {
@@ -52,6 +69,14 @@ type MacosCopy = {
   storyTitle: string;
   truths: { title: string; body: string }[];
   getTitle: string;
+};
+
+type VscodeCopy = {
+  headline: [string, string];
+  subhead: string;
+  openDocs: string;
+  previewLabel: string;
+  truths: { title: string; body: string }[];
 };
 
 type DocsUiCopy = {
@@ -102,6 +127,14 @@ type PreviewCopy = {
     waitingForReview: string;
     prompt: string;
   };
+  vscode: {
+    label: string;
+    sidebar: string;
+    editor: string;
+    status: string;
+    host: string;
+    jobs: PreviewJobCopy[];
+  };
 };
 
 export type Messages = {
@@ -109,6 +142,7 @@ export type Messages = {
   hub: HubCopy;
   footer: FooterCopy;
   macos: MacosCopy;
+  vscode: VscodeCopy;
   docsUi: DocsUiCopy;
   preview: PreviewCopy;
 };
@@ -119,6 +153,7 @@ export const messages: Record<Locale, Messages> = {
       home: 'Home',
       macos: 'macOS',
       tmux: 'tmux',
+      vscode: 'VS Code',
       docs: 'Docs',
       get: 'Install',
       github: 'GitHub',
@@ -131,14 +166,28 @@ export const messages: Record<Locale, Messages> = {
     },
     hub: {
       brand: 'Nerve',
-      tagline: 'Every agent. One live view.',
-      heroCtaMacos: 'For macOS',
-      heroCtaTmux: 'For tmux',
-      signal: {
-        title: 'See what needs you.',
-      },
-      surfaces: {
-        title: 'Pick your surface.',
+      kicker: 'Your machines, connected by an open nervous system.',
+      tagline: 'Job monitor for long-running work across machines.',
+      product: {
+        kicker: 'The product',
+        title: ['One job list.', 'Across every machine.'],
+        body:
+          'Nerve gathers live jobs from this Mac and remote machines into one local view. See what is running, waiting for you, broken, finished, or quiet—without checking every window.',
+        facts: [
+          {
+            title: 'Structured status',
+            body: 'Lifecycle events decide status. Nerve never guesses from conversation text.',
+          },
+          {
+            title: 'Every machine',
+            body: 'Loopback ingest and SSH tunnels bring local and remote work into the same list.',
+          },
+          {
+            title: 'Memory only',
+            body: 'Live jobs stay in RAM and disappear when the local hub exits.',
+          },
+        ],
+        live: 'Live from 3 machines',
       },
       macos: {
         kicker: 'macOS',
@@ -152,10 +201,24 @@ export const messages: Record<Locale, Messages> = {
         body: 'The same live view, inside tmux.',
         cta: 'View tmux',
       },
-      docs: {
-        title: 'Setup belongs in the docs.',
-        body: 'Install, configure, and integrate Nerve there.',
-        cta: 'Open docs',
+      vscode: {
+        kicker: 'VS Code',
+        title: 'In the editor.',
+        body: 'The same live view, where the agent already is.',
+        cta: 'View VS Code',
+      },
+      open: {
+        kicker: 'Open source · Open protocol',
+        title: ['Bring any producer.', 'Build any surface.'],
+        body:
+          'Nerve is not limited to AI agents. Send snapshots from a build, test runner, service, or your own tool; consume the same stream in a new surface, or implement your own backend. The source and wire contract are open.',
+        sourceCta: 'View source',
+        protocolCta: 'Read the protocol',
+        producers: 'Agents · builds · tests · your tool',
+        producerRole: 'Pushes full job snapshots',
+        hub: 'Local state authority',
+        surfaces: 'Surfaces · dashboards · your backend',
+        surfaceRole: 'Reads full-state frames',
       },
     },
     footer: {
@@ -163,23 +226,45 @@ export const messages: Record<Locale, Messages> = {
       tagline: 'Open source. Local first.',
     },
     macos: {
-      headline: ['Every job.', 'One glance.'],
-      subhead: 'Running, needs you, or broken—right in the menu bar.',
-      openDocs: 'Open docs',
+      headline: ['The whole queue.', 'In the menu bar.'],
+      subhead:
+        'The ribbon compresses every live job into one glance. Open it for the job, machine, status, detail, and elapsed time.',
+      openDocs: 'Set up macOS',
       ribbonPreviewLabel: 'Live ribbon preview',
       storyTitle: 'Status without another window.',
       truths: [
-        { title: 'One live ribbon.', body: 'See every job at a glance.' },
+        { title: 'Always visible', body: 'Six states stay distinct in one compact ribbon.' },
         {
-          title: 'Only when it matters.',
-          body: 'Running, needs you, and failed stay distinct.',
+          title: 'Details on demand',
+          body: 'Open the panel for jobs grouped by machine.',
         },
         {
-          title: 'Open and local.',
-          body: 'The protocol and source are yours to inspect.',
+          title: 'Return in one click',
+          body: 'Open or focus the terminal where the job is running.',
         },
       ],
       getTitle: 'Everything else is in the docs.',
+    },
+    vscode: {
+      headline: ['The same jobs.', 'Inside VS Code.'],
+      subhead:
+        'The Activity Bar holds the full queue while the status bar makes attention impossible to miss. Focus jumps straight to the matching terminal.',
+      openDocs: 'Open VS Code docs',
+      previewLabel: 'VS Code jobs preview',
+      truths: [
+        {
+          title: 'Full job tree',
+          body: 'Browse every machine and job without leaving the editor.',
+        },
+        {
+          title: 'Native focus',
+          body: 'Jump to this window’s terminal with one command.',
+        },
+        {
+          title: 'Shared live state',
+          body: 'The same full-state stream read by macOS and tmux.',
+        },
+      ],
     },
     docsUi: {
       sidebarLabel: 'Documentation',
@@ -189,7 +274,7 @@ export const messages: Record<Locale, Messages> = {
       indexEyebrow: 'Open protocol',
       indexTitle: 'The whole protocol, written down.',
       indexLede:
-        'Install the app, wire agent plugins, push snapshots, and read the exact contract every client reads. Product pages live at /macos and /tmux; this handbook keeps the implementation details in one place.',
+        'Install the app, wire agent plugins, push snapshots, and read the exact contract every client reads. Surfaces live on the home page; this handbook keeps the implementation details in one place.',
       pagerLabel: 'Adjacent docs',
       previous: 'Previous',
       next: 'Next',
@@ -216,9 +301,9 @@ export const messages: Record<Locale, Messages> = {
         jobs: [
           { name: 'Deploy preview', detail: 'Health check failed', time: '8 min' },
           { name: 'Unit tests', detail: 'Approval required', time: '1 min' },
+          { name: 'Build archive', detail: 'Finished cleanly', time: '2 min' },
           { name: 'Claude Code', detail: 'Editing website', time: '18 sec' },
           { name: 'Build log', detail: 'Watching stream', time: '3 min' },
-          { name: 'Build archive', detail: 'Finished cleanly', time: '2 min' },
           { name: 'Local watcher', detail: 'No recent signal', time: '12 min' },
         ],
       },
@@ -228,9 +313,9 @@ export const messages: Record<Locale, Messages> = {
         jobs: [
           { name: 'deploy', detail: 'Deploy failed', time: '4m' },
           { name: 'nerve', detail: 'Needs your review', time: 'now' },
+          { name: 'ios-build', detail: 'Tests passed', time: '1m' },
           { name: 'checkout', detail: 'Implementing auth', time: '3m' },
           { name: 'logs', detail: 'Watching stream', time: '2m' },
-          { name: 'ios-build', detail: 'Tests passed', time: '1m' },
           { name: 'docs', detail: 'Ready', time: '12m' },
         ],
         activity: 'Activity',
@@ -241,6 +326,21 @@ export const messages: Record<Locale, Messages> = {
         waitingForReview: 'waiting for your review',
         prompt: 'Review the change and ship it.',
       },
+      vscode: {
+        label: 'VS Code jobs preview',
+        sidebar: 'Jobs',
+        editor: 'claude-code · nerve',
+        status: 'Nerve 1↑',
+        host: 'nerve',
+        jobs: [
+          { name: 'Deploy preview', detail: 'Health check failed', time: '8 min' },
+          { name: 'Unit tests', detail: 'Approval required', time: '1 min' },
+          { name: 'Build archive', detail: 'Finished cleanly', time: '2 min' },
+          { name: 'Claude Code', detail: 'Editing website', time: '18 sec' },
+          { name: 'Build log', detail: 'Watching stream', time: '3 min' },
+          { name: 'Local watcher', detail: 'No recent signal', time: '12 min' },
+        ],
+      },
     },
   },
   zh: {
@@ -248,6 +348,7 @@ export const messages: Record<Locale, Messages> = {
       home: '首页',
       macos: 'macOS',
       tmux: 'tmux',
+      vscode: 'VS Code',
       docs: '文档',
       get: '安装',
       github: 'GitHub',
@@ -260,14 +361,28 @@ export const messages: Record<Locale, Messages> = {
     },
     hub: {
       brand: 'Nerve',
-      tagline: '所有 agent，一眼看清。',
-      heroCtaMacos: 'macOS',
-      heroCtaTmux: 'tmux',
-      signal: {
-        title: '谁需要你，一眼看见。',
-      },
-      surfaces: {
-        title: '选你工作的地方。',
+      kicker: '让你的每台机器，共用一套开放神经系统。',
+      tagline: '跨机器长时任务监控器。',
+      product: {
+        kicker: '产品详情',
+        title: ['一个任务列表。', '覆盖每台机器。'],
+        body:
+          'Nerve 把本机和远端机器上的实时任务汇入一个本地视图。运行中、需要你、出错、完成或静默，不用再逐个窗口检查。',
+        facts: [
+          {
+            title: '结构化状态',
+            body: '状态只由生命周期事件决定，绝不猜测对话文本。',
+          },
+          {
+            title: '覆盖每台机器',
+            body: '固定回环接入配合 SSH 隧道，本地与远端任务进入同一列表。',
+          },
+          {
+            title: '只在内存中',
+            body: '实时任务只存于内存，本地 hub 退出后即清空。',
+          },
+        ],
+        live: '来自 3 台机器的实时状态',
       },
       macos: {
         kicker: 'macOS',
@@ -281,10 +396,24 @@ export const messages: Record<Locale, Messages> = {
         body: '同一个实时视图，也在 tmux。',
         cta: '看 tmux',
       },
-      docs: {
-        title: '配置，都在文档里。',
-        body: '安装、接入和细节统一放在这里。',
-        cta: '打开文档',
+      vscode: {
+        kicker: 'VS Code',
+        title: '就在编辑器里。',
+        body: '同一个实时视图，agent 已经在的地方。',
+        cta: '看 VS Code',
+      },
+      open: {
+        kicker: '开放源码 · 开放协议',
+        title: ['接入任何发送端。', '构建任何显示面。'],
+        body:
+          'Nerve 不局限于 AI agent。构建、测试、服务或你自己的工具都能发送快照；你也可以消费同一条状态流，增加新的 surface，甚至实现自己的后端。源码和通讯协议全部开放。',
+        sourceCta: '查看源码',
+        protocolCta: '阅读协议',
+        producers: 'Agent · 构建 · 测试 · 你的工具',
+        producerRole: '发送完整任务快照',
+        hub: '本地状态中心',
+        surfaces: 'Surface · 仪表盘 · 你的后端',
+        surfaceRole: '读取完整状态帧',
       },
     },
     footer: {
@@ -292,17 +421,37 @@ export const messages: Record<Locale, Messages> = {
       tagline: '开源，本地优先。',
     },
     macos: {
-      headline: ['所有任务。', '一眼看清。'],
-      subhead: '运行、需要你，还是出错，都在菜单栏里。',
-      openDocs: '打开文档',
+      headline: ['完整任务队列。', '就在菜单栏。'],
+      subhead: '状态条把所有实时任务压缩成一眼；展开后可查看任务、机器、状态、详情和已用时间。',
+      openDocs: '配置 macOS',
       ribbonPreviewLabel: '实时状态条预览',
       storyTitle: '状态清楚，不用再开窗口。',
       truths: [
-        { title: '一条实时状态条。', body: '所有任务，一眼看清。' },
-        { title: '只在关键时刻找你。', body: '运行、需要你和失败，始终分得清。' },
-        { title: '开放，且完全本地。', body: '协议和源码都可以自己检查。' },
+        { title: '始终可见', body: '六种状态在一条紧凑状态条里清楚区分。' },
+        { title: '需要时看详情', body: '展开面板，按机器查看每个任务。' },
+        { title: '一点就能返回', body: '直接打开或聚焦任务所在的终端。' },
       ],
       getTitle: '其他细节，都在文档里。',
+    },
+    vscode: {
+      headline: ['同一批任务。', '就在 VS Code。'],
+      subhead: 'Activity Bar 展示完整队列，状态栏让待处理任务无法错过；Focus 会直接跳到对应终端。',
+      openDocs: '打开 VS Code 文档',
+      previewLabel: 'VS Code 任务预览',
+      truths: [
+        {
+          title: '完整任务树',
+          body: '不离开编辑器，查看每台机器和每个任务。',
+        },
+        {
+          title: '原生聚焦',
+          body: '一条命令，跳到当前窗口内对应的终端。',
+        },
+        {
+          title: '共享实时状态',
+          body: '与 macOS、tmux 读取同一条完整状态流。',
+        },
+      ],
     },
     docsUi: {
       sidebarLabel: '文档',
@@ -312,7 +461,7 @@ export const messages: Record<Locale, Messages> = {
       indexEyebrow: '开放协议',
       indexTitle: '整套协议，全部写清。',
       indexLede:
-        '安装应用、接入 agent 插件、推送快照，再查看所有客户端共用的准确协议。产品页在 /macos 和 /tmux；这本手册把实现细节集中在一处。',
+        '安装应用、接入 agent 插件、推送快照，再查看所有客户端共用的准确协议。显示面在首页；这本手册把实现细节集中在一处。',
       pagerLabel: '相邻文档',
       previous: '上一篇',
       next: '下一篇',
@@ -339,9 +488,9 @@ export const messages: Record<Locale, Messages> = {
         jobs: [
           { name: '预览部署', detail: '健康检查失败', time: '8 分钟' },
           { name: '单元测试', detail: '需要批准', time: '1 分钟' },
+          { name: '归档构建', detail: '顺利完成', time: '2 分钟' },
           { name: 'Claude Code', detail: '正在编辑网站', time: '18 秒' },
           { name: '构建日志', detail: '正在监视输出', time: '3 分钟' },
-          { name: '归档构建', detail: '顺利完成', time: '2 分钟' },
           { name: '本地监视器', detail: '最近没有信号', time: '12 分钟' },
         ],
       },
@@ -351,9 +500,9 @@ export const messages: Record<Locale, Messages> = {
         jobs: [
           { name: 'deploy', detail: '部署失败', time: '4m' },
           { name: 'nerve', detail: '等你审查', time: '现在' },
+          { name: 'ios-build', detail: '测试通过', time: '1m' },
           { name: 'checkout', detail: '正在实现认证', time: '3m' },
           { name: 'logs', detail: '正在监视输出', time: '2m' },
-          { name: 'ios-build', detail: '测试通过', time: '1m' },
           { name: 'docs', detail: '就绪', time: '12m' },
         ],
         activity: '活动',
@@ -363,6 +512,21 @@ export const messages: Record<Locale, Messages> = {
         testsPassed: '测试已在 42 秒内通过',
         waitingForReview: '正在等待你审查',
         prompt: '审查这次改动并发布。',
+      },
+      vscode: {
+        label: 'VS Code 任务预览',
+        sidebar: '任务',
+        editor: 'claude-code · nerve',
+        status: 'Nerve 1↑',
+        host: 'nerve',
+        jobs: [
+          { name: '预览部署', detail: '健康检查失败', time: '8 分钟' },
+          { name: '单元测试', detail: '需要批准', time: '1 分钟' },
+          { name: '归档构建', detail: '顺利完成', time: '2 分钟' },
+          { name: 'Claude Code', detail: '正在编辑网站', time: '18 秒' },
+          { name: '构建日志', detail: '正在监视输出', time: '3 分钟' },
+          { name: '本地监视器', detail: '最近没有信号', time: '12 分钟' },
+        ],
       },
     },
   },

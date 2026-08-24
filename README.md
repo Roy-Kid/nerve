@@ -9,7 +9,7 @@
 Every agent, build, and long job reports through one open protocol into a single strip of color in your menu bar or tmux, and every line of it is open source.
 
 - **Open protocol** — one `POST http://127.0.0.1:17890/v1/snapshot` is the entire integration contract, documented and versioned.
-- **Open surfaces** — the macOS menu bar and the tmux sidebar are plain clients of the same open stream, so nothing stops you writing a third.
+- **Open surfaces** — the macOS menu bar, the tmux sidebar, and the VS Code extension are plain clients of the same open stream, so nothing stops you writing another.
 - **Open by proof** — runtime state lives only in memory on loopback, and the MIT-licensed source that proves it is public.
 
 ## Documentation (website)
@@ -19,9 +19,7 @@ Product docs are **not** in a `docs/` folder. They live on the site handbook:
 | Topic | Local path |
 |-------|------------|
 | Home hub | http://localhost:3000/ |
-| macOS ribbon | …/macos |
-| tmux sidebar (中文) | …/tmux/zh |
-| tmux sidebar (EN) | …/tmux/en |
+| macOS / tmux / VS Code | …/#macos · …/#tmux · …/#vscode |
 | Docs hub | …/docs |
 
 ```bash
@@ -54,6 +52,7 @@ crates/nerve-hub/       Hub daemon (+ Grok HTTP mapper at POST /v1/hook)
 Nerve/                  macOS menu-bar app (surface)
 crates/                 Rust: nerve-hub daemon + nerve-tmux-surface helper
 surfaces/tmux/          tmux plugin surface (TPM entry)
+vsc-ext/                VS Code / Cursor surface (status bar + Activity Bar)
 index/                  Marketing site + /docs SPA
 fixtures/ · scripts/ · assets/
 ```

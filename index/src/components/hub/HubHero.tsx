@@ -1,106 +1,70 @@
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
-import { MacDevicePreview } from '../MacDevicePreview';
-import { TmuxSidebarPreview } from '../TmuxSidebarPreview';
 import { LiveRibbon } from '../LiveRibbon';
-import { getTmuxGuidePath } from '../../config';
 import { useLocale } from '../../i18n/locale';
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { ease } from '../../lib/motion';
-import { homeLink, homeLinkChevron } from '../../lib/ui';
 
 export function HubHero() {
-  const { locale, t } = useLocale();
-  const tmuxGuidePath = getTmuxGuidePath(locale);
+  const { t } = useLocale();
   const reduced = usePrefersReducedMotion();
 
   return (
     <section
-      className={[
-        'relative min-h-svh overflow-hidden px-[var(--page-gutter)] pt-[clamp(116px,15vw,170px)] pb-0 text-label',
-        'max-sm:min-h-auto max-sm:pt-[104px]',
-        'bg-[radial-gradient(circle_at_50%_92%,--alpha(var(--color-blue)/8%),transparent_32%)] bg-page',
-      ].join(' ')}
+      className="relative flex h-svh flex-col overflow-hidden bg-page bg-[radial-gradient(circle_at_50%_78%,--alpha(var(--color-blue)/7%),transparent_30%)] px-[var(--page-gutter)] pt-12 text-label"
       aria-labelledby="home-hero-title"
     >
-      <div className="relative z-2 mx-auto w-[min(100%,920px)] text-center">
+      <div className="relative z-2 mx-auto flex w-[min(100%,980px)] flex-1 flex-col items-center justify-center pb-[clamp(28px,5vh,54px)] text-center">
         <motion.img
           src={`${import.meta.env.BASE_URL}logo.png`}
           alt=""
           width={72}
           height={72}
-          className="mx-auto mb-5 h-auto w-[clamp(58px,6vw,76px)] rounded-[18px] drop-shadow-[0_12px_28px_rgb(30_56_105/14%)]"
+          className="mx-auto mb-4 h-auto w-[clamp(50px,5vw,66px)] rounded-[16px] drop-shadow-[0_14px_34px_rgb(30_56_105/16%)]"
           initial={reduced ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={ease(0.6)}
         />
 
+        <motion.p
+          className="mt-0 mb-[clamp(22px,3vh,32px)] font-mono text-[clamp(10px,0.9vw,12px)] leading-[1.45] font-[500] tracking-[0.11em] text-label-2 uppercase"
+          initial={reduced ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={ease(0.6, 0.03)}
+        >
+          {t.hub.kicker}
+        </motion.p>
+
         <motion.h1
           id="home-hero-title"
-          className="m-0 font-display text-balance max-sm:leading-none"
+          className="m-0 font-display text-[clamp(82px,11vw,150px)] leading-[0.84] font-[720] tracking-[-0.078em] text-label max-sm:text-[clamp(72px,22vw,94px)]"
           initial={reduced ? false : { opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={ease(0.7, 0.05)}
         >
-          <span className="block text-[clamp(70px,9.5vw,132px)] leading-[0.82] font-[720] tracking-[-0.072em] text-label max-sm:text-[clamp(70px,22vw,92px)]">
-            {t.hub.brand}
-          </span>
-          <span className="mx-auto mt-[30px] block max-w-[780px] text-[clamp(36px,4.6vw,64px)] leading-[1.02] font-[620] tracking-[-0.052em] text-label max-sm:mt-6 max-sm:text-[clamp(35px,10.5vw,44px)]">
-            {t.hub.tagline}
-          </span>
+          {t.hub.brand}
         </motion.h1>
 
-
-        <motion.div
-          className="mt-[30px] flex flex-wrap items-center justify-center gap-x-[30px] gap-y-3 max-sm:mt-[22px] max-sm:gap-x-6 max-sm:gap-y-2.5"
-          initial={reduced ? false : { opacity: 0, y: 16 }}
+        <motion.p
+          className="mt-[clamp(26px,3.5vh,38px)] mb-0 max-w-[860px] text-balance text-[clamp(20px,2.35vw,30px)] leading-[1.28] font-[450] tracking-[-0.032em] text-label-2 max-sm:max-w-[24ch] max-sm:text-[19px]"
+          initial={reduced ? false : { opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={ease(0.7, 0.2)}
+          transition={ease(0.7, 0.12)}
         >
-          <Link to="/macos" className={homeLink}>
-            {t.hub.heroCtaMacos}
-            <span aria-hidden="true" className={homeLinkChevron}>
-              {' '}
-              ›
-            </span>
-          </Link>
-          <Link to={tmuxGuidePath} className={homeLink}>
-            {t.hub.heroCtaTmux}
-            <span aria-hidden="true" className={homeLinkChevron}>
-              {' '}
-              ›
-            </span>
-          </Link>
-        </motion.div>
+          {t.hub.tagline}
+        </motion.p>
       </div>
 
       <motion.div
-        className="relative z-1 mx-auto mt-[clamp(58px,7vw,92px)] w-[min(100%,var(--container-page))] origin-bottom pb-[62px] max-sm:mt-[54px] max-sm:w-full max-sm:pb-[50px]"
-        initial={reduced ? false : { opacity: 0, y: 56, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={ease(1, 0.15)}
+        className="relative z-1 mx-auto w-full max-w-[1120px] origin-center pb-[clamp(72px,12vh,126px)]"
+        initial={reduced ? false : { opacity: 0, scaleX: 0.82 }}
+        animate={{ opacity: 1, scaleX: 1 }}
+        transition={ease(1.1, 0.18)}
       >
-        <div className="relative z-0 mx-auto mb-8 w-[min(84%,860px)] max-lap:mb-[26px] max-lap:w-[92%] max-sm:mb-7 max-sm:w-[calc(100%-12px)]">
-          <LiveRibbon
-            size="lg"
-            load={1}
-            trackClassName="h-3 shadow-[0_0_28px_rgb(0_122_255/23%),0_0_0_1px_rgb(0_0_0/5%)]"
-          />
-        </div>
-        <div className="relative z-1 grid grid-cols-2 items-start gap-[clamp(20px,3vw,38px)] max-lap:grid-cols-1 max-lap:gap-[50px]">
-          <article className="min-w-0">
-            <header className="mx-1 mb-3 flex items-baseline justify-start gap-4 text-xs/[1.55] text-label-3 max-sm:mx-0.5">
-              <strong className="text-[13px] font-[650] text-label">macOS</strong>
-            </header>
-            <MacDevicePreview variant="card" />
-          </article>
-          <article className="min-w-0">
-            <header className="mx-1 mb-3 flex items-baseline justify-start gap-4 text-xs/[1.55] text-label-3 max-sm:mx-0.5">
-              <strong className="text-[13px] font-[650] text-label">tmux</strong>
-            </header>
-            <TmuxSidebarPreview variant="card" />
-          </article>
-        </div>
+        <LiveRibbon
+          size="lg"
+          load={1}
+          trackClassName="h-3.5 shadow-[0_0_34px_rgb(0_122_255/24%),0_0_0_1px_rgb(0_0_0/5%)] max-sm:h-2.5"
+        />
       </motion.div>
     </section>
   );

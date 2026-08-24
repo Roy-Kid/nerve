@@ -1,4 +1,4 @@
-import { jobs, statusMeta } from '../config';
+import { jobs, ribbonWeight, statusMeta } from '../config';
 import type { StatusRibbonSegment } from '../lib/statusRibbon';
 import { StatusRibbonBand } from './StatusRibbonBand';
 import { useLocale } from '../i18n/locale';
@@ -45,7 +45,7 @@ export function LiveRibbon({
   const segments: StatusRibbonSegment[] = jobs.map((job) => ({
     id: job.id,
     status: job.status,
-    weight: 1,
+    weight: ribbonWeight(job.status),
     title: `${job.label} · ${t.preview.status[job.status]}`,
   }));
 

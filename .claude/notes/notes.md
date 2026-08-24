@@ -1,5 +1,14 @@
 # Notes
 
+<!-- mol:note:topic:vscode-surface -->
+## 2026-08-24 — VS Code is a third peer surface
+
+Why: macOS and tmux Focus often terminate in `vscode://` / `cursor://`. Once the human is in the editor, that hop is empty; the agent is already a terminal or sidebar in this window.
+
+**Rule**: `vsc-ext/` consumes `GET /v1/stream?surface=vscode`. Native chrome only in v1 (status bar + Activity Bar tree). No OS banners (those stay macOS). No reverse-control. Hub port stays 17890; the extension may spawn `nerve-hub` the way tmux does and never kills it. Focus ranks pid → this-window terminal, then cwd → here, then folder; a foreign pid/`file://` is never compared locally. Default filter is All. Status is a third golden copy of `Subject.swift`. Build is molvis-style rslib/rspack, extension-host bundle only.
+
+**Supersedes**: “two surfaces” wording in CLAUDE.md invariant 7.
+
 <!-- mol:note:topic:status-palette -->
 ## 2026-08-24 — Status colors: five rainbow + gray
 

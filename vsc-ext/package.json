@@ -1,0 +1,234 @@
+{
+  "name": "nerve",
+  "displayName": "Nerve",
+  "description": "Agent and job status for this editor. A peer surface of the macOS ribbon and the tmux sidebar: same hub, same stream, Focus lands in this window.",
+  "version": "0.1.0",
+  "publisher": "roykid",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Roy-Kid/nerve"
+  },
+  "homepage": "https://github.com/Roy-Kid/nerve",
+  "bugs": {
+    "url": "https://github.com/Roy-Kid/nerve/issues"
+  },
+  "icon": "image/nerve-icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "agent",
+    "status",
+    "claude",
+    "codex",
+    "jobs"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nerve",
+          "title": "Nerve",
+          "icon": "image/nerve-activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "nerve": [
+        {
+          "id": "nerve.jobs",
+          "name": "Jobs"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "nerve.jobs",
+        "contents": "Nerve: offline\nThe hub is not reachable yet. The extension retries on its own.\n[Reconnect](command:nerve.reconnect)",
+        "when": "nerve.connection == offline"
+      },
+      {
+        "view": "nerve.jobs",
+        "contents": "Nerve: no jobs\nThe hub is up but nothing is reporting.",
+        "when": "nerve.connection == empty"
+      },
+      {
+        "view": "nerve.jobs",
+        "contents": "No jobs in this folder\n[Show all jobs](command:nerve.filterAll)",
+        "when": "nerve.connection == emptyFolder"
+      }
+    ],
+    "commands": [
+      {
+        "command": "nerve.showJobs",
+        "title": "Nerve: Show Jobs"
+      },
+      {
+        "command": "nerve.focusJob",
+        "title": "Nerve: Focus Job",
+        "icon": "$(target)"
+      },
+      {
+        "command": "nerve.focusJobQuick",
+        "title": "Nerve: Focus Job…"
+      },
+      {
+        "command": "nerve.copyLocation",
+        "title": "Nerve: Copy Location",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "nerve.copySummary",
+        "title": "Nerve: Copy Summary"
+      },
+      {
+        "command": "nerve.reconnect",
+        "title": "Nerve: Reconnect",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "nerve.filterAll",
+        "title": "Nerve: Filter All"
+      },
+      {
+        "command": "nerve.filterAttention",
+        "title": "Nerve: Filter Attention"
+      },
+      {
+        "command": "nerve.filterRunning",
+        "title": "Nerve: Filter Running"
+      },
+      {
+        "command": "nerve.filterFolder",
+        "title": "Nerve: Filter This Folder"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "nerve.focusJob",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "nerve.filterAll",
+          "when": "view == nerve.jobs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "nerve.filterAttention",
+          "when": "view == nerve.jobs",
+          "group": "navigation@2"
+        },
+        {
+          "command": "nerve.filterRunning",
+          "when": "view == nerve.jobs",
+          "group": "navigation@3"
+        },
+        {
+          "command": "nerve.filterFolder",
+          "when": "view == nerve.jobs",
+          "group": "navigation@4"
+        },
+        {
+          "command": "nerve.reconnect",
+          "when": "view == nerve.jobs",
+          "group": "navigation@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "nerve.focusJob",
+          "when": "view == nerve.jobs && viewItem == nerve.job",
+          "group": "inline"
+        },
+        {
+          "command": "nerve.focusJob",
+          "when": "view == nerve.jobs && viewItem == nerve.job",
+          "group": "1_open"
+        },
+        {
+          "command": "nerve.copyLocation",
+          "when": "view == nerve.jobs && viewItem == nerve.job",
+          "group": "2_copy"
+        },
+        {
+          "command": "nerve.copySummary",
+          "when": "view == nerve.jobs && viewItem == nerve.job",
+          "group": "2_copy"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Nerve",
+      "properties": {
+        "nerve.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Nerve item in the status bar."
+        },
+        "nerve.badge.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show an Activity Bar badge for attention and problem jobs."
+        },
+        "nerve.filter": {
+          "type": "string",
+          "enum": [
+            "all",
+            "attention",
+            "running",
+            "folder"
+          ],
+          "default": "all",
+          "description": "Job list filter. Default is the full hub set; This folder is a filter, not the default view."
+        },
+        "nerve.hub.spawn": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start nerve-hub when nothing answers 127.0.0.1:17890."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "clean:out": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
+    "clean:out-test": "node -e \"require('node:fs').rmSync('out-test',{recursive:true,force:true})\"",
+    "clean": "npm-run-all clean:out clean:out-test",
+    "build:extension": "rslib build -c rslib.extension.config.mts",
+    "build": "npm run clean:out && npm run build:extension",
+    "watch:extension": "rslib build --watch -c rslib.extension.config.mts",
+    "watch:typecheck": "tsc --noEmit --watch",
+    "watch": "npm-run-all -p watch:extension watch:typecheck",
+    "dev": "npm run watch",
+    "typecheck": "tsc --noEmit",
+    "package:prepare": "NODE_ENV=production npm run build",
+    "package": "npm run package:prepare",
+    "vscode:prepublish": "npm run package",
+    "test:compile": "tsc --project tsconfig.test.json",
+    "test:unit:run": "mocha --ui tdd \"out-test/tests/unit/**/*.test.js\"",
+    "test:unit": "npm-run-all test:compile test:unit:run",
+    "test": "npm run test:unit"
+  },
+  "devDependencies": {
+    "@rslib/core": "^0.23.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.15.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.1",
+    "mocha": "^11.8.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.3"
+  },
+  "private": true,
+  "packageManager": "npm@11.17.0+sha512.3eeaf18997b11070d313849268b23766b9db0068997dec9471073170fe43fa17f2b4d0337bf0f52330ee2274e7f5754b21b01052742e48f5c9c74d8b1e32ef43"
+}

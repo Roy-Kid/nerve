@@ -5,6 +5,7 @@ Agent entry for Codex / Grok / other harnesses. Same contract as [`CLAUDE.md`](.
 ## Repo map
 
 - **App:** `Nerve/Nerve/` (Swift, menu bar + ingest)
+- **VS Code surface:** `vsc-ext/` (rslib/rspack; `cd vsc-ext && npm test`)
 - **Plugin:** `plugins/nerve/hooks/` — Claude `nerve.js` (Node exec), Codex `nerve.py` (python3), Grok `type: http`
 - **Hook tests:** `python3 sources/agents/tests/test_nerve_hook.py` · `node --test plugins/nerve/hooks/nerve.test.js`
 - **Public docs (website only):** `index/src/docs/content.ts` → `/docs/*`

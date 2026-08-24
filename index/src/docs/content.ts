@@ -30,6 +30,11 @@ export const docNav: DocNavItem[] = [
     summary: 'Install, keys, options, remotes, and troubleshooting.',
   },
   {
+    slug: 'vscode',
+    title: 'VS Code extension',
+    summary: 'Status bar and Activity Bar job list inside the editor.',
+  },
+  {
     slug: 'status',
     title: 'Status & lifecycle',
     summary: 'One job per session, facets, ribbon colors, design scope.',
@@ -66,6 +71,11 @@ const zhDocNav: DocNavItem[] = [
     slug: 'tmux',
     title: 'tmux 插件',
     summary: '安装、按键、选项、远程主机与故障排查。',
+  },
+  {
+    slug: 'vscode',
+    title: 'VS Code 扩展',
+    summary: '编辑器里的状态栏和 Activity Bar 任务列表。',
   },
   {
     slug: 'status',
@@ -251,7 +261,7 @@ codex plugin add nerve@nerve`,
           'Fail-open: if Nerve is down, Claude/Grok HTTP hooks are a non-blocking connection failure, and nerve-hub hook exits 0. Never block the agent.',
           'No environment variables. Ingest URL is fixed: http://127.0.0.1:17890/v1/hook.',
           'Slot memory lives in the hub (producer + workspace), not a temp file, so /new without SessionEnd still closes the previous session_id.',
-          'UserPromptSubmit also sends extensions.lastPrompt (+ lastPromptAt), trimmed to 400 characters. Only that one hook run sees the prompt, so the hub carries it forward onto later snapshots — both surfaces show it: the tmux sidebar’s Prompt panel, and the Prompt block in an expanded panel row on macOS.',
+          'UserPromptSubmit also sends extensions.lastPrompt (+ lastPromptAt), trimmed to 400 characters. Only that one hook run sees the prompt, so the hub carries it forward onto later snapshots — every surface shows it: the tmux sidebar’s Prompt panel, the Prompt block in an expanded macOS row, and the VS Code tree tooltip.',
           'Local actions: Open / Focus (location) first, then Copy. Rows leave via SessionEnd, slot supersede, or PID reap — no Dismiss / Approve / submit_input.',
           'location.openURL + focusHint on every snapshot so the panel can jump back to the agent UI.',
           'Alias = free-form machine label (prefer Bonjour LocalHostName on macOS).',
@@ -455,6 +465,79 @@ run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
       {
         type: 'p',
         text: 'The trampoline always exits 0 and never blocks tmux, whatever it fails to find — a status instrument that breaks your terminal is worse than no instrument. ./scripts/nerve.sh --verify-tmux proves the whole path end to end against an isolated tmux server, so it never touches the one you are using.',
+      },
+    ],
+  },
+  {
+    slug: 'vscode',
+    title: 'VS Code extension',
+    lede: 'A third peer surface: the same hub stream, painted in the editor you are already in. Focus lands on a terminal or folder in this window — not another vscode:// hop.',
+    blocks: [
+      {
+        type: 'callout',
+        title: 'Display only',
+        text: 'The extension does not run agents and does not own state. It holds one GET /v1/stream?surface=vscode. Local actions are Focus and Copy. There is no approve, cancel, or submit. System notification banners stay on the macOS app; VS Code uses the status bar colour and an Activity Bar badge.',
+      },
+      { type: 'h2', text: 'Install from this repo' },
+      {
+        type: 'code',
+        lang: 'bash',
+        code: `cd vsc-ext
+npm install
+npm test
+npm run watch`,
+      },
+      {
+        type: 'p',
+        text: 'Then Run and Debug → Run Nerve Extension (F5), or ./scripts/nerve.sh --vscode. The hub port is fixed at 127.0.0.1:17890; the extension will start nerve-hub if nothing answers, the same way tmux does, and will never kill it.',
+      },
+      { type: 'h2', text: 'What you see' },
+      {
+        type: 'table',
+        headers: ['Chrome', 'What it is'],
+        rows: [
+          ['Status bar', 'Ambient aggregate: Nerve 2↑, Nerve · running, Nerve · offline. Click opens the job view. Attention / problem use the editor’s warning / error status-bar background.'],
+          ['Activity Bar → Nerve', 'Jobs grouped by machine alias. Colour dots match the macOS / tmux / site palette. This-folder jobs are marked here.'],
+          ['Tooltip', 'Producer · alias · last prompt. The prompt never falls back to the activity summary.'],
+          ['Badge', 'Count of attention + problem jobs. Not an OS banner.'],
+        ],
+      },
+      { type: 'h2', text: 'Commands' },
+      {
+        type: 'table',
+        headers: ['Command', 'Action'],
+        rows: [
+          ['Nerve: Show Jobs', 'Focus the Nerve view'],
+          ['Nerve: Focus Job…', 'Quick Pick the full hub set and jump'],
+          ['Nerve: Copy Location / Copy Summary', 'Clipboard helpers'],
+          ['Nerve: Reconnect', 'Drop and re-open the SSE stream'],
+          ['Filter All / Attention / Running / This Folder', 'View title buttons. Default is All — a peer surface sees every machine.'],
+        ],
+      },
+      { type: 'h2', text: 'Focus' },
+      {
+        type: 'p',
+        text: 'A job on this machine is matched by extensions.pid against a VS Code terminal, then by workspace path. A hit on the current folder is “already here”: the row is highlighted, the extension does not pretend it can select a Claude Code chat session. A job on another machine never compares its pid or file:// path locally. The button reads Open on <alias> and opens a vscode-remote window when ~/.ssh/config can name that host; otherwise the breadcrumb is copied.',
+      },
+      {
+        type: 'callout',
+        title: 'Remote windows get this for free',
+        text: 'A VS Code Remote-SSH window is another extension host talking to 127.0.0.1:17890 on that machine. If the machine already has a RemoteForward tunnel back to your Mac, those jobs are the same jobs. Nothing to configure in the extension.',
+      },
+      { type: 'h2', text: 'When the view is not what you expect' },
+      {
+        type: 'table',
+        headers: ['You see', 'It means'],
+        rows: [
+          ['Nerve · offline', 'Hub not reachable — it retries. The editor is not blocked.'],
+          ['Nerve: no jobs', 'Hub is up but nothing is reporting'],
+          ['No jobs in this folder', 'This Folder filter is on; All still has rows'],
+          ['Open on arrhenius1', 'That job is not on this machine. It will not open a local folder.'],
+        ],
+      },
+      {
+        type: 'p',
+        text: './scripts/nerve.sh --verify-vscode runs the unit suite (status golden, frame parse, focus ranking, hub launch). It does not boot a VS Code UI.',
       },
     ],
   },
@@ -774,7 +857,7 @@ codex plugin add nerve@nerve`,
           '失败开放：Nerve 未运行时，Claude/Grok 的 HTTP 钩子是非阻塞连接失败，nerve-hub hook 以 0 退出。永远不阻塞 agent。',
           '无环境变量。接入 URL 固定为 http://127.0.0.1:17890/v1/hook。',
           'Slot 记在 hub 里（producer + workspace），不是临时文件，因此没有 SessionEnd 的 /new 仍然能关闭之前的 session_id。',
-          'UserPromptSubmit 还会发送 extensions.lastPrompt（以及 lastPromptAt），截断为 400 个字符。只有这次钩子运行能看到该提示，因此 hub 会把它延续到后续快照中——两个 surface 都会显示它：tmux 侧边栏的 Prompt 面板，以及 macOS 展开面板行里的 Prompt 块。',
+          'UserPromptSubmit 还会发送 extensions.lastPrompt（以及 lastPromptAt），截断为 400 个字符。只有这次钩子运行能看到该提示，因此 hub 会把它延续到后续快照中——每个 surface 都会显示它：tmux 侧边栏的 Prompt 面板、macOS 展开行里的 Prompt 块，以及 VS Code 树的 tooltip。',
           '本地操作：先是 Open / Focus，然后是 Copy。行通过 SessionEnd、slot supersede 或 PID reap 离开——没有 Dismiss / Approve / submit_input。',
           '每个快照都有 location.openURL + focusHint，因此面板可以跳回 agent UI。',
           'Alias = 自由形式的机器标签（在 macOS 上优先使用 Bonjour LocalHostName）。',
@@ -960,6 +1043,80 @@ run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
     {
       type: 'p',
       text: '无论跳板找不到什么，它都会以 0 退出，永远不阻塞 tmux——会破坏终端的状态工具，还不如没有。./scripts/nerve.sh --verify-tmux 会针对一个隔离的 tmux server 端到端验证整条路径，因此它永远不会碰你正在使用的那一个。',
+    },
+  ],
+};
+
+const zhVscodePage: DocPage = {
+  slug: 'vscode',
+  title: 'VS Code 扩展',
+  lede: '第三条对等显示面：同一条 hub 流，画在你已经待着的编辑器里。Focus 落到本窗口的 terminal 或文件夹，而不是再走一圈 vscode://。',
+  blocks: [
+    {
+      type: 'callout',
+      title: '仅用于显示',
+      text: '扩展不跑 agent，也不拥有状态。它只保持一条 GET /v1/stream?surface=vscode。本地动作是 Focus 和 Copy。没有 approve、cancel 或 submit。系统通知横幅仍属于 macOS 应用；VS Code 用状态栏底色和 Activity Bar 徽章表达 Attention。',
+    },
+    { type: 'h2', text: '从仓库安装' },
+    {
+      type: 'code',
+      lang: 'bash',
+      code: `cd vsc-ext
+npm install
+npm test
+npm run watch`,
+    },
+    {
+      type: 'p',
+      text: '然后 Run and Debug → Run Nerve Extension（F5），或 ./scripts/nerve.sh --vscode。hub 端口固定为 127.0.0.1:17890；没有响应时扩展会像 tmux 一样拉起 nerve-hub，并且永远不会杀掉它。',
+    },
+    { type: 'h2', text: '你会看到什么' },
+    {
+      type: 'table',
+      headers: ['界面', '含义'],
+      rows: [
+        ['状态栏', '常驻汇总：Nerve 2↑、Nerve · running、Nerve · offline。点击打开任务视图。Attention / Problem 使用编辑器的 warning / error 状态栏底色。'],
+        ['Activity Bar → Nerve', '按机器 alias 分组。色点与 macOS / tmux / 站点调色板一致。当前文件夹里的任务标 here。'],
+        ['Tooltip', 'producer · alias · 最后一条提示。提示词绝不回退成 activity 摘要。'],
+        ['徽章', 'attention + problem 的条数。不是操作系统横幅。'],
+      ],
+    },
+    { type: 'h2', text: '命令' },
+    {
+      type: 'table',
+      headers: ['命令', '作用'],
+      rows: [
+        ['Nerve: Show Jobs', '聚焦 Nerve 视图'],
+        ['Nerve: Focus Job…', 'Quick Pick 全表并跳转'],
+        ['Nerve: Copy Location / Copy Summary', '剪贴板'],
+        ['Nerve: Reconnect', '断开并重连 SSE'],
+        ['Filter All / Attention / Running / This Folder', '视图标题按钮。默认是 All——对等 surface 看见每一台机器。'],
+      ],
+    },
+    { type: 'h2', text: 'Focus' },
+    {
+      type: 'p',
+      text: '本机任务先用 extensions.pid 匹配 VS Code terminal，再用工作区路径。命中当前文件夹就是「已经在这里」：高亮该行，扩展不假装能选中某条 Claude Code 会话。外机任务的 pid 和 file:// 路径永不拿来和本机比。按钮文案是 Open on <alias>，能从 ~/.ssh/config 叫出 Host 时打开 vscode-remote 窗口，否则复制面包屑。',
+    },
+    {
+      type: 'callout',
+      title: '远程窗口无需额外配置',
+      text: 'VS Code Remote-SSH 窗口是另一套 extension host，连的是那台机器上的 127.0.0.1:17890。如果那边已经有 RemoteForward 隧道回到你的 Mac，看到的就是同一批任务。扩展里没有要填的 host 或端口。',
+    },
+    { type: 'h2', text: '当视图不符合预期时' },
+    {
+      type: 'table',
+      headers: ['你看到的内容', '它的含义'],
+      rows: [
+        ['Nerve · offline', 'Hub 不可达——它会重试。编辑器不会被挡住。'],
+        ['Nerve: no jobs', 'Hub 在，但没有 producer 在报'],
+        ['No jobs in this folder', '开了 This Folder 过滤；All 里还有行'],
+        ['Open on arrhenius1', '该任务不在这台机器上。它不会打开本地文件夹。'],
+      ],
+    },
+    {
+      type: 'p',
+      text: './scripts/nerve.sh --verify-vscode 跑单元测试（status golden、frame 解析、focus 排序、hub 拉起）。它不会启动 VS Code UI。',
     },
   ],
 };
@@ -1246,6 +1403,7 @@ npm run build    # static → index/dist/`,
   zhPluginPage,
   zhMachinesPage,
   zhTmuxPage,
+  zhVscodePage,
   zhStatusPage,
   zhIngestPage,
   zhPrivacyPage,

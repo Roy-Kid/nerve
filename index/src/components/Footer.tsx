@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { getTmuxGuidePath, site } from '../config';
+import { site } from '../config';
 import { useLocale } from '../i18n/locale';
 
 const footerLink =
@@ -8,8 +8,7 @@ const footerLink =
 
 export function Footer() {
   const year = new Date().getFullYear();
-  const { locale, t } = useLocale();
-  const tmuxGuidePath = getTmuxGuidePath(locale);
+  const { t } = useLocale();
 
   return (
     <footer className="border-t border-black/8 bg-page px-[var(--page-gutter)] pt-[30px] pb-9 text-label">
@@ -34,11 +33,14 @@ export function Footer() {
           <a href={site.github} target="_blank" rel="noreferrer" className={footerLink}>
             GitHub
           </a>
-          <Link to="/macos" className={footerLink}>
-            macOS
+          <Link to="/#macos" className={footerLink}>
+            {t.nav.macos}
           </Link>
-          <Link to={tmuxGuidePath} className={footerLink}>
-            tmux
+          <Link to="/#tmux" className={footerLink}>
+            {t.nav.tmux}
+          </Link>
+          <Link to="/#vscode" className={footerLink}>
+            {t.nav.vscode}
           </Link>
           <Link to="/docs" className={footerLink}>
             {t.nav.docs}

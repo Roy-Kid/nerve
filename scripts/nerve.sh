@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # (crates/nerve-hub/src/cli.rs), so there is nothing here to parameterise.
 readonly NERVE_BASE="http://127.0.0.1:17890"
 readonly NERVE_FIXTURE="$ROOT/fixtures/demo_snapshot.json"
+readonly NERVE_SURFACE_FIXTURE="$ROOT/fixtures/surface_demo_snapshot.json"
 readonly NERVE_APP="$ROOT/Nerve/build/Build/Products/Debug/Nerve.app"
 
 # What the EXIT traps below clean up. Script scope on purpose: a trap fires
@@ -55,11 +56,14 @@ Dev options (combine as needed):
   --tmux               cargo install nerve-hub + nerve-tmux-surface; wire ~/.tmux.conf
   --tmux-reload        tmux source-file ~/.tmux.conf
   --demo               POST fixtures/demo_snapshot.json (hub must already be up)
+  --demo-surfaces      Launch seeded, real tmux + VS Code surfaces for screenshots
 
 Verify / test (each is standalone):
   --verify-loop        ingest contract E2E (needs hub on :17890)
   --verify-surface     macOS surface regression (starts hub if needed)
   --verify-tmux        tmux surface E2E (isolated tmux server)
+  --verify-vscode      VS Code surface unit tests (status / frame / focus)
+  --vscode             watch the VS Code extension (F5 in a vsc-ext window)
   --test-swift         swiftc unit harness for Hub frame types
 
   -h, --help           show this help
@@ -68,6 +72,7 @@ Examples:
   ./scripts/nerve.sh --run
   ./scripts/nerve.sh --build --tmux --tmux-reload
   ./scripts/nerve.sh --demo
+  ./scripts/nerve.sh --demo-surfaces
   ./scripts/nerve.sh --verify-loop
 EOF
 }
@@ -304,6 +309,7 @@ nerve_verify_tmux() {
   echo "== preflight =="
   command -v tmux >/dev/null 2>&1 || nerve_fail "tmux is not installed"
   command -v curl >/dev/null 2>&1 || nerve_fail "curl is not installed"
+  [[ -f "$NERVE_SURFACE_FIXTURE" ]] || nerve_fail "missing $NERVE_SURFACE_FIXTURE"
   [[ -f "$plugin" ]] || nerve_fail "no plugin entry at $plugin"
   [[ -x "$plugin" ]] || nerve_fail "$plugin is not executable"
   [[ -f "$fixture" ]] || nerve_fail "no fixture at $fixture"
@@ -492,15 +498,128 @@ nerve_test_swift() {
   "$bin"
 }
 
+nerve_verify_vscode() {
+  echo "== vscode surface unit tests =="
+  [[ -f "$ROOT/vsc-ext/package.json" ]] || nerve_fail "no vsc-ext/package.json"
+  if [[ ! -d "$ROOT/vsc-ext/node_modules" ]]; then
+    echo "== npm install (vsc-ext) =="
+    (cd "$ROOT/vsc-ext" && npm install)
+  fi
+  (cd "$ROOT/vsc-ext" && npm test) || nerve_fail "vsc-ext unit tests failed"
+  echo "ALL OK"
+}
+
+nerve_vscode_watch() {
+  echo "== vscode extension watch =="
+  [[ -f "$ROOT/vsc-ext/package.json" ]] || nerve_fail "no vsc-ext/package.json"
+  if [[ ! -d "$ROOT/vsc-ext/node_modules" ]]; then
+    (cd "$ROOT/vsc-ext" && npm install)
+  fi
+  echo "Open vsc-ext in VS Code / Cursor and press F5 (Run Nerve Extension)."
+  echo "Hub stays at $NERVE_BASE. This watch is the extension host bundle only."
+  (cd "$ROOT/vsc-ext" && npm run watch)
+}
+
+nerve_demo_surfaces() {
+  local label="nerve-demo"
+  local session="nerve-demo"
+  local bin_dir="$ROOT/target/debug"
+  local hub="$bin_dir/nerve-hub"
+  local helper="$bin_dir/nerve-tmux-surface"
+  local hub_log="${TMPDIR:-/tmp}/nerve-demo-hub.log"
+  local vscode_log="${TMPDIR:-/tmp}/nerve-demo-vscode.log"
+  local vscode_profile="${TMPDIR:-/tmp}/nerve-demo-vscode-profile"
+
+  echo "== build real surfaces =="
+  command -v tmux >/dev/null 2>&1 || nerve_fail "tmux is not installed"
+  command -v code >/dev/null 2>&1 || nerve_fail "the VS Code CLI ('code') is not installed"
+  command -v curl >/dev/null 2>&1 || nerve_fail "curl is not installed"
+  (cd "$ROOT" && cargo build -p nerve-hub -p nerve-tmux-surface)
+  (cd "$ROOT/vsc-ext" && npm run build)
+  [[ -x "$hub" && -x "$helper" ]] || nerve_fail "demo surface binaries were not built"
+
+  echo "== local hub + demo state =="
+  if curl -sf "$NERVE_BASE/v1/health" >/dev/null 2>&1; then
+    echo "ok: reusing the hub already on :17890"
+  else
+    nohup "$hub" serve --grace-secs 600 >"$hub_log" 2>&1 </dev/null &
+    local demo_hub_pid=$!
+    if ! nerve_wait_health "$demo_hub_pid" 100; then
+      cat "$hub_log" >&2 || true
+      nerve_fail "demo hub never answered /v1/health"
+    fi
+    echo "ok: started demo hub (pid $demo_hub_pid, log $hub_log)"
+  fi
+  curl -sf -X POST "$NERVE_BASE/v1/snapshot" \
+    -H 'Content-Type: application/json' \
+    --data @"$NERVE_SURFACE_FIXTURE" >/dev/null || nerve_fail "surface demo snapshot failed"
+  echo "ok: seeded four stable demo jobs under alias demo-machine"
+
+  echo "== real tmux surface =="
+  tmux -L "$label" kill-server 2>/dev/null || true
+  env -u NO_COLOR tmux -L "$label" new-session -d -s "$session" -x 174 -y 55 -c "$ROOT"
+  local socket
+  local window_id
+  socket="$(tmux -L "$label" display-message -p -t "$session" '#{socket_path}')"
+  window_id="$(tmux -L "$label" display-message -p -t "$session" '#{window_id}')"
+  [[ -n "$socket" && -n "$window_id" ]] || nerve_fail "isolated demo tmux did not start"
+  TMUX="${socket},0,0" PATH="$bin_dir:$PATH" \
+    "$helper" toggle "$window_id" "$ROOT" || nerve_fail "tmux demo sidebar did not open"
+
+  local sidebar=""
+  for _ in $(seq 1 50); do
+    sidebar="$(tmux -L "$label" list-panes -t "$window_id" -F '#{pane_id}|#{@nerve_pane_role}' 2>/dev/null | awk -F'|' '$2=="nerve-sidebar"{print $1; exit}')"
+    [[ -n "$sidebar" ]] && break
+    sleep 0.1
+  done
+  [[ -n "$sidebar" ]] || nerve_fail "real tmux sidebar never appeared"
+
+  if command -v osascript >/dev/null 2>&1; then
+    osascript - "$label" "$session" <<'APPLESCRIPT' >/dev/null
+on run argv
+  set socketLabel to item 1 of argv
+  set sessionName to item 2 of argv
+  tell application "Terminal"
+    activate
+    do script "tmux -L " & quoted form of socketLabel & " attach-session -t " & quoted form of sessionName
+    set bounds of front window to {70, 70, 1510, 930}
+  end tell
+end run
+APPLESCRIPT
+  else
+    echo "attach manually: tmux -L $label attach-session -t $session"
+  fi
+  echo "ok: tmux -L $label attach-session -t $session"
+
+  echo "== real VS Code surface =="
+  mkdir -p "$vscode_profile"
+  code --user-data-dir "$vscode_profile" \
+    --remote-debugging-port=9333 \
+    --new-window --extensionDevelopmentPath="$ROOT/vsc-ext" "$ROOT" \
+    >"$vscode_log" 2>&1 &
+  sleep 2
+  if command -v open >/dev/null 2>&1; then
+    open -a "Visual Studio Code" "vscode://command/workbench.view.extension.nerve" \
+      >/dev/null 2>&1 || true
+  fi
+  echo "ok: VS Code Extension Development Host launched (log $vscode_log)"
+  echo "capture after it opens: node $ROOT/scripts/capture-vscode-surface.mjs"
+  echo ""
+  echo "Real demo is live. Capture these windows; do not redraw them for the site."
+}
+
 # --- main dispatcher ---
 DO_BUILD=0
 DO_APP=0
 DO_TMUX=0
 DO_TMUX_RELOAD=0
 DO_DEMO=0
+DO_DEMO_SURFACES=0
 DO_VERIFY_LOOP=0
 DO_VERIFY_SURFACE=0
 DO_VERIFY_TMUX=0
+DO_VERIFY_VSCODE=0
+DO_VSCODE=0
 DO_TEST_SWIFT=0
 
 while [[ $# -gt 0 ]]; do
@@ -511,9 +630,12 @@ while [[ $# -gt 0 ]]; do
     --tmux) DO_TMUX=1 ;;
     --tmux-reload) DO_TMUX_RELOAD=1 ;;
     --demo) DO_DEMO=1 ;;
+    --demo-surfaces) DO_DEMO_SURFACES=1 ;;
     --verify-loop) DO_VERIFY_LOOP=1 ;;
     --verify-surface) DO_VERIFY_SURFACE=1 ;;
     --verify-tmux) DO_VERIFY_TMUX=1 ;;
+    --verify-vscode) DO_VERIFY_VSCODE=1 ;;
+    --vscode) DO_VSCODE=1 ;;
     --test-swift) DO_TEST_SWIFT=1 ;;
     -h|--help) nerve_usage; exit 0 ;;
     *)
@@ -525,8 +647,9 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ $DO_BUILD -eq 0 && $DO_APP -eq 0 && $DO_TMUX -eq 0 && $DO_TMUX_RELOAD -eq 0 && $DO_DEMO -eq 0 \
-  && $DO_VERIFY_LOOP -eq 0 && $DO_VERIFY_SURFACE -eq 0 && $DO_VERIFY_TMUX -eq 0 && $DO_TEST_SWIFT -eq 0 ]]; then
+if [[ $DO_BUILD -eq 0 && $DO_APP -eq 0 && $DO_TMUX -eq 0 && $DO_TMUX_RELOAD -eq 0 && $DO_DEMO -eq 0 && $DO_DEMO_SURFACES -eq 0 \
+  && $DO_VERIFY_LOOP -eq 0 && $DO_VERIFY_SURFACE -eq 0 && $DO_VERIFY_TMUX -eq 0 \
+  && $DO_VERIFY_VSCODE -eq 0 && $DO_VSCODE -eq 0 && $DO_TEST_SWIFT -eq 0 ]]; then
   nerve_usage
   exit 2
 fi
@@ -573,6 +696,10 @@ if [[ $DO_DEMO -eq 1 ]]; then
   nerve_inject_demo
 fi
 
+if [[ $DO_DEMO_SURFACES -eq 1 ]]; then
+  nerve_demo_surfaces
+fi
+
 if [[ $DO_VERIFY_LOOP -eq 1 ]]; then
   nerve_verify_loop
 fi
@@ -583,6 +710,14 @@ fi
 
 if [[ $DO_VERIFY_TMUX -eq 1 ]]; then
   nerve_verify_tmux
+fi
+
+if [[ $DO_VERIFY_VSCODE -eq 1 ]]; then
+  nerve_verify_vscode
+fi
+
+if [[ $DO_VSCODE -eq 1 ]]; then
+  nerve_vscode_watch
 fi
 
 if [[ $DO_TEST_SWIFT -eq 1 ]]; then

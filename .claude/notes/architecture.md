@@ -14,6 +14,7 @@ Nerve/Nerve/Services/Hub     →  macOS surface client (spawn, SSE, frame diff)
 Nerve/Nerve/Store            →  JobStore (frame-fed read-only cache + ribbon segments)
 Nerve/Nerve/UI               →  menu-bar ribbon + status panel
 surfaces/tmux/nerve.tmux + crates/nerve-tmux-surface/  →  tmux surface (trampoline → rust install + sidebar)
+vsc-ext/                →  VS Code surface (status bar + Activity Bar tree; SSE ?surface=vscode)
 index/                  →  marketing + /docs handbook (React SPA)
 ```
 

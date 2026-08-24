@@ -26,15 +26,15 @@ export type TmuxGuide = {
 export const tmuxGuides: Record<TmuxGuideLang, TmuxGuide> = {
   zh: {
     lang: 'zh',
-    title: ['少盯进度。', '多做成事。'],
-    lede: '所有任务，一眼看清。',
+    title: ['完整任务队列。', '就在 tmux。'],
+    lede: '固定侧栏展示每个任务、状态和等待时间；选中任务后，同一窗口里就能看到最近活动和提示词。',
     docsCta: '打开 tmux 文档',
     priority: {
-      title: '运行、等待、处理。',
+      title: '侧栏里有什么。',
       items: [
-        { tone: 'running', label: '运行中', title: '继续跑。' },
-        { tone: 'attention', label: '需要你', title: '回来接手。' },
-        { tone: 'problem', label: '出问题', title: '先处理它。' },
+        { tone: 'running', label: '状态筛选', title: '按优先级收窄任务。' },
+        { tone: 'attention', label: '活动详情', title: '查看最近事件和提示词。' },
+        { tone: 'problem', label: '原地返回', title: '直接选中对应 pane。' },
       ],
     },
     closing: {
@@ -44,15 +44,16 @@ export const tmuxGuides: Record<TmuxGuideLang, TmuxGuide> = {
   },
   en: {
     lang: 'en',
-    title: ['Stop checking panes.', 'Get more done.'],
-    lede: 'Every job, at a glance.',
+    title: ['The whole queue.', 'Inside tmux.'],
+    lede:
+      'A pinned sidebar shows every job, status, and wait time. Select one to see its latest activity and prompt in the same terminal.',
     docsCta: 'Open tmux docs',
     priority: {
-      title: 'Run. Wait. Act.',
+      title: 'What the sidebar shows.',
       items: [
-        { tone: 'running', label: 'Running', title: 'Keep moving.' },
-        { tone: 'attention', label: 'Needs you', title: 'Step back in.' },
-        { tone: 'problem', label: 'Problem', title: 'Fix this first.' },
+        { tone: 'running', label: 'Status filters', title: 'Narrow the queue by priority.' },
+        { tone: 'attention', label: 'Activity detail', title: 'Read the latest event and prompt.' },
+        { tone: 'problem', label: 'Pane focus', title: 'Return to the matching pane.' },
       ],
     },
     closing: {

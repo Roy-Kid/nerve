@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
-import { getTmuxGuidePath, site } from '../config';
+import { site } from '../config';
 import { useLocale } from '../i18n/locale';
 import { cn } from '../lib/utils';
 import { GitHubIcon } from './Icons';
 import { LanguageToggle } from './LanguageToggle';
 
-type NavVariant = 'hub' | 'macos' | 'tmux' | 'docs';
+type NavVariant = 'hub' | 'docs';
 
 type NavProps = {
   variant?: NavVariant;
@@ -30,8 +30,7 @@ export function Nav({ variant = 'hub' }: NavProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const path = location.pathname;
-  const { locale, t } = useLocale();
-  const tmuxGuidePath = getTmuxGuidePath(locale);
+  const { t } = useLocale();
   const onHub = variant === 'hub' && path === '/';
 
   useEffect(() => {
@@ -56,8 +55,6 @@ export function Nav({ variant = 'hub' }: NavProps) {
 
   const productLinks = [
     { to: '/', label: t.nav.home, match: (p: string) => p === '/' },
-    { to: '/macos', label: t.nav.macos, match: (p: string) => p.startsWith('/macos') },
-    { to: tmuxGuidePath, label: t.nav.tmux, match: (p: string) => p.startsWith('/tmux') },
     { to: '/docs', label: t.nav.docs, match: (p: string) => p.startsWith('/docs') },
   ];
 
