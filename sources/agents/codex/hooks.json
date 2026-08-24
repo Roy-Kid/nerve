@@ -1,95 +1,16 @@
 {
-  "description": "Nerve status hub — Codex agent lifecycle → local ingest (http://127.0.0.1:17890). Replace __NERVE_HOOK__ with: NERVE_SOURCE=codex python3 /ABS/PATH/TO/nerve/plugins/nerve/hooks/nerve_hook.py",
+  "description": "Legacy local Codex hooks. Prefer the marketplace plugin (hooks/codex.json).",
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5,
-            "statusMessage": "Nerve"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PermissionRequest": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5,
-            "statusMessage": "Nerve"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "NERVE_SOURCE=codex __NERVE_HOOK__",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true, "statusMessage": "Nerve" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 2 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }]
   }
 }

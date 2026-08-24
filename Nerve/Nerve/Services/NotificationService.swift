@@ -2,7 +2,9 @@ import Foundation
 import UserNotifications
 import AppKit
 
-/// macOS notifications for high-signal Subject changes. Deduped; never spams heartbeats.
+/// macOS notifications for high-signal job changes. Deduped; never spams heartbeats.
+///
+/// Fires on structured facet transitions only (attention / outcome / health) — never free-text.
 @MainActor
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private let settings: SettingsStore
@@ -11,7 +13,10 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private var lastFire: [String: Date] = [:]
     private let dedupeInterval: TimeInterval = 120
 
+    /// Select + Open the job (AppModel wires focusAndOpenJob).
     var onOpenJob: ((String) -> Void)?
+    /// Best-effort show the status panel after a banner click.
+    var onRevealPanel: (() -> Void)?
 
     init(settings: SettingsStore) {
         self.settings = settings
@@ -21,11 +26,19 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     func requestAuthorizationIfNeeded() {
         center.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            self.center.requestAuthorization(options: [.alert, .sound, .badge]) { _, error in
-                if let error {
-                    NSLog("[Nerve] notification auth: %@", "\(error)")
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    if let error {
+                        NSLog("[Nerve] notification auth: %@", "\(error)")
+                    } else if !granted {
+                        NSLog("[Nerve] notification auth: user denied")
+                    }
                 }
+            case .denied:
+                NSLog("[Nerve] notifications denied — enable in System Settings → Notifications → Nerve")
+            default:
+                break
             }
         }
     }
@@ -40,27 +53,53 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             return
         }
 
-        if next.attention.level >= .required {
-            let prevLevel = previous?.attention.level ?? .none
-            if next.attention.level > prevLevel || previous == nil {
-                if next.attention.level == .urgent, settings.notifyUrgent {
+        let prevLevel = previous?.attention.level ?? .none
+        let nextLevel = next.attention.level
+
+        // Attention escalations.
+        // Hooks use `suggested` for Stop / idle_prompt (your turn) and `required`
+        // for permission prompts. Both paint Status.attention — both should notify.
+        if nextLevel > prevLevel || (previous == nil && nextLevel >= .suggested) {
+            switch nextLevel {
+            case .urgent:
+                if settings.notifyUrgent {
                     notify(
                         subject: next,
                         kind: "attention.urgent",
                         title: next.attention.title ?? "Urgent: \(next.name)",
                         body: next.attention.summary ?? next.current?.summary ?? ""
                     )
-                } else if next.attention.level == .required, settings.notifyRequired {
+                }
+            case .required, .suggested:
+                // Settings “Needs attention” covers suggested + required.
+                if settings.notifyRequired {
+                    let kind = nextLevel == .required ? "attention.required" : "attention.suggested"
+                    // Honest: user acts in the agent UI — Nerve only points them there.
+                    let fallbackTitle: String = {
+                        if next.attention.reason?.lowercased() == "approval" {
+                            return "Approval needed: \(next.name)"
+                        }
+                        return "Your turn: \(next.name)"
+                    }()
+                    let fallbackBody: String = {
+                        if next.attention.reason?.lowercased() == "approval" {
+                            return "Return to the agent to approve"
+                        }
+                        return "Return to the agent to continue"
+                    }()
                     notify(
                         subject: next,
-                        kind: "attention.required",
-                        title: next.attention.title ?? "Needs you: \(next.name)",
-                        body: next.attention.summary ?? next.current?.summary ?? ""
+                        kind: kind,
+                        title: next.attention.title ?? fallbackTitle,
+                        body: next.attention.summary ?? next.current?.summary ?? fallbackBody
                     )
                 }
+            case .informational, .none:
+                break
             }
         }
 
+        // Outcome failure (session/job ended badly).
         if settings.notifyFailure,
            next.outcome == .failure,
            previous?.outcome != .failure {
@@ -69,6 +108,18 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 kind: "outcome.failure",
                 title: "Failed: \(next.name)",
                 body: next.current?.summary ?? next.outcome?.rawValue ?? ""
+            )
+        }
+
+        // Active-session tool / turn failure (hook sets attention.reason=failure, not outcome).
+        if settings.notifyFailure,
+           next.attention.reason?.lowercased() == "failure",
+           previous?.attention.reason?.lowercased() != "failure" {
+            notify(
+                subject: next,
+                kind: "attention.failure",
+                title: next.attention.title ?? "Failed: \(next.name)",
+                body: next.attention.summary ?? next.current?.summary ?? ""
             )
         }
 
@@ -99,10 +150,14 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             }
         }
 
+        // Clear sticky attention banners once the job no longer needs the user.
         if let previous,
-           previous.attention.level >= .required,
-           next.attention.level < .required {
-            removeDelivered(subjectId: next.id, kinds: ["attention.urgent", "attention.required"])
+           previous.attention.level >= .suggested,
+           next.attention.level < .suggested {
+            removeDelivered(
+                subjectId: next.id,
+                kinds: ["attention.urgent", "attention.required", "attention.suggested"]
+            )
         }
     }
 
@@ -116,7 +171,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = body
+        // Empty body is legal but some macOS versions hide the banner without it.
+        content.body = body.isEmpty ? title : body
         content.sound = settings.notificationSoundEnabled ? .default : nil
         content.userInfo = [
             "subjectId": subject.id,
@@ -158,6 +214,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         Task { @MainActor in
             if let subjectId {
                 self.onOpenJob?(subjectId)
+            } else {
+                self.onRevealPanel?()
             }
             completionHandler()
         }
@@ -168,6 +226,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // Menu-bar apps stay "foreground"; still show banners.
         completionHandler([.banner, .sound, .list])
     }
 }

@@ -244,16 +244,22 @@ struct JobAction: Codable, Sendable, Hashable, Identifiable {
 enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     /// Red — failed or cannot continue.
     case problem
-    /// Orange — needs user input, authorization, or decision.
+    /// Orange — needs a look: you (input/approval) or the system (queue/deps).
     case attention
-    /// Purple — waiting on system, resources, or dependencies.
+    /// Merged into `attention`. Kept so saved palettes and grouping keys still decode.
     case waiting
-    /// Blue — actively executing.
+    /// Blue — actively executing (main thread, or a background shell/subagent).
     case running
-    /// Green — partial complete (e.g. monitor waiting for feedback) or ended success.
+    /// Purple — watching a background stream; phase done, not executing.
+    case monitor
+    /// Green — ended success.
     case success
     /// Gray — ready (no turn yet), paused, or unknown. Not “dead”.
     case inactive
+
+    /// Statuses the ribbon, panel and Settings actually paint. `waiting` shares
+    /// attention so the user learns six hues, not seven.
+    static let painted: [Status] = [.problem, .attention, .running, .monitor, .success, .inactive]
 
     private var order: Int {
         switch self {
@@ -261,8 +267,9 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
         case .attention: return 1
         case .waiting: return 2
         case .running: return 3
-        case .success: return 4
-        case .inactive: return 5
+        case .monitor: return 4
+        case .success: return 5
+        case .inactive: return 6
         }
     }
 
@@ -276,6 +283,7 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
         case .waiting: return "Waiting"
         case .attention: return "Attention"
         case .problem: return "Problem"
+        case .monitor: return "Monitor"
         case .success: return "Success"
         case .inactive: return "Inactive"
         }
@@ -284,7 +292,7 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     /// problem / attention get a minimum segment weight when painting the ribbon.
     var isHighPriority: Bool {
         switch self {
-        case .problem, .attention: return true
+        case .problem, .attention, .waiting: return true
         default: return false
         }
     }
@@ -316,12 +324,22 @@ enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashabl
 
     var help: String {
         switch self {
-        case .name: return "Job title (usually project name)"
-        case .summary: return "What it is doing, or attention title"
+        case .name: return "Job title (often the project name)"
+        case .summary: return "Current activity or attention title"
         case .producer: return "Who reported it (Claude Code, Grok, …)"
-        case .machine: return "Machine alias"
+        case .machine: return "Machine alias from the snapshot"
         case .status: return "Derived status label"
-        case .updated: return "Relative time (hidden while the row is hovered)"
+        case .updated: return "Relative time (hidden on hover)"
+        }
+    }
+
+    /// Retired columns. They stay in the enum so saved preferences still
+    /// decode, but nothing offers them and nothing paints them — status is the
+    /// row dot, and producer is not shown at all.
+    var isRenderable: Bool {
+        switch self {
+        case .producer, .status: return false
+        default: return true
         }
     }
 
@@ -346,6 +364,92 @@ enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashabl
     }
 
     static let defaultColumns: [PanelColumn] = [.name, .summary, .updated]
+
+    /// Columns users can toggle — every column that still paints something.
+    static var configurableColumns: [PanelColumn] { allCases.filter(\.isRenderable) }
+}
+
+// MARK: - Panel member visibility (view preference)
+
+/// How group member (leaf) jobs appear in the status panel.
+/// Style only — producers still POST members; this filters display.
+enum PanelMemberVisibility: String, Codable, CaseIterable, Identifiable, Sendable, Hashable {
+    /// Never list member rows (group summary only).
+    case never
+    /// Only members with elevated attention / problem status (default).
+    case attention
+    /// List every stored member under its group when expanded (or flat).
+    case all
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .never: return "Groups only"
+        case .attention: return "Problems & attention"
+        case .all: return "All members"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .never:
+            return "Show group rows only; hide individual members."
+        case .attention:
+            return "Show groups, plus members that need attention or failed."
+        case .all:
+            return "Show every member under its group (can get long)."
+        }
+    }
+}
+
+// MARK: - Ribbon ambient motion (view preference)
+
+/// Continuous ribbon motion while work is open. Transitions (length / segment
+/// cross-fades) are controlled separately by `animationsEnabled`.
+enum RibbonMotionStyle: String, Codable, CaseIterable, Identifiable, Sendable, Hashable {
+    /// Only ease when segments or length change (default, quiet).
+    case transitionsOnly
+    /// Soft brightness breathe on Running / Waiting.
+    case breathe
+    /// Soft highlight sweeps across the band while work is open.
+    case shimmer
+    /// Status-aware: Running breathe, Attention blink, Problem urgent pulse.
+    case statusPulse
+    /// Shimmer plus status-aware pulses.
+    case full
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .transitionsOnly: return "Transitions only"
+        case .breathe: return "Breathe"
+        case .shimmer: return "Shimmer"
+        case .statusPulse: return "Status pulse"
+        case .full: return "Full"
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .transitionsOnly:
+            return "Ease on change only. Static while settled."
+        case .breathe:
+            return "Running segments gently brighten and dim."
+        case .shimmer:
+            return "A soft highlight sweeps the ribbon while work is open."
+        case .statusPulse:
+            return "Running breathes, attention soft-blinks, problems pulse."
+        case .full:
+            return "Shimmer plus status pulses on running, attention, and problem."
+        }
+    }
+
+    /// True when the ribbon should redraw on a clock while segments allow it.
+    var usesAmbientMotion: Bool {
+        self != .transitionsOnly
+    }
 }
 
 // MARK: - Panel grouping (view preference)

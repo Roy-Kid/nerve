@@ -1,19 +1,20 @@
 # nerve
 
-Marketplace plugin: push Claude Code / Codex / Grok **session lifecycle** into the Nerve menu-bar hub (`http://127.0.0.1:17890`).
+Marketplace plugin: push Claude Code / Codex / Grok **session lifecycle** into nerve-hub (`http://127.0.0.1:17890`).
+
+Each host uses **its official native hook type and language**:
+
+| Host | Official type | Native script |
+|------|---------------|---------------|
+| Claude Code | `command` exec form (`node` + `args`) | `hooks/nerve.js` |
+| Codex | `command` (`python3 ${PLUGIN_ROOT}/…`) | `hooks/nerve.py` |
+| Grok | `http` | Grok POSTs event JSON to `/v1/hook` (no user script) |
+
+Fail-open: never block the agent.
 
 ## Docs
 
-Full handbook (install, hook map, noise rules, remotes):
-
-→ **Website** `/docs/plugin` — from repo root:
-
-```bash
-cd index-page && npm run dev
-# http://localhost:3000/docs/plugin
-```
-
-Body source: [`index-page/src/docs/content.ts`](../../index-page/src/docs/content.ts).
+→ Website `/docs/plugin` (`index/src/docs/content.ts`).
 
 ## Install
 
@@ -24,7 +25,6 @@ Body source: [`index-page/src/docs/content.ts`](../../index-page/src/docs/conten
 ```
 
 ```bash
-# Codex
 codex plugin marketplace add Roy-Kid/nerve
 codex plugin add nerve@nerve
 ```
@@ -32,9 +32,7 @@ codex plugin add nerve@nerve
 ## Develop
 
 ```bash
-# from repo root
 python3 sources/agents/tests/test_nerve_hook.py
+node --test plugins/nerve/hooks/nerve.test.js
+cargo test -p nerve-hub hook   # Grok HTTP mapper in the hub
 ```
-
-- Fail-open (exit `0`); no env vars; one job per conversation.
-- Implementation: `hooks/nerve_hook.py` · events: `hooks/hooks.json`.

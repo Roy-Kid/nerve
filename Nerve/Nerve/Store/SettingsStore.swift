@@ -41,34 +41,91 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     var attention: RGBColor
     var waiting: RGBColor
     var running: RGBColor
+    var monitor: RGBColor
     var success: RGBColor
     var inactive: RGBColor
 
+    /// Rainbow violet `#BF5AF2` — used when a saved palette predates `monitor`.
+    private static let monitorDefault = RGBColor(r: 0.749, g: 0.353, b: 0.949)
+
     static let `default` = StatusColorMap(
-        problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),
-        attention: RGBColor(r: 1.000, g: 0.584, b: 0.000),
-        waiting: RGBColor(r: 0.686, g: 0.321, b: 0.871),
-        running: RGBColor(r: 0.000, g: 0.478, b: 1.000),
-        success: RGBColor(r: 0.204, g: 0.780, b: 0.349),
-        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+        problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),   // #FF3B30 rainbow red
+        attention: RGBColor(r: 1.000, g: 0.624, b: 0.039), // #FF9F0A rainbow orange
+        waiting: RGBColor(r: 1.000, g: 0.624, b: 0.039),   // same as attention
+        running: RGBColor(r: 0.039, g: 0.518, b: 1.000),   // #0A84FF rainbow blue
+        monitor: monitorDefault,                           // #BF5AF2 rainbow violet
+        success: RGBColor(r: 0.188, g: 0.820, b: 0.345),   // #30D158 rainbow green
+        inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)    // #8E8E93 gray, not rainbow
     )
 
-    /// The first-release palette, retained only to migrate untouched defaults.
-    static let legacyDefault = StatusColorMap(
-        problem: RGBColor(r: 0.95, g: 0.14, b: 0.18),
-        attention: RGBColor(r: 1.00, g: 0.52, b: 0.10),
-        waiting: RGBColor(r: 0.55, g: 0.28, b: 0.92),
-        running: RGBColor(r: 0.14, g: 0.52, b: 0.98),
-        success: RGBColor(r: 0.08, g: 0.80, b: 0.34),
-        inactive: RGBColor(r: 0.48, g: 0.52, b: 0.58)
-    )
+    init(
+        problem: RGBColor,
+        attention: RGBColor,
+        waiting: RGBColor,
+        running: RGBColor,
+        monitor: RGBColor = monitorDefault,
+        success: RGBColor,
+        inactive: RGBColor
+    ) {
+        self.problem = problem
+        self.attention = attention
+        self.waiting = waiting
+        self.running = running
+        self.monitor = monitor
+        self.success = success
+        self.inactive = inactive
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        problem = try c.decode(RGBColor.self, forKey: .problem)
+        attention = try c.decode(RGBColor.self, forKey: .attention)
+        waiting = try c.decode(RGBColor.self, forKey: .waiting)
+        running = try c.decode(RGBColor.self, forKey: .running)
+        monitor = try c.decodeIfPresent(RGBColor.self, forKey: .monitor) ?? Self.monitorDefault
+        success = try c.decode(RGBColor.self, forKey: .success)
+        inactive = try c.decode(RGBColor.self, forKey: .inactive)
+    }
+
+    /// Every palette that used to be `default`, newest first. An install still
+    /// sitting on one of these never customized its colors, so it is safe to
+    /// move forward — add a row here when `default` changes, nothing else.
+    static let retiredDefaults: [StatusColorMap] = [
+        // Six distinct hues, waiting was purple.
+        StatusColorMap(
+            problem: RGBColor(r: 1.000, g: 0.271, b: 0.227),
+            attention: RGBColor(r: 1.000, g: 0.624, b: 0.039),
+            waiting: RGBColor(r: 0.749, g: 0.353, b: 0.949),
+            running: RGBColor(r: 0.039, g: 0.518, b: 1.000),
+            success: RGBColor(r: 0.188, g: 0.820, b: 0.345),
+            inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+        ),
+        // Before the vivid alignment pass.
+        StatusColorMap(
+            problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),
+            attention: RGBColor(r: 1.000, g: 0.584, b: 0.000),
+            waiting: RGBColor(r: 0.686, g: 0.321, b: 0.871),
+            running: RGBColor(r: 0.000, g: 0.478, b: 1.000),
+            success: RGBColor(r: 0.204, g: 0.780, b: 0.349),
+            inactive: RGBColor(r: 0.557, g: 0.557, b: 0.576)
+        ),
+        // First release.
+        StatusColorMap(
+            problem: RGBColor(r: 0.95, g: 0.14, b: 0.18),
+            attention: RGBColor(r: 1.00, g: 0.52, b: 0.10),
+            waiting: RGBColor(r: 0.55, g: 0.28, b: 0.92),
+            running: RGBColor(r: 0.14, g: 0.52, b: 0.98),
+            success: RGBColor(r: 0.08, g: 0.80, b: 0.34),
+            inactive: RGBColor(r: 0.48, g: 0.52, b: 0.58)
+        ),
+    ]
 
     func color(for status: Status) -> RGBColor {
         switch status {
         case .problem: return problem
-        case .attention: return attention
-        case .waiting: return waiting
+        case .attention, .waiting: return attention
         case .running: return running
+        case .monitor: return monitor
         case .success: return success
         case .inactive: return inactive
         }
@@ -77,15 +134,20 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     mutating func set(_ color: RGBColor, for status: Status) {
         switch status {
         case .problem: problem = color
-        case .attention: attention = color
-        case .waiting: waiting = color
+        case .attention, .waiting: attention = color
         case .running: running = color
+        case .monitor: monitor = color
         case .success: success = color
         case .inactive: inactive = color
         }
     }
 
     var isDefault: Bool { self == .default }
+
+    /// Bump installs that never customized colors to the current vivid palette.
+    static func migrated(from saved: StatusColorMap) -> StatusColorMap {
+        retiredDefaults.contains(saved) ? .default : saved
+    }
 }
 
 // MARK: - Settings
@@ -103,10 +165,35 @@ final class SettingsStore {
             notifyRibbonAppearance()
         }
     }
-    var reduceMotion: Bool { didSet { persist() } }
-    var animationsEnabled: Bool { didSet { persist() } }
-    var ingestPort: UInt16 { didSet { persist() } }
-
+    /// Legacy sticky flag (no longer gates animation by itself).
+    var reduceMotion: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    var animationsEnabled: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    /// When true (default), honor macOS Accessibility Reduce Motion.
+    /// Turn off to keep ribbon motion while system Reduce Motion is enabled.
+    var respectSystemReduceMotion: Bool {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+    /// Continuous menu-bar motion while work is open (see `RibbonMotionStyle`).
+    /// Requires `effectiveAnimationsEnabled`; otherwise the ribbon stays static.
+    var ribbonMotionStyle: RibbonMotionStyle {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
     /// Per-status ribbon / panel colors.
     var statusColors: StatusColorMap {
         didSet {
@@ -136,6 +223,23 @@ final class SettingsStore {
     /// Status panel section grouping (priority / status / source).
     /// Also drives how the menu-bar ribbon is segmented and ordered.
     var panelGroupMode: PanelGroupMode {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+
+    /// Which group-member leaf jobs appear in the status panel (style preference).
+    var panelMemberVisibility: PanelMemberVisibility {
+        didSet {
+            persist()
+            notifyRibbonAppearance()
+        }
+    }
+
+    /// When true (default), only root jobs (`paintsRibbon`) color the menu-bar ribbon.
+    /// Turn off to also paint elevated-attention members (style preference).
+    var ribbonRootsOnly: Bool {
         didSet {
             persist()
             notifyRibbonAppearance()
@@ -250,11 +354,11 @@ final class SettingsStore {
         min(panelHeightRange.upperBound, max(panelHeightRange.lowerBound, v))
     }
 
-    /// Keep enum order, drop unknowns/dupes, guarantee at least `.name`.
+    /// Keep enum order, drop retired columns, guarantee at least `.name`.
     static func normalizePanelColumns(_ cols: [PanelColumn]) -> [PanelColumn] {
         var seen = Set<PanelColumn>()
         var ordered: [PanelColumn] = []
-        for col in PanelColumn.allCases where cols.contains(col) {
+        for col in PanelColumn.allCases where col.isRenderable && cols.contains(col) {
             if seen.insert(col).inserted {
                 ordered.append(col)
             }
@@ -281,7 +385,8 @@ final class SettingsStore {
         hideWhenIdle = false
         reduceMotion = false
         animationsEnabled = true
-        ingestPort = 17890
+        respectSystemReduceMotion = true
+        ribbonMotionStyle = .transitionsOnly
         statusColors = .default
         notificationsPaused = false
         notifyRequired = true
@@ -299,6 +404,8 @@ final class SettingsStore {
         hasCompletedFirstRun = false
         hasSeenCoachMarks = false
         panelGroupMode = .machine
+        panelMemberVisibility = .attention
+        ribbonRootsOnly = true
         panelColumns = PanelColumn.defaultColumns
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
@@ -317,10 +424,8 @@ final class SettingsStore {
             applyV3(p)
         }
 
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            reduceMotion = true
-        }
-
+        // Do not sticky-persist system Reduce Motion into prefs — that once forced
+        // animations off forever with no UI to reverse it. Live check only below.
         isLoading = false
         persist()
     }
@@ -329,9 +434,11 @@ final class SettingsStore {
         hideWhenIdle = p.hideWhenIdle
         reduceMotion = p.reduceMotion
         animationsEnabled = p.animationsEnabled
-        ingestPort = p.ingestPort
+        // Default true for older prefs; only false when user explicitly opted out.
+        respectSystemReduceMotion = p.respectSystemReduceMotion ?? true
+        ribbonMotionStyle = p.ribbonMotionStyle ?? .transitionsOnly
         let savedColors = p.statusColors ?? .default
-        statusColors = savedColors == .legacyDefault ? .default : savedColors
+        statusColors = StatusColorMap.migrated(from: savedColors)
         notificationsPaused = p.notificationsPaused
         notifyRequired = p.notifyRequired
         notifyUrgent = p.notifyUrgent
@@ -352,6 +459,8 @@ final class SettingsStore {
         } else {
             panelGroupMode = .machine
         }
+        panelMemberVisibility = p.panelMemberVisibility ?? .attention
+        ribbonRootsOnly = p.ribbonRootsOnly ?? true
         panelColumns = Self.normalizePanelColumns(p.panelColumns ?? PanelColumn.defaultColumns)
         ribbonLengthScale = Self.clampRibbonLengthScale(p.ribbonLengthScale ?? Self.defaultRibbonLengthScale)
         ribbonThickness = Self.clampRibbonThickness(p.ribbonThickness ?? Self.defaultRibbonThickness)
@@ -364,7 +473,8 @@ final class SettingsStore {
         hideWhenIdle = p.hideWhenIdle
         reduceMotion = p.reduceMotion
         animationsEnabled = p.animationsEnabled
-        ingestPort = p.ingestPort
+        respectSystemReduceMotion = true
+        ribbonMotionStyle = .transitionsOnly
         notificationsPaused = p.notificationsPaused
         notifyRequired = p.notifyRequired
         notifyUrgent = p.notifyUrgent
@@ -381,6 +491,8 @@ final class SettingsStore {
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
         panelGroupMode = p.panelGroupMode ?? .machine
+        panelMemberVisibility = .attention
+        ribbonRootsOnly = true
         panelColumns = PanelColumn.defaultColumns
         ribbonLengthScale = Self.defaultRibbonLengthScale
         ribbonThickness = Self.defaultRibbonThickness
@@ -481,12 +593,24 @@ final class SettingsStore {
                 m.id = old.id
                 return m
             }
-            return host.asMachineConfig(remoteIngestPort: ingestPort, enabled: false, autoConnect: false)
+            return host.asMachineConfig(
+                remoteIngestPort: NerveEndpoint.port,
+                enabled: false,
+                autoConnect: false
+            )
         }
     }
 
+    /// macOS Accessibility → Display → Reduce motion (live, not sticky prefs).
+    var systemReduceMotionActive: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Transitions + ambient ribbon. User toggle, plus optional honor of system Reduce Motion.
     var effectiveAnimationsEnabled: Bool {
-        animationsEnabled && !reduceMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard animationsEnabled else { return false }
+        if respectSystemReduceMotion && systemReduceMotionActive { return false }
+        return true
     }
 
     private func persist() {
@@ -495,7 +619,8 @@ final class SettingsStore {
             hideWhenIdle: hideWhenIdle,
             reduceMotion: reduceMotion,
             animationsEnabled: animationsEnabled,
-            ingestPort: ingestPort,
+            respectSystemReduceMotion: respectSystemReduceMotion,
+            ribbonMotionStyle: ribbonMotionStyle,
             statusColors: statusColors,
             notificationsPaused: notificationsPaused,
             notifyRequired: notifyRequired,
@@ -513,6 +638,8 @@ final class SettingsStore {
             hasCompletedFirstRun: hasCompletedFirstRun,
             hasSeenCoachMarks: hasSeenCoachMarks,
             panelGroupMode: panelGroupMode,
+            panelMemberVisibility: panelMemberVisibility,
+            ribbonRootsOnly: ribbonRootsOnly,
             panelColumns: panelColumns,
             ribbonLengthScale: ribbonLengthScale,
             ribbonThickness: ribbonThickness,
@@ -525,11 +652,21 @@ final class SettingsStore {
         }
     }
 
+    /// Prefs written to `UserDefaults`.
+    ///
+    /// Older payloads carry a retired ingest-port key from when the endpoint
+    /// was a user knob. That field is gone (the port is fixed — see
+    /// `NerveEndpoint`), and because the synthesized `CodingKeys` names only
+    /// the properties below, the synthesized `Decodable` never looks for the
+    /// stale key and old prefs still load. Do **not** hand-write a
+    /// `CodingKeys` case for it: unknown keys are ignored precisely because
+    /// they are absent from the enum.
     private struct Persisted: Codable {
         var hideWhenIdle: Bool
         var reduceMotion: Bool
         var animationsEnabled: Bool
-        var ingestPort: UInt16
+        var respectSystemReduceMotion: Bool?
+        var ribbonMotionStyle: RibbonMotionStyle?
         var statusColors: StatusColorMap?
         var notificationsPaused: Bool
         var notifyRequired: Bool
@@ -547,6 +684,8 @@ final class SettingsStore {
         var hasCompletedFirstRun: Bool
         var hasSeenCoachMarks: Bool
         var panelGroupMode: PanelGroupMode?
+        var panelMemberVisibility: PanelMemberVisibility?
+        var ribbonRootsOnly: Bool?
         var panelColumns: [PanelColumn]?
         var ribbonLengthScale: Double?
         var ribbonThickness: Double?
@@ -555,12 +694,12 @@ final class SettingsStore {
         var machines: [MachineConfig]?
     }
 
-    /// Subset of v3 prefs we still care about (storage/privacy fields ignored).
+    /// Subset of v3 prefs we still care about (storage/privacy fields and the
+    /// retired ingest-port knob drop out the same way ``Persisted`` drops them).
     private struct PersistedV3: Codable {
         var hideWhenIdle: Bool
         var reduceMotion: Bool
         var animationsEnabled: Bool
-        var ingestPort: UInt16
         var notificationsPaused: Bool
         var notifyRequired: Bool
         var notifyUrgent: Bool

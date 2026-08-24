@@ -19,11 +19,9 @@ final class MachineTunnelManager {
     private var connectGeneration: [UUID: UInt64] = [:]
 
     private weak var settings: SettingsStore?
-    private var ingestPort: UInt16 = 17890
 
     func attach(settings: SettingsStore) {
         self.settings = settings
-        self.ingestPort = settings.ingestPort
     }
 
     func start() {
@@ -58,9 +56,8 @@ final class MachineTunnelManager {
 
     func syncConfig() {
         guard let settings else { return }
-        ingestPort = settings.ingestPort
         let machines = settings.machines
-        let port = ingestPort
+        let port = NerveEndpoint.port
         Task.detached(priority: .userInitiated) {
             do {
                 try SSHConfigWriter.sync(machines: machines, localIngestPort: port)
@@ -84,7 +81,7 @@ final class MachineTunnelManager {
         lastError[id] = nil
 
         let machines = settings.machines
-        let localPort = settings.ingestPort
+        let localPort = NerveEndpoint.port
         let alias = machine.alias
         let remotePort = machine.remoteIngestPort
         let probeHost = machine.hostName.isEmpty ? machine.alias : machine.hostName
@@ -142,7 +139,7 @@ final class MachineTunnelManager {
            let machine = settings.machines.first(where: { $0.id == id }) {
             let alias = machine.alias
             let remotePort = machine.remoteIngestPort
-            let localPort = settings.ingestPort
+            let localPort = NerveEndpoint.port
             Task.detached(priority: .utility) {
                 _ = SSHCLI.muxCancel(alias: alias, remotePort: remotePort, localPort: localPort)
             }
@@ -273,7 +270,7 @@ final class MachineTunnelManager {
         processes[id] = nil
 
         let remotePort = settings?.machines.first(where: { $0.id == id })?.remoteIngestPort ?? 17890
-        let localPort = settings?.ingestPort ?? ingestPort
+        let localPort = NerveEndpoint.port
         let autoRetry = settings?.machines.first(where: { $0.id == id }).map { $0.enabled && $0.autoConnect } ?? false
 
         Task.detached(priority: .userInitiated) { [weak self] in

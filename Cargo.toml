@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["crates/nerve-hub", "crates/nerve-tmux-surface"]
+
+# Shared metadata for every crate in the workspace. Future Rust crates
+# (surfaces, helpers) inherit these with `field.workspace = true`.
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/RoyKid/nerve"
+
+[workspace.lints.rust]
+# nerve-hub is a network daemon on loopback; nothing here needs `unsafe`.
+unsafe_code = "forbid"
+
+# Release binaries ship inside the macOS app bundle, so size matters as
+# much as speed.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

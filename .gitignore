@@ -29,7 +29,13 @@ Nerve/build/
 .venv/
 
 # Index page (Rsbuild)
-index-page/node_modules/
-index-page/dist/
-index-page/.rsbuild/
+index/node_modules/
+index/dist/
+index/.rsbuild/
 
+# Rust (cargo workspace)
+/target/
+
+# MCP browser artifacts (screenshots, traces)
+.playwright-mcp/
+**/.playwright-mcp/

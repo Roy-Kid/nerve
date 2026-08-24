@@ -1,0 +1,138 @@
+@import 'tailwindcss';
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Design tokens — the single source.
+
+   Tailwind v4 turns each namespace into utilities, so `--color-ink` is
+   `text-ink` / `bg-ink` / `border-ink`, `--container-page` is `max-w-page`,
+   `--breakpoint-lap` is `lap:` / `max-lap:`. Nothing here is repeated in a
+   `:root` block of its own: one name, one place.
+   ───────────────────────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Paper and ink — the light half of the page. */
+  --color-page: #f5f5f7;
+  --color-paper: #f7faff;
+  --color-paper-warm: #fffdf9;
+  --color-surface: #ffffff;
+  --color-glass: rgb(255 255 255 / 72%);
+  --color-ink: #172033;
+  --color-ink-dim: #56637a;
+  --color-ink-faint: #8792a8;
+  --color-line: rgb(44 66 104 / 11%);
+  --color-line-strong: rgb(44 66 104 / 18%);
+
+  /* Night sections — the dark bands between them. */
+  --color-night: #12182b;
+  --color-night-raised: #19213a;
+  --color-night-text: #f6f7fb;
+  --color-night-muted: #aab3c4;
+
+  /* The Apple label ramp the product chrome is drawn in. */
+  --color-label: #1d1d1f;
+  --color-label-2: #6e6e73;
+  --color-label-3: #86868b;
+
+  /* Page chrome (Apple system). Job status is --color-status-*, not these. */
+  --color-blue: #007aff;
+  --color-blue-pressed: #0071e3;
+  --color-cyan: #57c7eb;
+  --color-violet: #af52de;
+  --color-green: #34c759;
+  --color-amber: #ff9500;
+  --color-red: #ff3b30;
+
+  /* Job status — same six hues the surfaces paint. */
+  --color-status-problem: #ff3b30;
+  --color-status-attention: #ff9f0a;
+  --color-status-running: #0a84ff;
+  --color-status-monitor: #bf5af2;
+  --color-status-success: #30d158;
+  --color-status-inactive: #8e8e93;
+
+  /* Where the nav collapses, and where a three-up grid becomes one column.
+     Neither lands on Tailwind's own scale, so both are named here. */
+  --breakpoint-lap: 56.25rem;
+  --breakpoint-wide: 60rem;
+
+  --container-page: 1120px;
+  --shadow-card: 0 10px 30px rgb(57 77 112 / 8%);
+  --shadow-float: 0 24px 70px rgb(57 77 112 / 14%);
+  --ease-page: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-mark-arrive: chrome-mark-arrive 520ms var(--ease-page) both;
+  --animate-mark-pop: chrome-mark-pop 460ms var(--ease-page) both;
+}
+
+/* The keyboard ring, once. Every focusable element in the chrome wears it, and
+   a utility is the only way to say that without a selector list. */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 3px solid --alpha(var(--color-blue) / 34%);
+    outline-offset: 2px;
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+    /* Not a token: a `clamp()` cannot be a utility value, and every page
+       gutter on the site is this one number. */
+    --page-gutter: clamp(1rem, 3vw, 2rem);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    background: var(--color-paper);
+  }
+
+  body {
+    min-height: 100vh;
+    overflow-x: hidden;
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  #root {
+    position: relative;
+    isolation: isolate;
+  }
+
+  section {
+    scroll-margin-top: 6rem;
+  }
+
+  ::selection {
+    color: #13203c;
+    background: rgb(87 199 235 / 28%);
+  }
+}
+
+/* The nav and footer marks, which arrive on load and bounce on hover. */
+@keyframes chrome-mark-arrive {
+  from {
+    transform: translateY(5px) rotate(-7deg) scale(0.88);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes chrome-mark-pop {
+  45% {
+    transform: translateY(-2px) rotate(6deg) scale(1.08);
+  }
+  to {
+    transform: none;
+  }
+}

@@ -26,8 +26,20 @@
         "name": "Demo",
         "kind": "demo"
       },
+      "location": {
+        "openURL": "file:///tmp",
+        "focusHint": "Demo · nerve · session · /tmp"
+      },
       "capabilities": [],
       "actions": [
+        {
+          "id": "open",
+          "title": "Open",
+          "kind": "open",
+          "state": "available",
+          "destructive": false,
+          "confirmationRequired": false
+        },
         {
           "id": "copy",
           "title": "Copy",

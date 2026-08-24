@@ -1,0 +1,12 @@
+{
+  "name": "nerve",
+  "version": "0.1.2",
+  "description": "Push Grok session lifecycle into the Nerve status hub over local HTTP ingest.",
+  "author": {
+    "name": "Nerve",
+    "email": "lijichen365@gmail.com"
+  },
+  "homepage": "https://github.com/Roy-Kid/nerve#documentation-website",
+  "icon": "./icon.png",
+  "hooks": "./hooks/grok.json"
+}
