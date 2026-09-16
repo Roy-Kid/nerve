@@ -21,8 +21,11 @@ name = "nerve-tmux-surface"
 path = "src/main.rs"
 
 [dependencies]
-# Frame decoding only. The surface consumes the hub contract, it never serves.
-serde = { version = "1", features = ["derive"] }
+# Everything this surface does that is not drawing a terminal.
+nerve-surface-core = { path = "../nerve-surface-core" }
+# Ad-hoc JSON the terminal side reads directly: tmux pane metadata, the popup's
+# one-shot job read, preview payloads. Frame decoding itself lives in
+# `nerve-surface-core`.
 serde_json = "1"
 # The wire is ISO8601 second-precision `Z` (`crates/nerve-hub/src/model/time.rs`),
 # so the same date library the hub already pulls in parses it here. Every

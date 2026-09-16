@@ -851,13 +851,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerve-surface-core"
+version = "0.1.0"
+dependencies = [
+ "nerve-platform",
+ "serde",
+ "serde_json",
+ "time",
+]
+
+[[package]]
 name = "nerve-tmux-surface"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "nerve-surface-core",
  "ratatui",
  "rustix",
- "serde",
  "serde_json",
  "time",
  "unicode-width",
