@@ -6,9 +6,9 @@
 //! a count by accident.
 
 use crate::frame::JobView;
-use crate::status::StatusClass;
+use crate::status::{is_ask_elevated, StatusClass};
 
-/// One count per [`StatusClass`].
+/// One count per [`StatusClass`], plus `{ask}` for interruptible human asks.
 ///
 /// Public fields so a caller — and a test — can state a whole expectation in
 /// one literal.
@@ -21,14 +21,20 @@ pub struct Tally {
     pub monitor: usize,
     pub success: usize,
     pub inactive: usize,
+    /// Ask reasons at `level ≥ suggested` — soft status-line reminder count.
+    /// Independent of paint: Wait still increments `attention`, not `ask`.
+    pub ask: usize,
 }
 
 impl Tally {
-    /// Count `jobs` by [`StatusClass::of`].
+    /// Count `jobs` by [`StatusClass::of`] and Ask elevation.
     pub fn of(jobs: &[JobView]) -> Self {
         let mut tally = Self::default();
         for job in jobs {
             *tally.slot(StatusClass::of(job)) += 1;
+            if is_ask_elevated(job) {
+                tally.ask += 1;
+            }
         }
         tally
     }

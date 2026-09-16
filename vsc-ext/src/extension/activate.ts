@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import type { JobFilter } from "../model/filter";
 import type { Job } from "../model/job";
-import { statusOf } from "../model/status";
+import { isAskElevated, statusOf } from "../model/status";
 import { HubClient } from "../hub/client";
+import { AskToast } from "../notify/askToast";
 import { JobStore } from "../store/jobStore";
 import { copyLocation, copySummary, performFocus } from "../ui/focus";
 import { JobItem, JobsTreeProvider } from "../ui/jobsTree";
@@ -21,6 +22,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const statusBar = new NerveStatusBar(store, () =>
     vscode.workspace.getConfiguration("nerve").get("statusBar.enabled", true),
   );
+  const askToast = new AskToast();
   const client = new HubClient(store, {
     extensionPath: context.extensionPath,
     spawnEnabled: () =>
@@ -29,16 +31,23 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const applyChrome = (): void => {
     const snapshot = store.snapshot();
-    const attention = snapshot.jobs.filter((job) => {
-      const status = statusOf(job);
-      return status === "attention" || status === "problem" || status === "waiting";
+    askToast.evaluate(snapshot.jobs);
+
+    const badgeCount = snapshot.jobs.filter((job) => {
+      return statusOf(job) === "problem" || isAskElevated(job);
     }).length;
     const badgeOn = vscode.workspace
       .getConfiguration("nerve")
       .get("badge.enabled", true);
     treeView.badge =
-      badgeOn && snapshot.connected && attention > 0
-        ? { value: attention, tooltip: `${attention} need a look` }
+      badgeOn && snapshot.connected && badgeCount > 0
+        ? {
+            value: badgeCount,
+            tooltip:
+              badgeCount === 1
+                ? "1 ready for you"
+                : `${badgeCount} ready for you`,
+          }
         : undefined;
     void vscode.commands.executeCommand(
       "setContext",

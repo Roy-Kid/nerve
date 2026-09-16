@@ -1,5 +1,18 @@
 # Notes
 
+<!-- mol:note:topic:ask-graded-notify -->
+## 2026-08-30 — Graded notifications: Ask gate, gentle copy
+
+Why: every elevated Attention used to share one interrupt path; system waits and “your turn” felt the same, and chrome (status-bar yellow, “need a look”) read as alarm.
+
+**Rule**: default interrupt channel is **Ask reasons** (`input`, `approval`, `auth`, `permission`, `decision`, `elicitation`, **`review`**) at `attention.level ≥ suggested`, on upgrade or first sight. Wait reasons paint Attention but do not banner/toast by default. Intensity: suggested soft + silent; required may sound; urgent separate toggle, calm copy. Failures / unresponsive / long success stay independent.
+
+**Aesthetics**: calm verbs (“Your turn”, “Ready when you are”, “A review is waiting”); red only for real problems; no CRITICAL / stacked bangs; sticky clear when Ask drops; respect Pause / quiet hours / mutes.
+
+**Surfaces**: macOS OS banners only (Settings “Your turn”). VS Code: optional Ask toast + badge Ask+problem + soft status text / a11y. tmux: `{ask}?` in default status format; `{attention}` still available. Hub never notifies.
+
+**Supersedes**: “Needs attention covers all ≥ suggested” wording for the default interrupt path (paint rules unchanged).
+
 <!-- mol:note:topic:vscode-surface -->
 ## 2026-08-24 — VS Code is a third peer surface
 
@@ -16,7 +29,7 @@ Why: waiting-as-purple asked the user to memorize a sixth “needs a look” hue
 
 **Rule**: shared job status is five rainbow hues (red problem, orange attention, blue running, violet monitor, green success) plus gray idle. Seven is the ceiling. Waiting on the system shares **Attention**. A background shell/subagent still executing is **Running**; only `current.type=monitor` (or active + `outcome=partial`) is **Monitor**. Ended success stays green. Chrome stays gray/slate.
 
-**Surfaces**: `Status.painted` / tmux `colors.rs` / site `statusMeta` are the three copies of the same map. `{waiting}` remains a summary token (always empty from derivation); `{monitor}` is in the default `@nerve_status_format`.
+**Surfaces**: `Status.painted` / tmux `colors.rs` / site `statusMeta` are the three copies of the same map. `{waiting}` remains a summary token (always empty from derivation); `{ask}` is the soft “ready for you” count in the default `@nerve_status_format`; `{attention}` still covers Wait + Ask paint rows; `{monitor}` stays in the default format.
 
 <!-- mol:note:topic:arch-hub-topology -->
 ## 2026-08-23 — State hub topology (supersedes in-app ingest)

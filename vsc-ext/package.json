@@ -179,7 +179,12 @@
         "nerve.badge.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show an Activity Bar badge for attention and problem jobs."
+          "description": "Show an Activity Bar badge for Ask (your turn / review / approval) and problem jobs."
+        },
+        "nerve.notifications.ask": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a gentle in-editor toast when an agent needs input, review, or a decision. System notification banners stay on the macOS app."
         },
         "nerve.filter": {
           "type": "string",

@@ -21,13 +21,15 @@ const WAIT_REASONS = [
   "failure",
 ] as const;
 
-const ASK_REASONS = [
+/** Ask reasons — human should return to the agent UI (interruptible channel). */
+export const ASK_REASONS = [
   "input",
   "approval",
   "auth",
   "permission",
   "decision",
   "elicitation",
+  "review",
 ] as const;
 
 const BUSY_KINDS = ["subagent", "tool", "thinking", "info"] as const;
@@ -134,4 +136,71 @@ export function worstStatus(statuses: readonly Status[]): Status {
   return statuses.reduce((worst, next) =>
     statusRank(next) < statusRank(worst) ? next : worst,
   );
+}
+
+export function isAskReason(reason: string | undefined): boolean {
+  return names(reason, ASK_REASONS);
+}
+
+/** Ask + elevated enough to interrupt (`level ≥ suggested`). */
+export function isAskElevated(job: Job): boolean {
+  return (
+    isAskReason(job.attention.reason) &&
+    ATTENTION_RANK[job.attention.level] >= ATTENTION_RANK.suggested
+  );
+}
+
+/** Whether an Ask interrupt should fire for this transition (upgrade or first sight). */
+export function shouldNotifyAsk(previous: Job | undefined, next: Job): boolean {
+  if (!isAskElevated(next)) return false;
+  if (!previous) return true;
+  if (!isAskElevated(previous)) return true;
+  return ATTENTION_RANK[next.attention.level] > ATTENTION_RANK[previous.attention.level];
+}
+
+export interface AskCopy {
+  title: string;
+  body: string;
+}
+
+/** Gentle toast/banner copy. Prefers producer title/summary; never panics. */
+export function askCopy(job: Job, forceUrgentTone = false): AskCopy {
+  const reason = (job.attention.reason ?? "input").trim().toLowerCase();
+  let fallbackTitle: string;
+  switch (reason) {
+    case "approval":
+    case "permission":
+    case "auth":
+      fallbackTitle = `Approval needed: ${job.name}`;
+      break;
+    case "review":
+      fallbackTitle = `A review is waiting: ${job.name}`;
+      break;
+    default:
+      fallbackTitle = `Your turn: ${job.name}`;
+  }
+  let fallbackBody: string;
+  if (forceUrgentTone || job.attention.level === "urgent") {
+    fallbackBody = "Please return when you can — continue in the agent";
+  } else {
+    switch (reason) {
+      case "approval":
+      case "permission":
+      case "auth":
+        fallbackBody = "Return to the agent to approve";
+        break;
+      case "review":
+        fallbackBody = "Return to the agent when you are ready";
+        break;
+      default:
+        fallbackBody = "Ready when you are — return to the agent to continue";
+    }
+  }
+  const title = job.attention.title?.trim();
+  const summary = job.attention.summary?.trim();
+  const current = job.current?.summary?.trim();
+  return {
+    title: title || fallbackTitle,
+    body: summary || current || fallbackBody,
+  };
 }

@@ -46,7 +46,7 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
 
         if attention.level >= .informational, let reason = attention.reason?.lowercased() {
             switch reason {
-            case "input", "approval", "auth", "permission", "decision", "elicitation",
+            case "input", "approval", "auth", "permission", "decision", "elicitation", "review",
                  "resource", "dependency", "queue", "system", "lock",
                  "throttle", "rate", "capacity", "failure":
                 return .attention
@@ -151,6 +151,68 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         if isMemberJob { return false }
         if case .bool(false) = extensions["paintRibbon"] { return false }
         return true
+    }
+
+    /// Ask reasons — human should return to the agent UI (interruptible channel).
+    static let askReasons: Set<String> = [
+        "input", "approval", "auth", "permission", "decision", "elicitation", "review",
+    ]
+
+    /// True when `attention.reason` is an Ask reason (case-insensitive).
+    var isAskReason: Bool {
+        guard let reason = attention.reason?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !reason.isEmpty else { return false }
+        return Self.askReasons.contains(reason.lowercased())
+    }
+
+    /// Ask + elevated enough to interrupt (`level ≥ suggested`).
+    var isAskElevated: Bool {
+        isAskReason && attention.level >= .suggested
+    }
+
+    /// Whether an Ask interrupt should fire for this transition (upgrade or first sight).
+    static func shouldNotifyAsk(previous: Job?, next: Job) -> Bool {
+        guard next.isAskElevated else { return false }
+        guard let previous else { return true }
+        if !previous.isAskElevated { return true }
+        return next.attention.level > previous.attention.level
+    }
+
+    /// Gentle banner copy. Prefers producer title/summary; never panics.
+    func askNotificationCopy(forceUrgentTone: Bool = false) -> (title: String, body: String) {
+        let reason = attention.reason?.lowercased() ?? "input"
+        let fallbackTitle: String = {
+            switch reason {
+            case "approval", "permission", "auth":
+                return "Approval needed: \(name)"
+            case "review":
+                return "A review is waiting: \(name)"
+            default:
+                return "Your turn: \(name)"
+            }
+        }()
+        let fallbackBody: String = {
+            if forceUrgentTone || attention.level == .urgent {
+                return "Please return when you can — continue in the agent"
+            }
+            switch reason {
+            case "approval", "permission", "auth":
+                return "Return to the agent to approve"
+            case "review":
+                return "Return to the agent when you are ready"
+            default:
+                return "Ready when you are — return to the agent to continue"
+            }
+        }()
+        let title = attention.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = attention.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activity = self.current?.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (
+            title: (title?.isEmpty == false) ? title! : fallbackTitle,
+            body: (summary?.isEmpty == false)
+                ? summary!
+                : ((activity?.isEmpty == false) ? activity! : fallbackBody)
+        )
     }
 
     static func make(

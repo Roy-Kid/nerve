@@ -588,15 +588,15 @@ struct PreferencesView: View {
                 }
 
                 Section {
-                    NotificationToggle(title: "Needs attention", systemImage: "person.crop.circle.badge.exclamationmark", isOn: $settings.notifyRequired)
-                    NotificationToggle(title: "Urgent", systemImage: "exclamationmark.triangle", isOn: $settings.notifyUrgent)
+                    NotificationToggle(title: "Your turn", systemImage: "hand.raised", isOn: $settings.notifyRequired)
+                    NotificationToggle(title: "Urgent ask", systemImage: "bell", isOn: $settings.notifyUrgent)
                     NotificationToggle(title: "Failures", systemImage: "xmark.circle", isOn: $settings.notifyFailure)
                     NotificationToggle(title: "Unresponsive", systemImage: "bolt.slash", isOn: $settings.notifyUnresponsive)
                     NotificationToggle(title: "Long task done", systemImage: "checkmark.circle", isOn: $settings.notifyLongSuccess)
                 } header: {
                     Text("Events")
                 } footer: {
-                    Text("Needs attention covers waiting for input and permission prompts. Failures cover outcome.failure and tool/turn failures. Never free-text.")
+                    Text("Your turn gently reminds when an agent needs input, review, or a decision (Ask reasons at suggested+). System waits only colour the ribbon — they do not interrupt. Suggested Ask stays silent even when Play sounds is on. Failures cover outcome.failure and tool/turn failures. Never free-text.")
                 }
 
                 Section {

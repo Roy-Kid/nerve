@@ -4,7 +4,9 @@ import AppKit
 
 /// macOS notifications for high-signal job changes. Deduped; never spams heartbeats.
 ///
-/// Fires on structured facet transitions only (attention / outcome / health) — never free-text.
+/// Ask channel: `reason ∈ Ask` and `level ≥ suggested` on upgrade/first sight.
+/// Wait / informational chatter paints Attention but does not interrupt.
+/// Fires on structured facet transitions only — never free-text.
 @MainActor
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     private let settings: SettingsStore
@@ -53,45 +55,43 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             return
         }
 
-        let prevLevel = previous?.attention.level ?? .none
-        let nextLevel = next.attention.level
-
-        // Attention escalations.
-        // Hooks use `suggested` for Stop / idle_prompt (your turn) and `required`
-        // for permission prompts. Both paint Status.attention — both should notify.
-        if nextLevel > prevLevel || (previous == nil && nextLevel >= .suggested) {
-            switch nextLevel {
+        // Ask channel — input / review / decision / approval. Soft by default.
+        if Job.shouldNotifyAsk(previous: previous, next: next) {
+            let level = next.attention.level
+            switch level {
             case .urgent:
                 if settings.notifyUrgent {
+                    let copy = next.askNotificationCopy(forceUrgentTone: true)
                     notify(
                         subject: next,
                         kind: "attention.urgent",
-                        title: next.attention.title ?? "Urgent: \(next.name)",
-                        body: next.attention.summary ?? next.current?.summary ?? ""
+                        title: copy.title,
+                        body: copy.body,
+                        playSound: settings.notificationSoundEnabled
                     )
                 }
-            case .required, .suggested:
-                // Settings “Needs attention” covers suggested + required.
+            case .required:
                 if settings.notifyRequired {
-                    let kind = nextLevel == .required ? "attention.required" : "attention.suggested"
-                    // Honest: user acts in the agent UI — Nerve only points them there.
-                    let fallbackTitle: String = {
-                        if next.attention.reason?.lowercased() == "approval" {
-                            return "Approval needed: \(next.name)"
-                        }
-                        return "Your turn: \(next.name)"
-                    }()
-                    let fallbackBody: String = {
-                        if next.attention.reason?.lowercased() == "approval" {
-                            return "Return to the agent to approve"
-                        }
-                        return "Return to the agent to continue"
-                    }()
+                    let copy = next.askNotificationCopy()
                     notify(
                         subject: next,
-                        kind: kind,
-                        title: next.attention.title ?? fallbackTitle,
-                        body: next.attention.summary ?? next.current?.summary ?? fallbackBody
+                        kind: "attention.required",
+                        title: copy.title,
+                        body: copy.body,
+                        playSound: settings.notificationSoundEnabled
+                    )
+                }
+            case .suggested:
+                // Settings “Your turn” covers Ask at suggested+.
+                // Suggested stays silent even when Play sounds is on.
+                if settings.notifyRequired {
+                    let copy = next.askNotificationCopy()
+                    notify(
+                        subject: next,
+                        kind: "attention.suggested",
+                        title: copy.title,
+                        body: copy.body,
+                        playSound: false
                     )
                 }
             case .informational, .none:
@@ -107,7 +107,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 subject: next,
                 kind: "outcome.failure",
                 title: "Failed: \(next.name)",
-                body: next.current?.summary ?? next.outcome?.rawValue ?? ""
+                body: next.current?.summary ?? next.outcome?.rawValue ?? "",
+                playSound: settings.notificationSoundEnabled
             )
         }
 
@@ -119,7 +120,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 subject: next,
                 kind: "attention.failure",
                 title: next.attention.title ?? "Failed: \(next.name)",
-                body: next.attention.summary ?? next.current?.summary ?? ""
+                body: next.attention.summary ?? next.current?.summary ?? "",
+                playSound: settings.notificationSoundEnabled
             )
         }
 
@@ -130,7 +132,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 subject: next,
                 kind: "health.unresponsive",
                 title: "Unresponsive: \(next.name)",
-                body: next.current?.summary ?? "No recent updates"
+                body: next.current?.summary ?? "No recent updates",
+                playSound: settings.notificationSoundEnabled
             )
         }
 
@@ -145,15 +148,16 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     subject: next,
                     kind: "outcome.long_success",
                     title: "Completed: \(next.name)",
-                    body: next.current?.summary ?? ""
+                    body: next.current?.summary ?? "",
+                    playSound: settings.notificationSoundEnabled
                 )
             }
         }
 
         // Clear sticky attention banners once the job no longer needs the user.
         if let previous,
-           previous.attention.level >= .suggested,
-           next.attention.level < .suggested {
+           previous.isAskElevated,
+           !next.isAskElevated {
             removeDelivered(
                 subjectId: next.id,
                 kinds: ["attention.urgent", "attention.required", "attention.suggested"]
@@ -161,7 +165,13 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func notify(subject: Job, kind: String, title: String, body: String) {
+    private func notify(
+        subject: Job,
+        kind: String,
+        title: String,
+        body: String,
+        playSound: Bool
+    ) {
         let key = "\(subject.id)|\(kind)"
         let now = Date()
         if let last = lastFire[key], now.timeIntervalSince(last) < dedupeInterval {
@@ -173,7 +183,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         content.title = title
         // Empty body is legal but some macOS versions hide the banner without it.
         content.body = body.isEmpty ? title : body
-        content.sound = settings.notificationSoundEnabled ? .default : nil
+        content.sound = playSound ? .default : nil
         content.userInfo = [
             "subjectId": subject.id,
             "kind": kind,

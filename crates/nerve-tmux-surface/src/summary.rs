@@ -4,8 +4,8 @@
 //! The template language, whole:
 //!
 //! 1. A template is split on runs of ASCII whitespace into **segments**.
-//! 2. Count tokens are `{problem} {attention} {waiting} {running} {monitor}
-//!    {success} {inactive} {total}`; each renders as decimal digits.
+//! 2. Count tokens are `{problem} {ask} {attention} {waiting} {running}
+//!    {monitor} {success} {inactive} {total}`; each renders as decimal digits.
 //! 3. A segment whose count tokens **all** render `0` is dropped whole —
 //!    colour markers, glyphs and punctuation with it.
 //! 4. A segment containing **no** count token is a literal separator and is
@@ -39,8 +39,11 @@ pub struct SummaryRenderer {
 
 impl SummaryRenderer {
     /// Default `@nerve_status_format`.
+    ///
+    /// Prefers `{ask}?` (gentle “ready for you”) over the broader `{attention}`
+    /// bucket, which still includes system waits.
     pub const DEFAULT_TEMPLATE: &'static str = "#[fg=red]{problem}!#[default] \
-         #[fg=yellow]{attention}?#[default] \
+         #[fg=yellow]{ask}?#[default] \
          #[fg=magenta]{monitor}~#[default] \
          #[fg=blue]{running}>#[default]";
 
@@ -96,6 +99,7 @@ impl SummaryRenderer {
     fn count(token: &str, tally: &Tally) -> Option<usize> {
         match token {
             "problem" => Some(tally.problem),
+            "ask" => Some(tally.ask),
             "attention" => Some(tally.attention),
             "waiting" => Some(tally.waiting),
             "running" => Some(tally.running),

@@ -28,14 +28,15 @@ const WAIT_REASONS: [&str; 9] = [
     "failure",
 ];
 
-/// `Subject.swift:58` — the job is blocked on a human.
-const ASK_REASONS: [&str; 6] = [
+/// `Subject.swift` — the job is blocked on a human (interruptible Ask channel).
+const ASK_REASONS: [&str; 7] = [
     "input",
     "approval",
     "auth",
     "permission",
     "decision",
     "elicitation",
+    "review",
 ];
 
 /// `Subject.swift:82` — the job is doing work of its own.
@@ -212,4 +213,18 @@ impl StatusClass {
 fn names(value: &str, set: &[&str]) -> bool {
     let value = value.trim();
     set.iter().any(|known| known.eq_ignore_ascii_case(value))
+}
+
+/// True when `attention.reason` is an Ask reason (case-insensitive).
+pub fn is_ask_reason(reason: Option<&str>) -> bool {
+    reason.map(|r| names(r, &ASK_REASONS)).unwrap_or(false)
+}
+
+/// Ask + elevated enough to interrupt (`level ≥ suggested`).
+///
+/// Used by `{ask}` tally / soft status-line reminders — not by paint colour
+/// (Wait still shares Attention orange).
+pub fn is_ask_elevated(job: &JobView) -> bool {
+    is_ask_reason(job.attention.reason.as_deref())
+        && job.attention.level >= AttentionLevel::Suggested
 }

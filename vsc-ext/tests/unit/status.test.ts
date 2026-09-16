@@ -140,6 +140,7 @@ suite("status :56 informational attention", () => {
       "permission",
       "decision",
       "elicitation",
+      "review",
     ]) {
       assert.equal(
         classOf({

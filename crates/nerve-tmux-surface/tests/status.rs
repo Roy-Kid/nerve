@@ -271,6 +271,7 @@ fn test_line_58_every_ask_reason_at_informational_is_attention() {
         "permission",
         "decision",
         "elicitation",
+        "review",
     ] {
         assert_eq!(
             class(json!({

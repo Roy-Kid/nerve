@@ -50,4 +50,9 @@ suite("manifest", () => {
       false,
     );
   });
+
+  test("Ask toast setting defaults on", () => {
+    const ask = pkg.contributes?.configuration?.properties?.["nerve.notifications.ask"];
+    assert.equal(ask?.default, true);
+  });
 });

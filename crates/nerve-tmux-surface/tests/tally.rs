@@ -19,6 +19,7 @@
 //!     pub monitor: usize,
 //!     pub success: usize,
 //!     pub inactive: usize,
+//!     pub ask: usize,
 //! }
 //!
 //! impl Tally {
@@ -62,6 +63,7 @@ fn test_the_six_state_frame_folds_waiting_into_attention() {
             monitor: 1,
             success: 0,
             inactive: 1,
+            ask: 1,
         }
     );
 }
@@ -151,6 +153,33 @@ fn test_a_tally_with_any_count_is_not_empty() {
     let tally = Tally::of(&jobs);
     assert!(!tally.is_empty());
     assert_eq!(tally.inactive, 1);
+}
+
+/// Counting is pure: the same slice tallied twice gives the same answer, and
+/// the jobs are untouched.
+#[test]
+fn test_ask_counts_only_elevated_ask_reasons() {
+    let jobs = vec![
+        job(json!({
+            "id": "a",
+            "lifecycle": "active",
+            "attention": { "level": "required", "reason": "input" }
+        })),
+        job(json!({
+            "id": "b",
+            "lifecycle": "active",
+            "attention": { "level": "suggested", "reason": "resource" }
+        })),
+        job(json!({
+            "id": "c",
+            "lifecycle": "active",
+            "attention": { "level": "suggested", "reason": "review" }
+        })),
+    ];
+
+    let tally = Tally::of(&jobs);
+    assert_eq!(tally.attention, 3);
+    assert_eq!(tally.ask, 2);
 }
 
 /// Counting is pure: the same slice tallied twice gives the same answer, and

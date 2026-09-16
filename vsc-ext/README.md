@@ -26,4 +26,5 @@ Then Run and Debug → **Run Nerve Extension** (F5), or:
 ## Invariants
 
 Display only: Focus and Copy. No approve / cancel / submit. System
-notifications stay on the macOS surface. The hub port is not configurable.
+banners stay on the macOS surface; this extension may show a gentle Ask
+toast (default on). The hub port is not configurable.

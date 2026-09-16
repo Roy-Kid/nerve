@@ -14,7 +14,7 @@
 //!     /// Default `@nerve_status_format`.
 //!     pub const DEFAULT_TEMPLATE: &'static str =
 //!         "#[fg=red]{problem}!#[default] \
-//!          #[fg=yellow]{attention}?#[default] \
+//!          #[fg=yellow]{ask}?#[default] \
 //!          #[fg=magenta]{monitor}~#[default] \
 //!          #[fg=blue]{running}>#[default]";
 //!     /// Default `@nerve_status_offline`.
@@ -35,8 +35,8 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! 1. A template is split on runs of ASCII whitespace into **segments**.
-//! 2. Count tokens are `{problem} {attention} {waiting} {running} {monitor}
-//!    {success} {inactive} {total}`; each renders as decimal digits.
+//! 2. Count tokens are `{problem} {ask} {attention} {waiting} {running}
+//!    {monitor} {success} {inactive} {total}`; each renders as decimal digits.
 //! 3. A segment whose count tokens **all** render `0` is dropped whole —
 //!    colour markers, glyphs and punctuation with it.
 //! 4. A segment containing **no** count token is a literal separator and is
@@ -56,11 +56,12 @@
 use nerve_tmux_surface::summary::{escape_dynamic, SummaryRenderer};
 use nerve_tmux_surface::tally::Tally;
 
-/// The tally acceptance A2 names: two running, one attention, no problems.
+/// The tally acceptance A2 names: two running, one ask, no problems.
 fn a2_tally() -> Tally {
     Tally {
         running: 2,
         attention: 1,
+        ask: 1,
         problem: 0,
         ..Tally::default()
     }
@@ -69,7 +70,7 @@ fn a2_tally() -> Tally {
 // ── The default template, golden ────────────────────────────────────────────
 
 /// Acceptance A2, hard-coded: the default format over `{running:2,
-/// attention:1, problem:0}`.
+/// ask:1, problem:0}`.
 #[test]
 fn test_default_template_over_the_a2_tally_is_the_golden_segment() {
     let rendered = SummaryRenderer::default().render(&a2_tally());
@@ -81,7 +82,7 @@ fn test_default_template_over_the_a2_tally_is_the_golden_segment() {
 fn test_default_template_is_the_literal_the_docs_publish() {
     assert_eq!(
         SummaryRenderer::DEFAULT_TEMPLATE,
-        "#[fg=red]{problem}!#[default] #[fg=yellow]{attention}?#[default] \
+        "#[fg=red]{problem}!#[default] #[fg=yellow]{ask}?#[default] \
          #[fg=magenta]{monitor}~#[default] #[fg=blue]{running}>#[default]"
     );
 }
@@ -104,9 +105,9 @@ fn test_default_renderer_uses_the_default_template() {
     );
 }
 
-/// One of every class: the default format shows problem / attention / monitor /
+/// One of every class: the default format shows problem / ask / monitor /
 /// running and stays quiet about `waiting` (merged into attention), `success`,
-/// and `inactive`.
+/// and `inactive`. Wait-only attention without `ask` does not light the `?`.
 #[test]
 fn test_default_template_over_one_of_each_class() {
     let tally = Tally {
@@ -117,6 +118,7 @@ fn test_default_template_over_one_of_each_class() {
         monitor: 1,
         success: 1,
         inactive: 1,
+        ask: 1,
     };
 
     assert_eq!(
@@ -182,6 +184,7 @@ fn test_total_counts_every_class_not_just_the_painted_ones() {
         monitor: 1,
         success: 1,
         inactive: 1,
+        ..Tally::default()
     };
 
     assert_eq!(renderer.render(&tally), "7");
@@ -190,10 +193,11 @@ fn test_total_counts_every_class_not_just_the_painted_ones() {
 #[test]
 fn test_every_count_token_is_substitutable() {
     let renderer = SummaryRenderer::new(
-        "{problem}-{attention}-{waiting}-{running}-{monitor}-{success}-{inactive}-{total}",
+        "{problem}-{ask}-{attention}-{waiting}-{running}-{monitor}-{success}-{inactive}-{total}",
     );
     let tally = Tally {
         problem: 1,
+        ask: 8,
         attention: 2,
         waiting: 3,
         running: 4,
@@ -202,7 +206,7 @@ fn test_every_count_token_is_substitutable() {
         inactive: 7,
     };
 
-    assert_eq!(renderer.render(&tally), "1-2-3-4-5-6-7-28");
+    assert_eq!(renderer.render(&tally), "1-8-2-3-4-5-6-7-28");
 }
 
 /// A segment carrying no count token is a separator the user asked for.
