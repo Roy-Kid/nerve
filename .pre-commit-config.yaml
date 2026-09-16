@@ -15,6 +15,21 @@ repos:
         language: system
         files: '(\.rs$|Cargo\.(toml|lock)$)'
         pass_filenames: false
+      # Windows compile gate. `check` does not link, so this needs only
+      # `rustup target add x86_64-pc-windows-msvc` — no Windows machine, no
+      # linker, no SDK. A green `cargo test` on macOS proves nothing about a
+      # `cfg(windows)` arm, so this is the only thing standing between the
+      # Windows surfaces and a build that was never compiled.
+      #
+      # Scope widens as each crate is made Windows-clean; the goal is
+      # `--workspace`. Still out: nerve-tmux-surface (unix-only by design).
+      - id: cargo-check-windows
+        name: cargo check (windows target)
+        entry: cargo check -p nerve-platform --target x86_64-pc-windows-msvc
+        language: system
+        files: '(\.rs$|Cargo\.(toml|lock)$)'
+        pass_filenames: false
+
       - id: nerve-hook-tests
         name: nerve hook unit tests
         entry: python3 sources/agents/tests/test_nerve_hook.py
