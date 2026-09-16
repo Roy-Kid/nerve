@@ -1,0 +1,22 @@
+[package]
+name = "nerve-platform"
+description = "OS-shaped primitives shared by the hub and every surface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Deliberately NOT `[lints] workspace = true`.
+#
+# The workspace sets `unsafe_code = "forbid"`, and `forbid` cannot be relaxed by
+# an inner `#[allow]` — that is the point of it. This crate owns the one place
+# in the repo that has to call Win32 (`OpenProcess`/`GetExitCodeProcess`), so it
+# restates the workspace lints with `deny` instead and carries a single audited
+# `#[allow(unsafe_code)]`. Every other crate keeps `forbid`.
+#
+# Restate any lint added to `[workspace.lints.rust]` here too.
+[lints.rust]
+unsafe_code = "deny"
+
+[dependencies]

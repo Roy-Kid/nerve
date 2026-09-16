@@ -843,6 +843,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerve-platform"
+version = "0.1.0"
+
+[[package]]
 name = "nerve-tmux-surface"
 version = "0.1.0"
 dependencies = [
