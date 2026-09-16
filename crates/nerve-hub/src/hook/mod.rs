@@ -334,4 +334,65 @@ mod tests {
             "fix the tests"
         );
     }
+
+    /// A Windows producer reporting through a tunnel used to arrive with its
+    /// whole path as the job name and no `openURL` at all, because both were
+    /// decided by `starts_with('/')`.
+    #[test]
+    fn a_windows_cwd_names_the_project_and_still_links() {
+        let (mut store, mut slots) = store();
+        apply(
+            &mut store,
+            &mut slots,
+            Producer::Claude,
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "s1",
+                "cwd": "C:\\Users\\me\\work\\nerve"
+            }),
+        );
+        let jobs = store.jobs_json();
+        assert_eq!(jobs[0]["name"], "nerve");
+        assert_eq!(
+            jobs[0]["location"]["openURL"],
+            "file:///C:/Users/me/work/nerve"
+        );
+    }
+
+    #[test]
+    fn a_unc_cwd_names_the_project_and_still_links() {
+        let (mut store, mut slots) = store();
+        apply(
+            &mut store,
+            &mut slots,
+            Producer::Claude,
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "s1",
+                "cwd": "\\\\srv\\share\\nerve"
+            }),
+        );
+        let jobs = store.jobs_json();
+        assert_eq!(jobs[0]["name"], "nerve");
+        assert_eq!(jobs[0]["location"]["openURL"], "file://srv/share/nerve");
+    }
+
+    /// A relative `cwd` is a degraded report, not a reason to lose the name.
+    #[test]
+    fn a_relative_cwd_still_names_the_project_but_links_nowhere() {
+        let (mut store, mut slots) = store();
+        apply(
+            &mut store,
+            &mut slots,
+            Producer::Claude,
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "s1",
+                "cwd": "work/nerve"
+            }),
+        );
+        let jobs = store.jobs_json();
+        assert_eq!(jobs[0]["name"], "nerve");
+        assert!(jobs[0]["location"]["openURL"].is_null());
+    }
 }

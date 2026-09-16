@@ -1,5 +1,6 @@
 //! Host-event JSON: Claude / Codex / Grok all POST slightly different spellings.
 
+use nerve_platform::path;
 use serde_json::Value;
 
 /// First present, non-empty string among `keys`.
@@ -124,11 +125,20 @@ pub fn background_tasks(payload: &Value) -> &[Value] {
         .unwrap_or(&[])
 }
 
+/// The directory a producer is working in, named.
+///
+/// An absolute `cwd` is read in its own OS's rules, so `C:\work\nerve` is
+/// `nerve` and not the whole string — a Windows producer reporting through a
+/// tunnel used to arrive with its entire path as the project name. A relative
+/// `cwd` is already a degraded report; best effort on either separator still
+/// beats `unknown`.
 pub fn project_name(cwd: &str) -> &str {
-    if cwd.is_empty() {
-        return "unknown";
+    if let Some(name) = path::basename(cwd) {
+        return name;
     }
-    cwd.rsplit('/').find(|s| !s.is_empty()).unwrap_or("unknown")
+    cwd.rsplit(['/', '\\'])
+        .find(|segment| !segment.is_empty())
+        .unwrap_or("unknown")
 }
 
 pub fn truncate(s: &str, n: usize) -> String {

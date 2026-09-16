@@ -1,5 +1,6 @@
 //! Host event + facets → one Nerve job snapshot.
 
+use nerve_platform::path;
 use serde_json::{json, Map, Value};
 
 use crate::clock::Clock;
@@ -137,31 +138,12 @@ fn location(payload: &Value, producer: Producer, cwd: &str, project: &str) -> Lo
     if !cwd.is_empty() {
         focus_hint = format!("{focus_hint} · {cwd}");
     }
-    let open_url = if cwd.starts_with('/') {
-        Some(file_uri(cwd))
-    } else {
-        None
-    };
+    let open_url = path::to_file_uri(cwd);
     LocationInfo {
         open_url,
         focus_hint: Some(focus_hint),
         log_path: get_text(payload, &["transcript_path", "transcriptPath"]),
     }
-}
-
-fn file_uri(path: &str) -> String {
-    let mut out = String::from("file://");
-    for ch in path.chars() {
-        match ch {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '/' | '-' | '_' | '.' | '~' => out.push(ch),
-            c => {
-                for b in c.encode_utf8(&mut [0; 4]).bytes() {
-                    out.push_str(&format!("%{b:02X}"));
-                }
-            }
-        }
-    }
-    out
 }
 
 fn local_actions() -> Vec<JobAction> {

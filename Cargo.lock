@@ -834,6 +834,7 @@ dependencies = [
  "axum",
  "futures-core",
  "http-body-util",
+ "nerve-platform",
  "rustix",
  "serde",
  "serde_json",

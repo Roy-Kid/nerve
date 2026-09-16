@@ -43,6 +43,9 @@ futures-core = "0.3"
 # `kill(pid, 0)` for the reaper's liveness probe. A dependency rather than a
 # hand-rolled FFI call because `unsafe_code` is forbidden workspace-wide.
 rustix = { version = "1", features = ["process"] }
+# Path semantics for the `openURL` half of the hook contract. The surfaces
+# decode what `hook::build` encodes here, and both ends now read one module.
+nerve-platform = { path = "../nerve-platform" }
 
 [dev-dependencies]
 # Contract tests drive the `Router` directly with `ServiceExt::oneshot`, so no
