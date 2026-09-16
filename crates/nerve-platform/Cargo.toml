@@ -20,3 +20,18 @@ repository.workspace = true
 unsafe_code = "deny"
 
 [dependencies]
+
+[target.'cfg(unix)'.dependencies]
+# `kill(pid, 0)` without hand-rolled FFI.
+rustix = { version = "1", features = ["process"] }
+
+[target.'cfg(windows)'.dependencies]
+# `OpenProcess` / `GetExitCodeProcess`. Already in the lock file as a
+# transitive dependency of crossterm, mio and tokio on Windows targets, so
+# naming it here adds no crate to the tree — the reason it is preferred over
+# `sysinfo`, which would pull the whole `windows` crate and, on macOS,
+# `objc2-core-foundation` besides.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }

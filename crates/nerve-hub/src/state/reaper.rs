@@ -13,44 +13,25 @@ use crate::model::{Job, WireTime};
 /// its pid yet right after spawn (`SubjectStore.swift:645`).
 pub const MIN_REAP_AGE_SECS: i64 = 3;
 
-/// What a probe can say about a pid.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PidState {
-    /// The process exists.
-    Alive,
-    /// No such process.
-    Dead,
-    /// `EPERM` — the process exists, we simply cannot signal it. Still alive.
-    Denied,
-}
+pub use nerve_platform::pid::PidState;
 
 /// Liveness oracle for producer processes on this machine.
 pub trait PidProbe: Send + Sync {
     fn state(&self, pid: i32) -> PidState;
 }
 
-/// The probe the daemon injects: `kill(pid, 0)`, the POSIX "does this process
-/// exist" question (`SubjectStore.swift:682`).
+/// The probe the daemon injects — `kill(pid, 0)` on unix, `OpenProcess` on
+/// Windows (`SubjectStore.swift:682`).
 ///
-/// Sends no signal — it only asks the kernel to validate the pid and our right
-/// to signal it. Anything other than "no such process" is treated as alive: a
-/// pid we may not signal is still running, and an answer we do not understand
-/// is not evidence of death. Closing a live agent's row would be far worse than
+/// Whichever it is, only a definite "no such process" counts as dead: a pid we
+/// may not query is still running, and an answer we do not understand is not
+/// evidence of death. Closing a live agent's row would be far worse than
 /// leaving a dead one on screen until its next report.
 pub struct SignalProbe;
 
 impl PidProbe for SignalProbe {
     fn state(&self, pid: i32) -> PidState {
-        let Some(pid) = rustix::process::Pid::from_raw(pid) else {
-            // Not a process id at all (0 means "our own group", negatives mean
-            // a group); the store already refuses those, so this is defensive.
-            return PidState::Denied;
-        };
-        match rustix::process::test_kill_process(pid) {
-            Ok(()) => PidState::Alive,
-            Err(rustix::io::Errno::SRCH) => PidState::Dead,
-            Err(_) => PidState::Denied,
-        }
+        nerve_platform::pid::state(pid)
     }
 }
 

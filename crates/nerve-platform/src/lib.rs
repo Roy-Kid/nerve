@@ -8,8 +8,9 @@
 //!   renders `C:\work\proj` and a Windows tray renders `/Users/me/proj`. These
 //!   helpers classify the *string*, never the host, which is also why every one
 //!   of them is testable on any OS.
-//! - `pid` — is that process still there? (added alongside the Windows probe)
+//! - [`pid`] — is that process still there?
 //!
 //! Nothing here knows about jobs, frames or HTTP.
 
 pub mod path;
+pub mod pid;

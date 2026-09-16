@@ -40,11 +40,10 @@ time = { version = "0.3", features = ["formatting", "parsing", "macros", "serde"
 # dependency: naming it here adds no crate, only the trait `GET /v1/stream`
 # implements for its response body.
 futures-core = "0.3"
-# `kill(pid, 0)` for the reaper's liveness probe. A dependency rather than a
-# hand-rolled FFI call because `unsafe_code` is forbidden workspace-wide.
-rustix = { version = "1", features = ["process"] }
-# Path semantics for the `openURL` half of the hook contract. The surfaces
-# decode what `hook::build` encodes here, and both ends now read one module.
+# Path semantics for the `openURL` half of the hook contract (the surfaces
+# decode what `hook::build` encodes here) and the reaper's liveness probe.
+# Both are OS-shaped, and the probe is the one place in the repo that needs
+# `unsafe`, so it lives behind this crate's audited boundary rather than here.
 nerve-platform = { path = "../nerve-platform" }
 
 [dev-dependencies]

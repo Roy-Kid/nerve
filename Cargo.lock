@@ -835,7 +835,6 @@ dependencies = [
  "futures-core",
  "http-body-util",
  "nerve-platform",
- "rustix",
  "serde",
  "serde_json",
  "time",
@@ -846,6 +845,10 @@ dependencies = [
 [[package]]
 name = "nerve-platform"
 version = "0.1.0"
+dependencies = [
+ "rustix",
+ "windows-sys",
+]
 
 [[package]]
 name = "nerve-tmux-surface"
