@@ -5,6 +5,7 @@ members = [
     "crates/nerve-platform",
     "crates/nerve-surface-core",
     "crates/nerve-tmux-surface",
+    "crates/nerve-windows-surface",
 ]
 
 # Shared metadata for every crate in the workspace. Future Rust crates

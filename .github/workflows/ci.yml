@@ -37,7 +37,7 @@ jobs:
       # `cfg(windows)` arm that does not compile.
       - name: cargo check (windows target)
         run: >
-          cargo check -p nerve-platform -p nerve-hub -p nerve-surface-core
+          cargo check -p nerve-platform -p nerve-hub -p nerve-surface-core -p nerve-windows-surface
           --all-targets --all-features --target x86_64-pc-windows-msvc
 
       - name: hook mapper tests
@@ -65,11 +65,11 @@ jobs:
       # so the Windows job names the portable crates rather than `--workspace`.
       - name: clippy
         run: >
-          cargo clippy -p nerve-platform -p nerve-hub -p nerve-surface-core
+          cargo clippy -p nerve-platform -p nerve-hub -p nerve-surface-core -p nerve-windows-surface
           --all-targets --all-features -- -D warnings
       - name: test
         run: >
-          cargo test -p nerve-platform -p nerve-hub -p nerve-surface-core
+          cargo test -p nerve-platform -p nerve-hub -p nerve-surface-core -p nerve-windows-surface
           --all-features
       - name: build the hub
         run: cargo build --release -p nerve-hub

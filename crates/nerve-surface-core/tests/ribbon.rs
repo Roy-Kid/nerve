@@ -93,3 +93,37 @@ fn many_loud_statuses_still_sum_to_one() {
         (Inactive, 1),
     ]);
 }
+
+// ── Length ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn nothing_running_has_no_length() {
+    assert_eq!(nerve_surface_core::ribbon::length_factor(0), 0.0);
+}
+
+#[test]
+fn the_first_few_counts_are_obviously_different() {
+    use nerve_surface_core::ribbon::length_factor;
+    // The whole point of the ladder: one job and two jobs must not look alike.
+    let steps: Vec<f32> = (1..=5).map(length_factor).collect();
+    for pair in steps.windows(2) {
+        assert!(pair[1] - pair[0] > 0.07, "{pair:?} too close to tell apart");
+    }
+}
+
+#[test]
+fn the_ladder_only_ever_climbs() {
+    use nerve_surface_core::ribbon::length_factor;
+    let mut previous = 0.0;
+    for active in 0..200 {
+        let factor = length_factor(active);
+        assert!(factor >= previous, "dipped at {active}");
+        assert!(factor <= 1.0, "overflowed at {active}");
+        previous = factor;
+    }
+}
+
+#[test]
+fn a_hundred_jobs_still_fit() {
+    assert_eq!(nerve_surface_core::ribbon::length_factor(1000), 1.0);
+}

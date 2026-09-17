@@ -92,3 +92,30 @@ pub fn weighted_runs(runs: &[(StatusClass, usize)]) -> Vec<Run> {
         })
         .collect()
 }
+
+/// How much of the available length a given amount of work fills, `0.0..=1.0`.
+///
+/// Piecewise so that 1 → 2 → 5 jobs feel obviously different, while a hundred
+/// still fits: past a dozen the curve flattens rather than running off the
+/// edge. Ported from `SubjectStore.ribbonLengthFactor`.
+///
+/// This is what carries *how much* is happening. Without it a ribbon — or a
+/// tray icon — showing one running job is indistinguishable from one showing
+/// forty, because a single status is always 100% of itself.
+pub fn length_factor(active: usize) -> f32 {
+    match active {
+        0 => 0.0,
+        1 => 0.18,
+        2 => 0.32,
+        3 => 0.44,
+        4 => 0.54,
+        5 => 0.62,
+        6..=7 => 0.72,
+        8..=9 => 0.82,
+        10..=12 => 0.90,
+        _ => {
+            let extra = ((active - 12) as f32 / 20.0).min(1.0);
+            (0.90 + 0.10 * extra).min(1.0)
+        }
+    }
+}
