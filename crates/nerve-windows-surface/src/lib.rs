@@ -15,4 +15,5 @@
 
 pub mod actions;
 pub mod flyout;
+pub mod notify;
 pub mod tray;

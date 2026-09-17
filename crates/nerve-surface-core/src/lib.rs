@@ -13,6 +13,7 @@
 //! an OS. That is what lets the same status rules be verified on a Mac and run
 //! on Windows.
 
+pub mod ask;
 pub mod display;
 pub mod filter;
 pub mod frame;
