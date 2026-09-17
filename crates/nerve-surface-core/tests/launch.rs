@@ -7,7 +7,7 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! ```ignore
-//! // nerve_tmux_surface::launch
+//! // nerve_surface_core::launch
 //!
 //! /// How long a spawn attempt suppresses the next one.
 //! pub const THROTTLE: std::time::Duration = std::time::Duration::from_secs(10);
@@ -79,7 +79,7 @@ use std::time::Duration as StdDuration;
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
 
-use nerve_tmux_surface::launch::{
+use nerve_surface_core::launch::{
     Clock, HealthProbe, HubLauncher, Launch, ProcessSpawner, SpawnError, THROTTLE,
 };
 

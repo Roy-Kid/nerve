@@ -855,6 +855,7 @@ name = "nerve-surface-core"
 version = "0.1.0"
 dependencies = [
  "nerve-platform",
+ "nerve-surface-core",
  "serde",
  "serde_json",
  "time",

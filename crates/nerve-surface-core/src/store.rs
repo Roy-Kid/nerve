@@ -50,7 +50,12 @@ impl JobsStore {
         self.set_jobs(jobs);
     }
 
-    pub(crate) fn set_jobs(&self, jobs: Vec<JobView>) {
+    /// Replace the whole set, wholesale.
+    ///
+    /// Never merged: a frame is the authoritative full list, which is exactly
+    /// what makes a dropped connection cost nothing. Also how a surface's tests
+    /// seed a store without a hub.
+    pub fn set_jobs(&self, jobs: Vec<JobView>) {
         if let Ok(mut guard) = self.inner.write() {
             *guard = Arc::new(JobsSnapshot {
                 jobs,
@@ -71,7 +76,17 @@ impl JobsStore {
         }
     }
 
-    pub fn spawn_reader(self, home: PathBuf) -> thread::JoinHandle<()> {
+    /// Attach to the hub forever, on a thread of its own.
+    ///
+    /// `stream_path` names which surface is asking; the hub treats it as a log
+    /// tag (`crates/nerve-hub/src/http/stream.rs`). Holding this stream open is
+    /// what keeps the hub alive, so the thread outlives any window.
+    pub fn spawn_reader(
+        self,
+        home: PathBuf,
+        stream_path: impl Into<String>,
+    ) -> thread::JoinHandle<()> {
+        let stream_path = stream_path.into();
         thread::spawn(move || {
             let locator = HubLocator::new(FileProbe, home);
             let mut launcher = HubLauncher::new(
@@ -79,7 +94,7 @@ impl JobsStore {
                 SystemClock,
                 HttpHealth::new(Hub::loopback()),
             );
-            let mut source = HubFrameSource::new(Hub::loopback());
+            let mut source = HubFrameSource::new(Hub::loopback(), stream_path);
             let mut backoff = Backoff::new();
             loop {
                 launcher.ensure(locator.locate().as_deref());

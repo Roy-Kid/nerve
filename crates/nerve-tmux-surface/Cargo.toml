@@ -56,6 +56,6 @@ unicode-width = "0.2"
 # them over `std::net::TcpStream` — the same way `crates/nerve-hub`'s own SSE
 # test reads the stream it serves.
 
-# No dev-dependencies: `serde_json::json!` builds the fixtures and
-# `time::macros::datetime!` builds the injected instants, both from the
-# dependencies above.
+[dev-dependencies]
+# Frame fixtures shared with every other surface's suite.
+nerve-surface-core = { path = "../nerve-surface-core", features = ["testkit"] }

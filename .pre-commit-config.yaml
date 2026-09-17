@@ -25,7 +25,7 @@ repos:
       # `--workspace`. Still out: nerve-tmux-surface (unix-only by design).
       - id: cargo-check-windows
         name: cargo check (windows target)
-        entry: cargo check -p nerve-platform -p nerve-hub -p nerve-surface-core --all-targets --target x86_64-pc-windows-msvc
+        entry: cargo check -p nerve-platform -p nerve-hub -p nerve-surface-core --all-targets --all-features --target x86_64-pc-windows-msvc
         language: system
         files: '(\.rs$|Cargo\.(toml|lock)$)'
         pass_filenames: false

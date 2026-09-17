@@ -53,8 +53,6 @@
 //! Determinism: injected instant, compile-time fixture, literal jobs. No
 //! clock, no socket, no filesystem at run time, no hub.
 
-mod common;
-
 use serde_json::json;
 use time::macros::datetime;
 use time::OffsetDateTime;
@@ -62,7 +60,7 @@ use time::OffsetDateTime;
 use nerve_tmux_surface::frame::JobView;
 use nerve_tmux_surface::popup::{PopupRenderer, EMPTY};
 
-use common::job;
+use nerve_surface_core::testkit::job;
 
 /// Five minutes after `fixtures/demo_snapshot.json` last updated its rows.
 const NOW: OffsetDateTime = datetime!(2026-07-19 08:15:00 UTC);
@@ -87,7 +85,7 @@ fn aged(updated_at: &str) -> String {
 /// `fixtures/demo_snapshot.json` rendered at a fixed instant, hard-coded.
 #[test]
 fn test_the_demo_fixture_renders_the_golden_popup() {
-    let rendered = render(&common::demo_jobs());
+    let rendered = render(&nerve_surface_core::testkit::demo_jobs());
 
     assert_eq!(
         rendered,
@@ -100,7 +98,7 @@ fn test_the_demo_fixture_renders_the_golden_popup() {
 /// the width of the first row's.
 #[test]
 fn test_columns_line_up_across_rows() {
-    let rendered = render(&common::demo_jobs());
+    let rendered = render(&nerve_surface_core::testkit::demo_jobs());
 
     let starts: Vec<usize> = rendered
         .lines()

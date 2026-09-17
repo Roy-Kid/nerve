@@ -6,7 +6,7 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! ```ignore
-//! // nerve_tmux_surface::frame
+//! // nerve_surface_core::frame
 //!
 //! /// One frame from `GET /v1/stream`: two keys, forever
 //! /// (`crates/nerve-hub/src/sse/frame.rs`).
@@ -89,13 +89,11 @@
 //! Determinism: literal frames, compile-time fixture include, no clock, no
 //! socket, no filesystem at run time.
 
-mod common;
-
 use time::macros::datetime;
 
-use nerve_tmux_surface::frame::{AttentionLevel, Frame, Health, JobView, Lifecycle, Outcome};
+use nerve_surface_core::frame::{AttentionLevel, Frame, Health, JobView, Lifecycle, Outcome};
 
-use common::{frame, job, SIX_STATE_FRAME};
+use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
 
 // ── The published frame shape ───────────────────────────────────────────────
 

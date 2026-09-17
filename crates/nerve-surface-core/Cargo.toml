@@ -25,3 +25,12 @@ time = { version = "0.3", features = ["formatting", "parsing", "macros", "serde"
 # This crate is the part of a surface that has no pixels: every port is
 # blocking and pull-based so the composition root owns scheduling, and every
 # derivation is a pure function a test can call without an OS.
+
+[features]
+# Frame fixtures shared by every surface's tests. Never enabled by a binary.
+testkit = []
+
+[dev-dependencies]
+# The fixtures this crate's own tests read.
+nerve-surface-core = { path = ".", features = ["testkit"] }
+serde_json = "1"

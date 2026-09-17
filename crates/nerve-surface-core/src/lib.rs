@@ -20,4 +20,8 @@ pub mod launch;
 pub mod locate;
 pub mod machine;
 pub mod status;
+pub mod store;
+pub mod stream;
 pub mod tally;
+#[cfg(feature = "testkit")]
+pub mod testkit;

@@ -32,7 +32,7 @@ const IDLE_REDRAW: Duration = Duration::from_secs(1);
 pub fn run(bottom_height: u16, home: PathBuf) -> io::Result<()> {
     let store = JobsStore::new();
     store.fetch_from_hub();
-    let _reader = store.clone().spawn_reader(home);
+    let _reader = store.clone().spawn_reader(home, crate::stream::STREAM_PATH);
     let mut state = AppState::new(store, bottom_height);
     let mut stdout = io::stdout();
     crossterm::terminal::enable_raw_mode()?;

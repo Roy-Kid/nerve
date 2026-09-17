@@ -6,7 +6,7 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! ```ignore
-//! // nerve_tmux_surface::tally
+//! // nerve_surface_core::tally
 //!
 //! /// One count per `StatusClass`. Public fields so a test (and a renderer)
 //! /// can state a whole expectation in one literal.
@@ -38,14 +38,12 @@
 //!
 //! Determinism: literal frames, no clock, no socket, no filesystem, no hub.
 
-mod common;
-
 use serde_json::json;
 
-use nerve_tmux_surface::status::StatusClass;
-use nerve_tmux_surface::tally::Tally;
+use nerve_surface_core::status::StatusClass;
+use nerve_surface_core::tally::Tally;
 
-use common::{frame, job, SIX_STATE_FRAME};
+use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
 
 // ── Basics ──────────────────────────────────────────────────────────────────
 

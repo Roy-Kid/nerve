@@ -7,7 +7,7 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! ```ignore
-//! // nerve_tmux_surface::status
+//! // nerve_surface_core::status
 //!
 //! /// Derived display status. Variants are declared in priority order, so the
 //! /// derived `Ord` *is* the priority (`CoreTypes.swift:244-267`):
@@ -73,13 +73,11 @@
 //!
 //! Determinism: literal jobs, no clock, no socket, no filesystem, no hub.
 
-mod common;
-
 use serde_json::{json, Value};
 
-use nerve_tmux_surface::status::StatusClass;
+use nerve_surface_core::status::StatusClass;
 
-use common::{frame, job, SIX_STATE_FRAME};
+use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
 
 /// The class of one literal job.
 fn class(value: Value) -> StatusClass {
@@ -554,7 +552,7 @@ fn test_calm_prose_does_not_hide_a_structured_problem() {
 
 // ── The published frame, class by class ─────────────────────────────────────
 
-/// Each live row of `common::SIX_STATE_FRAME` lands on a painted class.
+/// Each live row of `nerve_surface_core::testkit::SIX_STATE_FRAME` lands on a painted class.
 /// The `waiting` id is Attention: waiting shares that hue.
 #[test]
 fn test_the_six_state_frame_paints_waiting_as_attention() {
@@ -583,7 +581,7 @@ fn test_the_six_state_frame_paints_waiting_as_attention() {
 /// vocabulary this table does not model, so both run (`:94` → `:98`).
 #[test]
 fn test_the_demo_fixture_rows_are_both_running() {
-    for job in common::demo_jobs() {
+    for job in nerve_surface_core::testkit::demo_jobs() {
         assert_eq!(
             StatusClass::of(&job),
             StatusClass::Running,

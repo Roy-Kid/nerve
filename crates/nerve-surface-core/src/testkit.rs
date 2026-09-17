@@ -1,7 +1,8 @@
-//! Shared, hard-coded frame fixtures for the tmux-surface test suite.
+//! Shared, hard-coded frame fixtures for every surface's test suite.
 //!
-//! Not a test target of its own (cargo only promotes `tests/*.rs`): every file
-//! that needs a frame writes `mod common;`.
+//! Behind the `testkit` feature so it never ships in a surface binary. It lives
+//! in `src/` rather than each crate's `tests/` because two surfaces need the
+//! same frames, and a fixture duplicated per crate is a fixture that drifts.
 //!
 //! Everything here is a literal or a compile-time include. No clock, no socket,
 //! no filesystem read at run time, no live hub.
@@ -10,7 +11,7 @@
 
 use serde_json::Value;
 
-use nerve_tmux_surface::frame::{Frame, JobView};
+use crate::frame::{Frame, JobView};
 
 /// One hub frame carrying exactly one job per derived status, plus a departed
 /// row (acceptance A1).
@@ -170,7 +171,7 @@ pub const SIX_STATE_FRAME: &str = r#"{
 /// Path is relative to this file: `crates/nerve-tmux-surface/tests/common/` →
 /// repo root. Compile-time inclusion means the popup golden breaks loudly if
 /// the fixture drifts, and the test still reads no filesystem when it runs.
-pub const DEMO_SNAPSHOT: &str = include_str!("../../../../fixtures/demo_snapshot.json");
+pub const DEMO_SNAPSHOT: &str = include_str!("../../../fixtures/demo_snapshot.json");
 
 /// Decode a frame, failing the test with the raw text on any error.
 pub fn frame(raw: &str) -> Frame {
