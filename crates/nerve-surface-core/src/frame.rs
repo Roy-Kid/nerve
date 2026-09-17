@@ -61,6 +61,15 @@ macro_rules! lenient_enum {
                 Ok(Self::from_wire(&raw))
             }
         }
+
+        /// Written back as the same single spelling it is read from, so a
+        /// facet that makes a round trip through a surface's settings comes
+        /// out identical to what the hub sent.
+        impl serde::Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.wire())
+            }
+        }
     };
 }
 

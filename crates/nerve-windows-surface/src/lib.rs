@@ -18,4 +18,5 @@ pub mod app;
 pub mod flyout;
 pub mod notify;
 pub mod platform;
+pub mod settings;
 pub mod tray;

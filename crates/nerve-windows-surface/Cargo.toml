@@ -42,6 +42,33 @@ muda = "0.18"
 # window, and its `scale_factor` is where the icon's DPI rung comes from —
 # which is how that stays a safe API call rather than `GetSystemMetricsForDpi`.
 winit = "0.30"
+# The flyout. `eframe` owns the window, the renderer and the event loop, which
+# is the point: an immediate-mode panel redrawn from a whole frame is the
+# natural consumer of a hub that publishes whole frames, and none of the
+# windowing glue is written here.
+eframe = { version = "0.32", default-features = false, features = [
+    # DX12 on Windows, Metal here. The GL backend falls back to a GDI software
+    # renderer over RDP and in bare VMs, where creating a context can fail
+    # outright.
+    "wgpu",
+    "wayland",
+    "x11",
+] }
+egui = "0.32"
+# Open/Copy. `opener` calls `ShellExecuteW` inside rather than `cmd /C start`,
+# which has quoting and injection hazards with `&` in a path.
+opener = "0.8"
+arboard = "3"
+# Settings, on disk under %APPDATA%.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+# Autostart and the theme, both plain registry reads and writes. A safe API, so
+# this crate keeps `unsafe_code = "forbid"`.
+windows-registry = "0.6"
+# Toasts. The maintained fork that Tauri and notify-rust both use.
+tauri-winrt-notification = "0.7"
 
 [dev-dependencies]
 nerve-surface-core = { path = "../nerve-surface-core", features = ["testkit"] }

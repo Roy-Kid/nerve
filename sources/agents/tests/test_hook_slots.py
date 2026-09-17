@@ -96,5 +96,55 @@ class HookSlotTests(unittest.TestCase):
         self.assertNotIn("WorktreeRemove", claimed)
 
 
+
+
+class CodexWindowsOverrideTests(unittest.TestCase):
+    """Every Codex slot carries its Windows command as well as its unix one.
+
+    Codex takes the command as a shell string, and `python3` on Windows is a
+    Microsoft Store alias stub that opens the Store rather than running
+    anything. `commandWindows` is Codex's own documented override for exactly
+    this (learn.chatgpt.com/docs/hooks); without it a Windows Codex user gets
+    no status at all, silently, because hooks fail open.
+    """
+
+    def setUp(self):
+        self.config = json.loads((HOOKS / "codex.json").read_text())
+
+    def _entries(self):
+        for event, groups in self.config["hooks"].items():
+            for group in groups:
+                for entry in group["hooks"]:
+                    yield event, entry
+
+    def test_every_command_hook_has_a_windows_override(self):
+        for event, entry in self._entries():
+            if entry.get("type") != "command":
+                continue
+            self.assertIn(
+                "commandWindows",
+                entry,
+                f"{event} would run `python3` on Windows, which is a Store stub",
+            )
+
+    def test_the_windows_command_uses_the_py_launcher(self):
+        # `py -3` is what every python.org install ships; `python3` is not.
+        for event, entry in self._entries():
+            command = entry.get("commandWindows")
+            if command is None:
+                continue
+            self.assertTrue(
+                command.startswith("py -3 "),
+                f"{event} uses {command!r} rather than the py launcher",
+            )
+
+    def test_both_commands_run_the_same_script(self):
+        for event, entry in self._entries():
+            if "commandWindows" not in entry:
+                continue
+            self.assertTrue(entry["command"].endswith("hooks/nerve.py"), event)
+            self.assertTrue(entry["commandWindows"].endswith("hooks/nerve.py"), event)
+
+
 if __name__ == "__main__":
     unittest.main()

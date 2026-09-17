@@ -35,6 +35,11 @@ export const docNav: DocNavItem[] = [
     summary: 'Status bar and Activity Bar job list inside the editor.',
   },
   {
+    slug: 'windows',
+    title: 'Windows tray',
+    summary: 'Notification-area icon, flyout panel, toasts, and install.',
+  },
+  {
     slug: 'status',
     title: 'Status & lifecycle',
     summary: 'One job per session, facets, ribbon colors, design scope.',
@@ -76,6 +81,11 @@ const zhDocNav: DocNavItem[] = [
     slug: 'vscode',
     title: 'VS Code 扩展',
     summary: '编辑器里的状态栏和 Activity Bar 任务列表。',
+  },
+  {
+    slug: 'windows',
+    title: 'Windows 托盘',
+    summary: '通知区图标、弹出面板、系统通知与安装。',
   },
   {
     slug: 'status',
@@ -551,6 +561,104 @@ npm run watch`,
       {
         type: 'p',
         text: './scripts/nerve.sh --verify-vscode runs the unit suite (status golden, frame parse, focus ranking, hub launch). It does not boot a VS Code UI.',
+      },
+    ],
+  },
+  {
+    slug: 'windows',
+    title: 'Windows tray',
+    lede: 'Windows has no menu bar, so the surface lives in the notification area — and the ribbon moves into the panel behind it.',
+    blocks: [
+      { type: 'h2', text: 'What the icon says' },
+      {
+        type: 'p',
+        text: 'A tray icon is 16 pixels square at 100% scaling, so the menu bar\u2019s continuous ribbon cannot fit. It folds instead: seven statuses into three stacked bands in fixed slots, so a band\u2019s position always means the same thing.',
+      },
+      {
+        type: 'table',
+        headers: ['Band', 'Colour', 'Means'],
+        rows: [
+          ['Top', 'Red or orange', 'Something needs you'],
+          ['Middle', 'Blue', 'Work is happening'],
+          ['Bottom', 'Violet or green', 'Work finished'],
+        ],
+      },
+      {
+        type: 'ul',
+        items: [
+          'An empty slot is dropped, so one status is one thick bar rather than three thin ones.',
+          'The stack lengthens with how much is running \u2014 the same ladder the macOS ribbon uses, so one job never looks like forty.',
+          'A single problem among forty running jobs keeps at least 12% of the width. That floor is the whole reason the ribbon exists.',
+          'Idle is one short gray bar, centred. Offline is the last state faded, with a diagonal slash.',
+          'The icon never animates. A blinking tray icon reads as malware, not as activity.',
+        ],
+      },
+      {
+        type: 'callout',
+        title: 'Windows 11 hides new tray icons',
+        text: 'They go into the overflow chevron by default. Drag it out once to keep it visible \u2014 otherwise Nerve is running and you will never see it.',
+      },
+      { type: 'h2', text: 'The panel' },
+      {
+        type: 'p',
+        text: 'Click the icon. The real ribbon runs along the top, drawn with the same weights as the macOS menu bar, then counts, then rows grouped by machine, priority or status. Clicking a row opens its detail: the prompt you actually typed, where it is running, Open and Copy, and the last five timeline entries.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'It dismisses on focus loss or Escape. No taskbar button and no Alt-Tab entry \u2014 it is a glance, not a window to manage.',
+          'Hiding it never drops the stream. That connection is what keeps the hub alive, so it outlives any window.',
+          'Open takes you to the job; Copy puts its line on the clipboard. There is no approve, cancel or submit \u2014 Nerve never reverse-controls an agent.',
+          'A job on another machine is never opened locally: the same path very likely exists here too, and opening the wrong one silently is worse than opening nothing. Its location is copied instead, and the panel says why.',
+        ],
+      },
+      { type: 'h2', text: 'Install' },
+      {
+        type: 'code',
+        lang: 'powershell',
+        code: `# from a checkout
+.\\scripts\\nerve.ps1 -Install
+.\\scripts\\nerve.ps1 -Run
+
+# or just the binaries
+cargo install nerve-hub nerve-windows-surface`,
+      },
+      {
+        type: 'p',
+        text: '-Install copies both binaries to %LOCALAPPDATA%\\Programs\\Nerve and creates the Start Menu shortcut. That shortcut is not decoration: it carries the AppUserModelID, which is what lets an unpackaged app raise a toast under its own name. A cargo install has no shortcut, so it has no toasts.',
+      },
+      {
+        type: 'callout',
+        title: 'SmartScreen',
+        text: 'An unsigned executable warns on first run. That is expected until the binaries are signed.',
+      },
+      { type: 'h2', text: 'Notifications' },
+      {
+        type: 'p',
+        text: 'Off by default. You very plausibly run the VS Code extension on the same machine, and surfaces are peers that cannot know about each other \u2014 so two banners for one Ask is a worse first impression than none. Turn them on from the tray\u2019s right-click menu.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Only the Ask channel interrupts: input, approval, auth, permission, decision, elicitation, review, at suggested or above.',
+          'Waiting on a lock, a queue or a dependency paints orange but never notifies \u2014 nothing you do right now would move it.',
+          'The same job at the same level stays quiet for 120 seconds after firing.',
+          'Clicking a banner takes you to the job.',
+        ],
+      },
+      { type: 'h2', text: 'Start at login' },
+      {
+        type: 'p',
+        text: 'Off by default, and in the tray menu when you want it. It writes HKCU\\...\\CurrentVersion\\Run, which appears in Task Manager \u2192 Startup \u2014 where you would look to remove it. Worth knowing: because the surface holds the stream open, autostart makes nerve-hub.exe permanently resident rather than a process that exits when you stop looking.',
+      },
+      { type: 'h2', text: 'What is not here' },
+      {
+        type: 'ul',
+        items: [
+          'The tmux sidebar. tmux has no Windows port \u2014 use WSL for that, or the VS Code extension.',
+          'Raising an agent\u2019s own terminal window. Opening its location is what Focus means here.',
+          'Clearing the hub from this surface: one peer wiping every peer\u2019s view is a product decision, not a port decision.',
+        ],
       },
     ],
   },
@@ -1138,6 +1246,105 @@ npm run watch`,
   ],
 };
 
+const zhWindowsPage: DocPage = {
+  slug: 'windows',
+  title: 'Windows 托盘',
+  lede: 'Windows 没有菜单栏，所以界面住在通知区——而真正的状态条移进了它背后的面板。',
+  blocks: [
+    { type: 'h2', text: '图标在说什么' },
+    {
+      type: 'p',
+      text: '100% 缩放下托盘图标只有 16 像素见方，菜单栏那条连续状态条放不下。于是它折叠起来：七种状态收进三条固定槽位的堆叠色带，位置固定，所以某一条的含义永远不变。',
+    },
+    {
+      type: 'table',
+      headers: ['色带', '颜色', '含义'],
+      rows: [
+        ['上', '红或橙', '需要你'],
+        ['中', '蓝', '正在干活'],
+        ['下', '紫或绿', '已经结束'],
+      ],
+    },
+    {
+      type: 'ul',
+      items: [
+        '空的槽位直接丢掉，所以单一状态是一条粗带，而不是三条细带。',
+        '堆叠的长度随活跃数量增长——与 macOS 状态条同一条阶梯，所以 1 个任务不会看起来像 40 个。',
+        '40 个运行中夹 1 个问题，那一条至少占 12% 宽度。这个下限正是状态条存在的理由。',
+        '空闲是一条居中的灰色短带；离线是上一个状态淡化并加一道斜杠。',
+        '图标从不做动画。不停闪烁的托盘图标读起来像恶意软件，而不是活动。',
+      ],
+    },
+    {
+      type: 'callout',
+      title: 'Windows 11 会藏起新的托盘图标',
+      text: '它们默认进入溢出区的箭头里。拖出来一次即可常驻——否则 Nerve 在跑，而你永远看不见它。',
+    },
+    { type: 'h2', text: '面板' },
+    {
+      type: 'p',
+      text: '点图标。顶部是真正的状态条，用与 macOS 菜单栏完全相同的权重绘制，下面是计数，再下面是按机器、优先级或状态分组的行。点一行展开详情：你实际输入的 prompt、它在哪运行、Open 与 Copy，以及最近五条时间线。',
+    },
+    {
+      type: 'ul',
+      items: [
+        '失去焦点或按 Esc 即消失。没有任务栏按钮，也不出现在 Alt-Tab 里——它是一瞥，不是需要管理的窗口。',
+        '隐藏面板绝不会断开数据流。那条连接正是让 hub 活着的东西，所以它比任何窗口活得久。',
+        'Open 带你去那个任务，Copy 把它那一行放进剪贴板。没有 approve、cancel 或 submit——Nerve 从不反向控制 agent。',
+        '别的机器上的任务绝不会在本地打开：同样的路径在这台机器上很可能也存在，静默打开错误的那个比什么都不打开更糟。它会改为复制位置，并告诉你为什么。',
+      ],
+    },
+    { type: 'h2', text: '安装' },
+    {
+      type: 'code',
+      lang: 'powershell',
+      code: `# 从仓库
+.\\scripts\\nerve.ps1 -Install
+.\\scripts\\nerve.ps1 -Run
+
+# 或者只要二进制
+cargo install nerve-hub nerve-windows-surface`,
+    },
+    {
+      type: 'p',
+      text: '-Install 会把两个二进制复制到 %LOCALAPPDATA%\\Programs\\Nerve 并创建开始菜单快捷方式。这个快捷方式不是装饰：它携带 AppUserModelID，而那正是未打包应用能以自己的名义弹出系统通知的前提。cargo install 没有快捷方式，因此也没有系统通知。',
+    },
+    {
+      type: 'callout',
+      title: 'SmartScreen',
+      text: '未签名的可执行文件首次运行会触发警告。在二进制被签名之前，这是预期行为。',
+    },
+    { type: 'h2', text: '系统通知' },
+    {
+      type: 'p',
+      text: '默认关闭。你很可能在同一台机器上也装了 VS Code 扩展，而各个界面互为对等、彼此并不知晓——所以同一个 Ask 弹两次通知，比一次都不弹的第一印象更差。要开就从托盘右键菜单开。',
+    },
+    {
+      type: 'ul',
+      items: [
+        '只有 Ask 通道会打断：input、approval、auth、permission、decision、elicitation、review，且等级 ≥ suggested。',
+        '等锁、等队列、等依赖同样显示为橙色，但绝不通知——你此刻做什么都推不动它。',
+        '同一任务同一等级，发出后 120 秒内保持安静。',
+        '点击通知会带你去那个任务。',
+      ],
+    },
+    { type: 'h2', text: '开机自启' },
+    {
+      type: 'p',
+      text: '默认关闭，需要时从托盘菜单打开。它写入 HKCU\\...\\CurrentVersion\\Run，会出现在任务管理器 → 启动项里，也就是你想关掉它时会去找的地方。值得知道的是：因为界面会一直持有数据流，开启自启会让 nerve-hub.exe 变成常驻进程，而不是你不看时就退出的那种。',
+    },
+    { type: 'h2', text: '这里没有什么' },
+    {
+      type: 'ul',
+      items: [
+        'tmux 侧栏。tmux 没有 Windows 原生版——那种场景用 WSL，或者用 VS Code 扩展。',
+        '把 agent 自己的终端窗口抬到前台。在这里，Focus 的含义就是打开它的位置。',
+        '从这个界面清空 hub：一个对等界面抹掉所有界面的视图，是产品决策而不是移植决策。',
+      ],
+    },
+  ],
+};
+
 const zhStatusPage: DocPage = {
   slug: 'status',
   title: '状态与生命周期',
@@ -1436,6 +1643,7 @@ npm run build    # static → index/dist/`,
   zhMachinesPage,
   zhTmuxPage,
   zhVscodePage,
+  zhWindowsPage,
   zhStatusPage,
   zhIngestPage,
   zhPrivacyPage,

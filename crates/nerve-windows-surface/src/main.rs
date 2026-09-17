@@ -4,44 +4,59 @@
 //! Every decision it makes is a function somewhere else.
 //!
 //! Fail-open throughout. A surface that cannot lock, cannot find a hub, or
-//! cannot bind anything still starts and paints its offline state — the one
-//! outcome that must never happen is a tray icon that is simply not there,
-//! because then the user has no way back in.
+//! cannot register its notification identity still starts and paints its
+//! offline state. The one outcome that must never happen is a tray icon that
+//! is simply not there, because then the user has no way back in.
+
+// No console window on Windows: this is a tray application, and a black box
+// flashing up behind it at every login is the first thing a user would file.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use nerve_surface_core::locate::{FileProbe, HubLocator};
 use nerve_surface_core::store::JobsStore;
 use nerve_surface_core::stream::stream_path;
 use nerve_windows_surface::app::App;
 use nerve_windows_surface::platform::instance::{claim, Claim, LOCK_PORT};
-use nerve_windows_surface::tray::dpi::icon_px;
-use nerve_windows_surface::tray::icon::Theme;
-use winit::event_loop::EventLoop;
+use nerve_windows_surface::platform::{aumid, paths};
 
 /// The label this surface attaches under. The hub treats it as a log tag.
 const SURFACE: &str = "windows";
 
-/// Scale factor until a window exists to ask.
+/// How long an autostarted copy waits before touching the shell.
 ///
-/// The tray icon is built before any window is, so the first draw uses the
-/// 100% rung and is corrected on the first `ScaleFactorChanged`.
-const ASSUMED_SCALE: f64 = 1.0;
+/// At login every startup entry is competing for the same disk and the same
+/// explorer, and a tray icon registered into that storm is the one most likely
+/// to land in the overflow. Four seconds costs nothing and lands cleanly.
+const LOGIN_SETTLE: Duration = Duration::from_secs(4);
 
 fn main() {
-    let lock = match claim(LOCK_PORT) {
+    let autostarted = std::env::args().any(|arg| arg == "--autostart");
+    if autostarted {
+        std::thread::sleep(LOGIN_SETTLE);
+    }
+
+    let _lock = match claim(LOCK_PORT) {
         Ok(Claim::Yield) => {
             eprintln!("nerve: another tray surface already has this machine");
             return;
         }
         Ok(owned) => Some(owned),
         // Could not bind at all — a sandbox, most likely. Running unlocked is
-        // worse than running locked and better than not running.
+        // worse than running locked, and better than not running.
         Err(error) => {
             eprintln!("nerve: could not take the surface lock ({error}); carrying on");
             None
         }
     };
+
+    // Registering the notification identity is idempotent and optional: without
+    // it toasts do not appear, which is exactly what the default setting says
+    // anyway.
+    let icon = paths::install_dir().map(|dir| dir.join("nerve.ico"));
+    aumid::register(icon.as_deref());
 
     let home = home_dir();
     let hub_installed = HubLocator::new(FileProbe, home.clone()).locate().is_some();
@@ -51,19 +66,28 @@ fn main() {
     // outlives any window and is never tied to one.
     let _reader = store.clone().spawn_reader(home, stream_path(SURFACE));
 
-    let event_loop = match EventLoop::new() {
-        Ok(loop_) => loop_,
-        Err(error) => {
-            eprintln!("nerve: no event loop ({error})");
-            return;
-        }
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_decorations(false)
+            .with_resizable(true)
+            .with_always_on_top()
+            // No taskbar button and no Alt-Tab entry: the flyout is a glance,
+            // not a window to manage.
+            .with_taskbar(false)
+            // Shown on the first tray click. Built now so reopening is instant
+            // and the font atlas is only ever built once.
+            .with_visible(false),
+        ..Default::default()
     };
-    let mut app = App::new(store, hub_installed, icon_px(ASSUMED_SCALE), Theme::Dark);
-    if let Err(error) = event_loop.run_app(&mut app) {
+
+    let result = eframe::run_native(
+        "Nerve",
+        options,
+        Box::new(move |cc| Ok(Box::new(App::new(cc, store, hub_installed)))),
+    );
+    if let Err(error) = result {
         eprintln!("nerve: event loop ended ({error})");
     }
-
-    drop(lock);
 }
 
 /// `%USERPROFILE%` on Windows, `$HOME` elsewhere.

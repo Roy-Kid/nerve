@@ -31,7 +31,7 @@ Stack: `nerve-hub` + tmux helper (Rust, `crates/`), SwiftUI menu-bar app (`Nerve
 
 - `/` — home hub (macOS, tmux, VS Code sections)
 - `/docs` · `/docs/get-started` · `/docs/plugin` · `/docs/machines`
-- `/docs/status` · `/docs/ingest` · `/docs/tmux` · `/docs/vscode` · `/docs/privacy`
+- `/docs/status` · `/docs/ingest` · `/docs/tmux` · `/docs/vscode` · `/docs/windows` · `/docs/privacy`
 
 ```bash
 cd index && npm run dev   # http://localhost:3000/docs
@@ -49,6 +49,8 @@ cargo test --workspace                              # hub (incl. hook mapper) + 
 ./scripts/nerve.sh --verify-surface                 # macOS surface regression
 ./scripts/nerve.sh --verify-tmux                    # tmux surface E2E (isolated tmux)
 ./scripts/nerve.sh --verify-vscode                  # VS Code surface unit tests
+./scripts/nerve.sh --check-windows                  # compile portable crates for Windows (no linker)
+pwsh scripts/nerve.ps1 -Help                        # Windows launcher (install / verify / run)
 ./scripts/nerve.sh --test-swift                     # Swift value-type unit harness
 cd vsc-ext && npm test                              # extension host unit tests
 cd index && npm test && npm run build               # site tests + static build
@@ -70,7 +72,7 @@ cd index && npm test && npm run build               # site tests + static build
 1. Product copy / API handbook → `index/src/docs/content.ts` (+ pages under `src/pages/`)
 2. Hook lifecycle → `plugins/nerve/hooks/nerve.js` (Claude) · `nerve.py` (Codex) · hub `/v1/hook` (Grok HTTP)
 3. State semantics / ingest contract → `crates/nerve-hub/` (golden parity tests guard it)
-4. App UI / surface glue → `Nerve/Nerve/`; tmux surface → `surfaces/tmux/` + `crates/nerve-tmux-surface/`; VS Code surface → `vsc-ext/`
+4. App UI / surface glue → `Nerve/Nerve/`; tmux surface → `surfaces/tmux/` + `crates/nerve-tmux-surface/`; VS Code surface → `vsc-ext/`; Windows tray → `crates/nerve-windows-surface/`
 5. Capture decisions → `.claude/notes/notes.md`
 
 <!-- nerve:harness:managed end -->

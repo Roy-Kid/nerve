@@ -57,9 +57,31 @@ status is always 100% of itself. The macOS ribbon carries count in its
 *length* — `ribbon::length_factor` now does the same for the icon. Render
 `examples/icon_sheet.rs` and look at it before changing this design again.
 
-**Still open:** `codex.json` passes `python3 …` as a shell string, which on
-Windows is a Microsoft Store alias stub. Needs Codex's documented answer for
-platform-specific hook commands rather than an invented field.
+**Codex on Windows** — the documented field is `commandWindows` (JSON) /
+`command_windows` (TOML), per learn.chatgpt.com/docs/hooks. Every slot in
+`codex.json` now carries `py -3 …` alongside the unix `python3 …`, because
+`python3` on Windows is a Microsoft Store alias stub that opens the Store
+rather than running anything. A test asserts every command hook has the
+override, so a new event cannot be added without one. (An earlier pass invented
+`windowsCommand` and reverted it — the name matters, and a field the host
+ignores means Windows users get the broken command silently.)
+
+**Transport is a dependency now.** The hand-written HTTP/SSE reader argued in
+its own doc comment that chunked size lines "can never be mistaken for an SSE
+`data:` field". True, and beside the point: a chunk boundary can fall inside a
+`data:` line, and the line-oriented reader would have split one frame into two
+unparseable halves under load. Replaced by `reqwest` + `eventsource-stream`;
+the async client rather than `reqwest::blocking` because only it exposes
+`read_timeout`, which resets per read — an endless stream needs an idle
+timeout, and a total budget would kill a healthy one. The runtime is
+current-thread and private to a `Hub`, so every method stays blocking to its
+caller and no UI loop is touched. `crates/nerve-surface-core/tests/transport.rs`
+is the first test where the client and the server meet.
+
+**Toasts are clickable after all.** The COM activator is only needed to
+activate an *exited* unpackaged app; a tray surface raising a toast is by
+definition running, so the WinRT `Activated` event suffices and arrives through
+a safe API.
 
 <!-- mol:note:topic:ask-graded-notify -->
 ## 2026-08-30 — Graded notifications: Ask gate, gentle copy
