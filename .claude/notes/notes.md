@@ -1,5 +1,66 @@
 # Notes
 
+<!-- mol:note:topic:windows-surface -->
+## 2026-09-17 — Windows: four crates, and what the move exposed
+
+Why: "Swift runs on Windows" does not carry SwiftUI. 64% of `Nerve/` is
+AppKit/SwiftUI/UserNotifications and has no Windows counterpart, so the
+menu-bar app is not portable — but the architecture already was. Windows gets
+its own peer surface (tray icon + flyout), not a port of anyone else's.
+
+**Crate split.** `nerve-platform` (leaf: wire paths, pid liveness) →
+`nerve-surface-core` (frames, status, grouping, hub client, ribbon weights,
+Ask) → the surfaces. Two crates rather than one because `nerve-hub` must not
+depend on anything called "surface-core" (invariant 7, and the release profile
+says size matters) while it *does* share the `openURL` encoder with every
+decoder. `nerve-tmux-surface` keeps only tmux: panes, ps, ssh, ratatui,
+`summary.rs` (its `#` doubling and `#[fg=…]` markers are the tmux status-line
+template language, not a general one).
+
+**The `unsafe` exception.** `unsafe_code = "forbid"` cannot be relaxed by an
+inner `#[allow]`, so `nerve-platform` opts out of `[lints] workspace = true`
+and restates the lints with `deny`, carrying one audited `#[allow]` for
+`OpenProcess`/`GetExitCodeProcess`. Chosen over `sysinfo` because `windows-sys`
+was already in the lock file (0 new crates) and `sysinfo` would pull the whole
+`windows` crate plus `objc2-core-foundation` on macOS. The root manifest points
+at the exception — it is the only one.
+
+**Four bugs the port exposed, none of them Windows-only in cause:**
+- `rustix::Pid::from_raw` debug-asserts `raw >= 0` rather than answering
+  `None`, so the reaper's "defensive" negative-pid arm panicked.
+- `state.rs` found the breadcrumb path by searching for the literal `" · /"`,
+  while the hub writes `{producer} · {project} · {host} · {cwd}`. Any non-POSIX
+  cwd was invisible.
+- `payload.rs` named projects with `rsplit('/')`; `build.rs` gated `openURL` on
+  `starts_with('/')`.
+- `slotId` called `agentPid()` twice, so the POSIX worst case was twelve `ps`
+  spawns per hook event.
+
+**Paths are classified by shape, never by host.** A macOS surface renders a
+Windows producer's jobs through a tunnel (invariant 5), so `Path::is_absolute`
+and `MAIN_SEPARATOR` are both wrong. `nerve_platform::path` decides
+`Posix | Windows` from the string. Side effect: every case is testable on a
+Mac. The POSIX output of `to_file_uri` is frozen by golden test — four
+decoders read it (Rust, Swift, TypeScript, the docs).
+
+**Windows PID: no climb.** `Get-CimInstance` costs ~500 ms to start and the
+hook runs on every event. `hooks.json` uses exec form (`node` + args, no
+shell), so `process.ppid` already *is* the agent host; the POSIX climb exists
+only to see past a shell wrapper. A wrong-but-instant answer beats a
+right-but-slow one in a fail-open hook.
+
+**Tray icon: two design failures the spike caught, that no test would have
+been written for.** A rounded cap of half the bar height turns a single
+full-height band into a circle; and width taken only from each band's share of
+the stack makes one running job pixel-identical to forty, because a single
+status is always 100% of itself. The macOS ribbon carries count in its
+*length* — `ribbon::length_factor` now does the same for the icon. Render
+`examples/icon_sheet.rs` and look at it before changing this design again.
+
+**Still open:** `codex.json` passes `python3 …` as a shell string, which on
+Windows is a Microsoft Store alias stub. Needs Codex's documented answer for
+platform-specific hook commands rather than an invented field.
+
 <!-- mol:note:topic:ask-graded-notify -->
 ## 2026-08-30 — Graded notifications: Ask gate, gentle copy
 
