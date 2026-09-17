@@ -13,6 +13,7 @@
 //! live in tmux rather than on disk (acceptance A11) — an option dies with the
 //! server it belongs to, which is exactly the intended lifetime.
 
+use nerve_surface_core::instance::LockStore;
 use std::fmt;
 use std::path::Path;
 use std::process::Command;
@@ -102,12 +103,6 @@ pub trait SegmentWriter {
     fn write_segment(&mut self, text: &str) -> Result<(), TmuxError>;
 }
 
-/// Global tmux user options.
-pub trait OptionStore {
-    fn get(&mut self, name: &str) -> Result<Option<String>, TmuxError>;
-    fn set(&mut self, name: &str, value: &str) -> Result<(), TmuxError>;
-}
-
 /// Paints the status option, and reads and writes the surface's user options.
 pub struct TmuxWriter<R: TmuxRunner> {
     runner: R,
@@ -132,7 +127,12 @@ impl<R: TmuxRunner> SegmentWriter for TmuxWriter<R> {
     }
 }
 
-impl<R: TmuxRunner> OptionStore for TmuxWriter<R> {
+/// The single-surface lock lives in a tmux user option: it dies with the
+/// server it belongs to, which is exactly the lock's intended lifetime, and it
+/// keeps this surface's promise to write nothing to disk (acceptance A11).
+impl<R: TmuxRunner> LockStore for TmuxWriter<R> {
+    type Error = TmuxError;
+
     /// An unset option, and one set to blanks, read the same: absent.
     fn get(&mut self, name: &str) -> Result<Option<String>, TmuxError> {
         let value = self.runner.run(&["show-options", "-gqv", name])?;

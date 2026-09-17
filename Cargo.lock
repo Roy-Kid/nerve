@@ -868,7 +868,6 @@ dependencies = [
  "crossterm",
  "nerve-surface-core",
  "ratatui",
- "rustix",
  "serde_json",
  "time",
  "unicode-width",

@@ -16,6 +16,7 @@
 pub mod filter;
 pub mod frame;
 pub mod hub;
+pub mod instance;
 pub mod launch;
 pub mod locate;
 pub mod machine;

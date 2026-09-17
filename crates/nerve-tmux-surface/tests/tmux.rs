@@ -44,7 +44,7 @@
 //!
 //! /// Global tmux user options — this surface's only persistent state, and
 //! /// it lives in tmux, not on disk (acceptance A11).
-//! pub trait OptionStore {
+//! pub trait LockStore {   // nerve_surface_core::instance
 //!     fn get(&mut self, name: &str) -> Result<Option<String>, TmuxError>;
 //!     fn set(&mut self, name: &str, value: &str) -> Result<(), TmuxError>;
 //! }
@@ -52,7 +52,7 @@
 //! pub struct TmuxWriter<R: TmuxRunner> { /* runner */ }
 //! impl<R: TmuxRunner> TmuxWriter<R> { pub fn new(runner: R) -> Self; }
 //! impl<R: TmuxRunner> SegmentWriter for TmuxWriter<R> { /* set + refresh */ }
-//! impl<R: TmuxRunner> OptionStore for TmuxWriter<R> { /* show-options / set */ }
+//! impl<R: TmuxRunner> LockStore for TmuxWriter<R> { /* show-options / set */ }
 //! ```
 //!
 //! Writing the option is not enough: tmux only repaints the status line after
@@ -66,9 +66,8 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use nerve_tmux_surface::tmux::{
-    OptionStore, SegmentWriter, TmuxError, TmuxRunner, TmuxWriter, STATUS_OPTION,
-};
+use nerve_surface_core::instance::LockStore;
+use nerve_tmux_surface::tmux::{SegmentWriter, TmuxError, TmuxRunner, TmuxWriter, STATUS_OPTION};
 
 /// The segment a live frame produces — spaces and style markers included.
 const SEGMENT: &str = "#[fg=red]1!#[default] #[fg=blue]2>#[default]";

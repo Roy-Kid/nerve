@@ -6,10 +6,10 @@
 //! ─────────────────────────────────────────────────────────────────────────
 //!
 //! ```ignore
-//! // nerve_tmux_surface::instance
+//! // nerve_surface_core::instance
 //!
 //! /// The tmux user option that names the surface process.
-//! pub const PID_OPTION: &str = "@nerve_surface_pid";
+//! pub const SURFACE_PID_KEY: &str = "@nerve_surface_pid";
 //!
 //! /// `kill(pid, 0)` — is that process still there?
 //! pub trait PidProbe { fn is_alive(&self, pid: i32) -> bool; }
@@ -40,7 +40,7 @@
 //!     ///   * our own pid                          -> claim it, `Owned`
 //!     ///   * another pid, alive                   -> `Yield { pid }`, no write
 //!     ///   * another pid, dead                    -> claim it, `Owned`
-//!     pub fn claim(&mut self) -> Result<Claim, tmux::TmuxError>;
+//!     pub fn claim(&mut self) -> Result<Claim, S::Error>;
 //! }
 //! ```
 //!
@@ -57,8 +57,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nerve_tmux_surface::instance::{Claim, InstanceGuard, PidProbe, PID_OPTION};
-use nerve_tmux_surface::tmux::{OptionStore, TmuxError};
+use nerve_surface_core::instance::{Claim, InstanceGuard, LockStore, PidProbe, SURFACE_PID_KEY};
+
+/// The store's failure, standing in for whatever a real surface's is — a tmux
+/// error, a registry error. The guard only has to propagate it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct StoreGone;
 
 const ME: i32 = 4242;
 const OTHER: i32 = 999;
@@ -81,16 +85,18 @@ struct FakeOptions {
     ops: Ops,
 }
 
-impl OptionStore for FakeOptions {
-    fn get(&mut self, name: &str) -> Result<Option<String>, TmuxError> {
+impl LockStore for FakeOptions {
+    type Error = StoreGone;
+
+    fn get(&mut self, name: &str) -> Result<Option<String>, Self::Error> {
         self.ops.borrow_mut().push(Op::Get(name.to_string()));
         if self.read_error {
-            return Err(TmuxError::ServerGone);
+            return Err(StoreGone);
         }
         Ok(self.stored.clone())
     }
 
-    fn set(&mut self, name: &str, value: &str) -> Result<(), TmuxError> {
+    fn set(&mut self, name: &str, value: &str) -> Result<(), Self::Error> {
         self.ops
             .borrow_mut()
             .push(Op::Set(name.to_string(), value.to_string()));
@@ -161,7 +167,7 @@ fn claimed(guard: &mut InstanceGuard<FakeOptions, FakePids>) -> Claim {
 
 #[test]
 fn test_the_lock_lives_in_the_nerve_surface_pid_option() {
-    assert_eq!(PID_OPTION, "@nerve_surface_pid");
+    assert_eq!(SURFACE_PID_KEY, "@nerve_surface_pid");
 }
 
 /// Acceptance A6: on start the option is claimed.
@@ -173,8 +179,8 @@ fn test_an_unclaimed_surface_is_taken_over() {
     assert_eq!(
         wires.ops(),
         vec![
-            Op::Get(PID_OPTION.to_string()),
-            Op::Set(PID_OPTION.to_string(), ME.to_string()),
+            Op::Get(SURFACE_PID_KEY.to_string()),
+            Op::Set(SURFACE_PID_KEY.to_string(), ME.to_string()),
         ]
     );
 }
@@ -224,7 +230,7 @@ fn test_a_live_owner_is_yielded_to() {
     let (mut guard, wires) = guard(Some("999"), &[OTHER]);
 
     assert_eq!(claimed(&mut guard), Claim::Yield { pid: OTHER });
-    assert_eq!(wires.ops(), vec![Op::Get(PID_OPTION.to_string())]);
+    assert_eq!(wires.ops(), vec![Op::Get(SURFACE_PID_KEY.to_string())]);
 }
 
 /// …and "exits at once" means it never becomes a second refcount holder.
@@ -243,7 +249,7 @@ fn test_yielding_never_rewrites_the_option() {
         !wires
             .ops()
             .iter()
-            .any(|op| matches!(op, Op::Set(name, _) if name == PID_OPTION)),
+            .any(|op| matches!(op, Op::Set(name, _) if name == SURFACE_PID_KEY)),
         "a yielding surface must leave the owner's pid alone"
     );
 }
@@ -260,8 +266,8 @@ fn test_a_dead_owner_is_taken_over() {
     assert_eq!(
         wires.ops(),
         vec![
-            Op::Get(PID_OPTION.to_string()),
-            Op::Set(PID_OPTION.to_string(), ME.to_string()),
+            Op::Get(SURFACE_PID_KEY.to_string()),
+            Op::Set(SURFACE_PID_KEY.to_string(), ME.to_string()),
         ]
     );
     assert_eq!(wires.probed(), vec![OTHER]);
@@ -292,5 +298,5 @@ fn test_a_tmux_failure_while_reading_is_reported() {
 
     let result = guard.claim();
 
-    assert!(matches!(result, Err(TmuxError::ServerGone)));
+    assert!(matches!(result, Err(StoreGone)));
 }

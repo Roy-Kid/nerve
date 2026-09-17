@@ -15,7 +15,6 @@ pub mod colors;
 pub mod columns;
 pub mod git;
 pub mod icons;
-pub mod instance;
 pub mod panes;
 pub mod popup;
 pub mod preview;
