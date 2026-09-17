@@ -719,6 +719,57 @@ mod panel_tests {
         serde_json::json!({ "id": id, "name": id, "updatedAt": updated })
     }
 
+    /// Characterization of the grouping and ordering rule, pinned before it
+    /// moved to `nerve-surface-core`.
+    ///
+    /// The fixture is built around the one case that breaks if `now` is
+    /// resampled per comparison instead of captured once: two jobs that carry
+    /// no `updatedAt` both fall back to `now`, tie there, and are then ordered
+    /// by `createdAt`. Give them different `now` values and the tie never
+    /// happens, `createdAt` is never consulted, and the order silently follows
+    /// the clock.
+    #[test]
+    fn sections_group_by_machine_and_order_within_each() {
+        let state = state_with(serde_json::json!([
+            { "id": "b-old", "name": "b-old", "alias": "Beta",
+              "createdAt": "2026-07-19T08:00:00Z" },
+            { "id": "a-stale", "name": "a-stale", "alias": "alpha",
+              "updatedAt": "2020-01-01T00:00:00Z" },
+            { "id": "a-new", "name": "a-new", "alias": "alpha",
+              "createdAt": "2026-07-19T09:00:00Z" },
+            { "id": "a-old", "name": "a-old", "alias": "alpha",
+              "createdAt": "2026-07-19T08:00:00Z" },
+            { "id": "b-loud", "name": "b-loud", "alias": "Beta",
+              "attention": { "level": "required" },
+              "createdAt": "2020-01-01T00:00:00Z" },
+        ]));
+
+        let shape: Vec<(&str, Vec<&str>)> = state
+            .sections()
+            .iter()
+            .map(|section| {
+                (
+                    section.title.as_str(),
+                    section
+                        .jobs
+                        .iter()
+                        .map(|index| state.job_at(*index).expect("job in section").id.as_str())
+                        .collect(),
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            shape,
+            vec![
+                // Titles sort case-insensitively, so `alpha` precedes `Beta`.
+                ("alpha", vec!["a-new", "a-old", "a-stale"]),
+                // Attention outranks every time field.
+                ("Beta", vec!["b-loud", "b-old"]),
+            ]
+        );
+    }
+
     #[test]
     fn panel_shows_what_the_human_asked_for() {
         let state = state_with(serde_json::json!([{
