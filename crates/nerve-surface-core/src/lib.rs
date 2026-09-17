@@ -23,6 +23,8 @@ pub mod jobpath;
 pub mod launch;
 pub mod locate;
 pub mod machine;
+pub mod palette;
+pub mod ribbon;
 pub mod sort;
 pub mod status;
 pub mod store;
