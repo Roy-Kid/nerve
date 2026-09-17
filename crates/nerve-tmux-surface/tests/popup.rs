@@ -57,7 +57,7 @@ use serde_json::json;
 use time::macros::datetime;
 use time::OffsetDateTime;
 
-use nerve_tmux_surface::frame::JobView;
+use nerve_surface_core::frame::JobView;
 use nerve_tmux_surface::popup::{PopupRenderer, EMPTY};
 
 use nerve_surface_core::testkit::job;

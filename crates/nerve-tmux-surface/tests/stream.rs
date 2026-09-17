@@ -93,7 +93,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
 
-use nerve_tmux_surface::frame::Frame;
+use nerve_surface_core::frame::Frame;
 use nerve_tmux_surface::stream::{Attempt, Backoff, FrameSource, StreamError, StreamSession};
 use nerve_tmux_surface::summary::SummaryRenderer;
 use nerve_tmux_surface::tmux::{SegmentWriter, TmuxError};

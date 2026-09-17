@@ -8,10 +8,6 @@ use std::borrow::Cow;
 
 use unicode_width::UnicodeWidthStr;
 
-// Re-exported while the extraction lands: the sidebar and popup reach for
-// these through `crate::columns::`. Removed with the rest of the facade.
-pub use nerve_surface_core::display::{activity_text, age_label, cell_text, MISSING};
-
 /// Two spaces between padded columns — matches popup layout.
 pub const GAP: &str = "  ";
 

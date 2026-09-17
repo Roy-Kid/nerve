@@ -17,10 +17,12 @@
 
 use time::OffsetDateTime;
 
-use crate::columns::{self, activity_text, cell_text, GAP};
-use crate::frame::JobView;
+use nerve_surface_core::display::{activity_text, age_label, cell_text};
+
+use crate::columns::{self, GAP};
 use crate::icons;
-use crate::status::StatusClass;
+use nerve_surface_core::frame::JobView;
+use nerve_surface_core::status::StatusClass;
 
 /// What a popup with nothing to show prints.
 pub const EMPTY: &str = "nerve: no jobs";
@@ -79,6 +81,6 @@ impl PopupRenderer {
 
     /// How long ago the job last said anything.
     fn age(&self, job: &JobView) -> String {
-        columns::age_label(self.now, job)
+        age_label(self.now, job)
     }
 }

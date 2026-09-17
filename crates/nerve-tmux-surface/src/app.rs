@@ -12,12 +12,12 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 type Tui = Terminal<CrosstermBackend<std::io::Stdout>>;
 
 use crate::cli::toggle;
-use crate::frame::JobView;
 use crate::preview::JumpResult;
 use crate::state::AppState;
-use crate::store::JobsStore;
 use crate::tmux;
 use crate::ui;
+use nerve_surface_core::frame::JobView;
+use nerve_surface_core::store::JobsStore;
 
 const FILTER_ROW: u16 = 0;
 const DOUBLE_CLICK_MS: u128 = 400;

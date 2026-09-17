@@ -19,12 +19,12 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-use crate::frame::JobView;
-use crate::machine;
 use crate::procs::{self, normalize_tty};
 use crate::ssh::{self, SshHosts};
-use crate::state::job_path;
 use crate::tmux::{self, SIDEBAR_ROLE};
+use nerve_surface_core::frame::JobView;
+use nerve_surface_core::jobpath::job_path;
+use nerve_surface_core::machine;
 
 const LIST_PANES_FORMAT: &str = concat!(
     "#{pane_id}\t#{pane_current_path}\t#{@nerve_pane_role}\t",

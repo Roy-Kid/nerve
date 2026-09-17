@@ -12,12 +12,12 @@
 
 use std::time::{Duration, Instant};
 
-use crate::frame::JobView;
-use crate::machine;
 use crate::panes::{self, JobTarget, SidebarPane};
 use crate::remote;
-use crate::state::{is_ide_deep_link, job_path};
 use crate::tmux;
+use nerve_surface_core::frame::JobView;
+use nerve_surface_core::jobpath::{is_ide_deep_link, job_path};
+use nerve_surface_core::machine;
 
 /// Outcome of [`PanePreview::jump_to_job`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

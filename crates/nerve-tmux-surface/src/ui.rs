@@ -7,12 +7,14 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::colors;
-use crate::columns::{self, activity_text, age_label, cell_text, truncate};
-use crate::filter::StatusFilter;
-use crate::frame::JobView;
+use nerve_surface_core::display::{activity_text, age_label, cell_text};
+
+use crate::columns::{self, truncate};
 use crate::icons;
 use crate::state::{AppState, BottomTab};
-use crate::status::StatusClass;
+use nerve_surface_core::filter::StatusFilter;
+use nerve_surface_core::frame::JobView;
+use nerve_surface_core::status::StatusClass;
 
 const AGE_COL: usize = 4;
 

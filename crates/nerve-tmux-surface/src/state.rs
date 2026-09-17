@@ -6,20 +6,14 @@ use std::time::{Duration, Instant};
 
 use time::OffsetDateTime;
 
-use crate::filter::StatusFilter;
-use crate::frame::JobView;
+use nerve_surface_core::filter::StatusFilter;
+use nerve_surface_core::frame::JobView;
 use nerve_surface_core::group::{group_by_machine, MachineSection};
-
-// Re-exported while the extraction lands: `preview.rs` and `panes.rs` reach
-// for these through `crate::state::`. Removed with the rest of the facade.
-pub use nerve_surface_core::group::machine_label;
-pub use nerve_surface_core::jobpath::{
-    is_ide_deep_link, job_path, path_from_focus_hint, workspace_path_from_url,
-};
+use nerve_surface_core::jobpath::job_path;
 
 use crate::git::GitSnapshot;
 use crate::preview::PanePreview;
-use crate::store::{JobsSnapshot, JobsStore};
+use nerve_surface_core::store::{JobsSnapshot, JobsStore};
 
 /// Floor between two `git` snapshots on the loop tick. A snapshot is five
 /// subprocesses; the Git panel does not need them five times a second.

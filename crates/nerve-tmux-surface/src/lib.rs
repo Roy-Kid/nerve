@@ -4,11 +4,6 @@
 //! with a status filter bar, scrollable job list, and a foldable Prompt/Git panel.
 //! Data comes from nerve-hub over SSE, not from agent hooks.
 
-// Moved to `nerve-surface-core`, re-exported here so `crate::frame::JobView`
-// and `nerve_tmux_surface::status::StatusClass` keep resolving while the rest
-// of the extraction lands. Removed once every call site names the core crate.
-pub use nerve_surface_core::{filter, frame, hub, launch, locate, machine, status, store, tally};
-
 pub mod app;
 pub mod cli;
 pub mod colors;

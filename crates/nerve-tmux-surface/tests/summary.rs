@@ -53,8 +53,8 @@
 //! Determinism: literal templates and tallies, no clock, no socket, no
 //! filesystem, no hub.
 
+use nerve_surface_core::tally::Tally;
 use nerve_tmux_surface::summary::{escape_dynamic, SummaryRenderer};
-use nerve_tmux_surface::tally::Tally;
 
 /// The tally acceptance A2 names: two running, one ask, no problems.
 fn a2_tally() -> Tally {

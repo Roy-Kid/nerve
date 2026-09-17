@@ -7,8 +7,8 @@ pub const WAITING: &str = "◐";
 pub const IDLE: &str = "○";
 pub const ERROR: &str = "✕";
 
-use crate::filter::StatusFilter;
-use crate::status::StatusClass;
+use nerve_surface_core::filter::StatusFilter;
+use nerve_surface_core::status::StatusClass;
 
 pub fn filter_icon(filter: StatusFilter) -> &'static str {
     match filter {

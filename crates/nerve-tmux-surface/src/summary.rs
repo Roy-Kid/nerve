@@ -22,7 +22,7 @@
 //! expanded — while every `#` in *producer* text goes through
 //! [`escape_dynamic`] first.
 
-use crate::tally::Tally;
+use nerve_surface_core::tally::Tally;
 
 /// Make producer text safe to place inside a tmux option value.
 ///
