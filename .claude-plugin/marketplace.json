@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "nerve",
-  "description": "Nerve for macOS — agent status plugins that push Claude Code, Codex, and Grok sessions into the local menu-bar ribbon.",
+  "description": "Nerve — agent status plugins that push Claude Code, Codex, and Grok sessions into a local status hub, shown in the macOS menu bar, the Windows tray, tmux, or VS Code.",
   "owner": {
     "name": "Nerve",
     "email": "lijichen365@gmail.com"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "nerve",
-      "description": "Report agent session lifecycle to the Nerve menu-bar status hub (http://127.0.0.1:17890). Works with Claude Code and Codex (and Grok via Claude-compatible hooks).",
+      "description": "Report agent session lifecycle to the Nerve status hub (http://127.0.0.1:17890). Works with Claude Code and Codex (and Grok via Claude-compatible hooks).",
       "author": {
         "name": "Nerve"
       },

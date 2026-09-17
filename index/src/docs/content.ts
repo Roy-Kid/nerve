@@ -119,11 +119,23 @@ export const docPages: DocPage[] = [
     blocks: [
       { type: 'h2', text: 'Requirements' },
       {
+        type: 'p',
+        text: 'The hub and the hook plugins run anywhere. Which surface you get depends on the machine.',
+      },
+      {
+        type: 'table',
+        headers: ['Machine', 'Surface', 'Needs'],
+        rows: [
+          ['macOS 14+', 'Menu-bar ribbon', 'Xcode 15+ to build the app from source'],
+          ['Windows 10/11', 'Tray icon + flyout', 'Nothing beyond the binary'],
+          ['Linux, or any of them', 'tmux sidebar · VS Code extension', 'tmux 3.x · VS Code 1.90+'],
+        ],
+      },
+      {
         type: 'ul',
         items: [
-          'macOS 14+',
-          'Xcode 15+ (to build the app from source)',
-          'Python 3 (agent hook plugin only)',
+          'Rust 1.82+ (to build nerve-hub from source)',
+          'Node 18+ (Claude hook plugin) or Python 3 (Codex hook plugin)',
           'OpenSSH client (for remote machines)',
         ],
       },
@@ -141,7 +153,7 @@ export const docPages: DocPage[] = [
       },
       {
         type: 'p',
-        text: 'A continuous ribbon appears in the macOS menu bar — no Dock icon, no floating window.',
+        text: 'On macOS a continuous ribbon appears in the menu bar — no Dock icon, no floating window. On Windows the same state folds into a notification-area icon, and the ribbon itself moves into the flyout behind it.',
       },
       { type: 'h2', text: 'Ribbon gestures' },
       {
@@ -445,10 +457,10 @@ run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
         title: 'A remote pid is never matched locally',
         text: 'The pid and workspace path on a remote job describe another machine’s process and another machine’s filesystem, so neither is compared against a local pane — the same rule the hub follows before it reaps a job whose process is gone.',
       },
-      { type: 'h2', text: 'Notifications stay on macOS' },
+      { type: 'h2', text: 'The sidebar does not notify' },
       {
         type: 'p',
-        text: 'System banners belong to the menu-bar app. The sidebar uses colour and the status-line `{ask}?` tally (Ask reasons at suggested+) — a soft “ready for you”, not an OS alert. `{attention}` still counts every needs-a-look row including system waits; the default format prefers `{ask}`.',
+        text: 'OS banners are a per-surface, per-machine, user-toggled capability — the menu-bar app and the Windows tray raise them, the sidebar does not. It uses colour and the status-line `{ask}?` tally (Ask reasons at suggested+) — a soft “ready for you”, not an OS alert. `{attention}` still counts every needs-a-look row including system waits; the default format prefers `{ask}`.',
       },
       { type: 'h2', text: 'When the sidebar is not what you expect' },
       {
@@ -476,7 +488,7 @@ run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
       {
         type: 'callout',
         title: 'Display only',
-        text: 'The extension does not run agents and does not own state. It holds one GET /v1/stream?surface=vscode. Local actions are Focus and Copy. There is no approve, cancel, or submit. System notification banners stay on the macOS app. VS Code uses a gentle in-editor toast for Ask upgrades, a soft status-bar label, and an Activity Bar badge.',
+        text: 'The extension does not run agents and does not own state. It holds one GET /v1/stream?surface=vscode. Local actions are Focus and Copy. There is no approve, cancel, or submit. It raises no OS banner — those belong to the platform-native surfaces, and every surface decides for itself. VS Code uses a gentle in-editor toast for Ask upgrades, a soft status-bar label, and an Activity Bar badge.',
       },
       { type: 'h2', text: 'Install from this repo' },
       {
@@ -1029,10 +1041,10 @@ run-shell ~/.tmux/plugins/nerve/surfaces/tmux/nerve.tmux`,
       type: 'p',
       text: '如果一台机器已经有一条 RemoteForward 隧道连回你的 Mac（参见机器与远程主机），那么远程主机上的 127.0.0.1:17890 就已经是你 Mac 的 hub。在那里安装 helper、添加 run-shell 行，远程主机的 tmux 就会显示你的任务。helper 没有需要配置的“远程”概念——没有 host、port 或 env var。这与远程 agent 钩子 POST 到 loopback 却指向这台 Mac 是同一套设计。',
     },
-    { type: 'h2', text: '系统通知仍留在 macOS' },
+    { type: 'h2', text: '侧栏不发系统通知' },
     {
       type: 'p',
-      text: '系统横幅属于菜单栏应用。侧边栏用颜色和状态行 `{ask}?` 计数（Ask reason 且 level ≥ suggested）做温柔的「轮到你」提示，而不是操作系统告警。`{attention}` 仍统计所有需要看一眼的行（含系统等待）；默认格式优先 `{ask}`。',
+      text: '系统横幅是「每个界面、每台机器、由用户自己开关」的能力——菜单栏应用和 Windows 托盘会发，侧边栏不发。它用颜色和状态行 `{ask}?` 计数（Ask reason 且 level ≥ suggested）做温柔的「轮到你」提示，而不是操作系统告警。`{attention}` 仍统计所有需要看一眼的行（含系统等待）；默认格式优先 `{ask}`。',
     },
     { type: 'h2', text: '当侧边栏不符合预期时' },
     {
@@ -1059,7 +1071,7 @@ const zhVscodePage: DocPage = {
     {
       type: 'callout',
       title: '仅用于显示',
-      text: '扩展不跑 agent，也不拥有状态。它只保持一条 GET /v1/stream?surface=vscode。本地动作是 Focus 和 Copy。没有 approve、cancel 或 submit。系统通知横幅仍属于 macOS 应用。VS Code 对 Ask 升级用温和的编辑器内 toast，以及柔和的状态栏文案与 Activity Bar 徽章。',
+      text: '扩展不跑 agent，也不拥有状态。它只保持一条 GET /v1/stream?surface=vscode。本地动作是 Focus 和 Copy。没有 approve、cancel 或 submit。它不发系统横幅——那属于平台原生界面，且每个界面各自决定。VS Code 对 Ask 升级用温和的编辑器内 toast，以及柔和的状态栏文案与 Activity Bar 徽章。',
     },
     { type: 'h2', text: '从仓库安装' },
     {
@@ -1360,11 +1372,23 @@ const zhDocPages: DocPage[] = [
     blocks: [
       { type: 'h2', text: '系统要求' },
       {
+        type: 'p',
+        text: 'hub 和钩子插件在哪都能跑。你拿到哪种界面，取决于这台机器。',
+      },
+      {
+        type: 'table',
+        headers: ['机器', '界面', '需要'],
+        rows: [
+          ['macOS 14+', '菜单栏色带', '从源码构建应用需要 Xcode 15+'],
+          ['Windows 10/11', '托盘图标 + 弹出面板', '除了二进制文件之外无需其他'],
+          ['Linux，或以上任意一种', 'tmux 侧栏 · VS Code 扩展', 'tmux 3.x · VS Code 1.90+'],
+        ],
+      },
+      {
         type: 'ul',
         items: [
-          'macOS 14+',
-          'Xcode 15+（从源码构建应用时需要）',
-          'Python 3（仅 agent 钩子插件需要）',
+          'Rust 1.82+（从源码构建 nerve-hub 时需要）',
+          'Node 18+（Claude 钩子插件）或 Python 3（Codex 钩子插件）',
           'OpenSSH 客户端（用于远程机器）',
         ],
       },
@@ -1382,7 +1406,7 @@ const zhDocPages: DocPage[] = [
       },
       {
         type: 'p',
-        text: 'macOS 菜单栏会出现一条连续状态条——没有 Dock 图标，也没有悬浮窗口。',
+        text: 'macOS 上菜单栏会出现一条连续状态条——没有 Dock 图标，也没有悬浮窗口。Windows 上同样的状态折叠进通知区图标，状态条本身则移进它背后的弹出面板。',
       },
       { type: 'h2', text: '状态条操作' },
       {

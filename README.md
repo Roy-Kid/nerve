@@ -9,7 +9,7 @@
 Every agent, build, and long job reports through one open protocol into a single strip of color in your menu bar or tmux, and every line of it is open source.
 
 - **Open protocol** — one `POST http://127.0.0.1:17890/v1/snapshot` is the entire integration contract, documented and versioned.
-- **Open surfaces** — the macOS menu bar, the tmux sidebar, and the VS Code extension are plain clients of the same open stream, so nothing stops you writing another.
+- **Open surfaces** — the macOS menu bar, the Windows tray, the tmux sidebar, and the VS Code extension are plain clients of the same open stream, so nothing stops you writing another.
 - **Open by proof** — runtime state lives only in memory on loopback, and the MIT-licensed source that proves it is public.
 
 ## Documentation (website)
