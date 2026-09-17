@@ -17,6 +17,7 @@ pub mod filter;
 pub mod frame;
 pub mod hub;
 pub mod launch;
+pub mod locate;
 pub mod machine;
 pub mod status;
 pub mod tally;

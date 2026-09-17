@@ -7,7 +7,7 @@
 // Moved to `nerve-surface-core`, re-exported here so `crate::frame::JobView`
 // and `nerve_tmux_surface::status::StatusClass` keep resolving while the rest
 // of the extraction lands. Removed once every call site names the core crate.
-pub use nerve_surface_core::{filter, frame, hub, launch, machine, status, tally};
+pub use nerve_surface_core::{filter, frame, hub, launch, locate, machine, status, tally};
 
 pub mod app;
 pub mod cli;
@@ -16,7 +16,6 @@ pub mod columns;
 pub mod git;
 pub mod icons;
 pub mod instance;
-pub mod locate;
 pub mod panes;
 pub mod popup;
 pub mod preview;
