@@ -1,0 +1,80 @@
+# The repo's checks, run where a laptop cannot run them.
+#
+# The commit tier already runs fmt, clippy and a Windows `cargo check` through
+# `.pre-commit-config.yaml`. What only CI can add is the tier that actually
+# *executes* the Windows arms: a green `cargo test` on macOS says nothing about
+# code the local target never compiles.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  unix:
+    name: macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace
+
+      # The commit-tier Windows gate, so a bypassed hook cannot land a
+      # `cfg(windows)` arm that does not compile.
+      - name: cargo check (windows target)
+        run: >
+          cargo check -p nerve-platform -p nerve-hub -p nerve-surface-core
+          --all-targets --all-features --target x86_64-pc-windows-msvc
+
+      - name: hook mapper tests
+        run: python3 sources/agents/tests/test_nerve_hook.py
+
+      - name: VS Code surface
+        working-directory: vsc-ext
+        run: npm ci && npm test
+
+      - name: site
+        working-directory: index
+        run: npm ci && npm test && npm run build
+
+  windows:
+    name: Windows
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # nerve-tmux-surface is unix-only by design (tmux has no Windows port),
+      # so the Windows job names the portable crates rather than `--workspace`.
+      - name: clippy
+        run: >
+          cargo clippy -p nerve-platform -p nerve-hub -p nerve-surface-core
+          --all-targets --all-features -- -D warnings
+      - name: test
+        run: >
+          cargo test -p nerve-platform -p nerve-hub -p nerve-surface-core
+          --all-features
+      - name: build the hub
+        run: cargo build --release -p nerve-hub
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nerve-hub-windows-x64
+          path: target/release/nerve-hub.exe
