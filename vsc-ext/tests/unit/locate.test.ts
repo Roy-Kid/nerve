@@ -1,5 +1,22 @@
 import { strict as assert } from "node:assert";
-import { locateHub, type BinaryProbe } from "../../src/hub/locate";
+import { join } from "node:path";
+import {
+  HUB_BINARY,
+  locateHub,
+  platformFixedDirectories,
+  type BinaryProbe,
+} from "../../src/hub/locate";
+
+/**
+ * The rule under test is the order. It is the same on every platform, so the
+ * directory list is injected and the expected paths are built with `join` —
+ * a literal would encode one OS's separator and fail on the other.
+ */
+const INSTALL = ["/install/first", "/install/second"];
+
+const first = join(INSTALL[0], HUB_BINARY);
+const second = join(INSTALL[1], HUB_BINARY);
+const cargo = join("/home/me", ".cargo", "bin", HUB_BINARY);
 
 function probe(hits: Record<string, boolean>, pathHit?: string): BinaryProbe {
   return {
@@ -12,33 +29,62 @@ function probe(hits: Record<string, boolean>, pathHit?: string): BinaryProbe {
   };
 }
 
+function locate(hits: Record<string, boolean>, pathHit?: string) {
+  return locateHub(probe(hits, pathHit), "/home/me", undefined, INSTALL);
+}
+
 suite("hub locate", () => {
   test("prefers a checkout release binary", () => {
+    const checkout = join("/repo/vsc-ext", "..", "target", "release", HUB_BINARY);
     const found = locateHub(
-      probe({ "/repo/target/release/nerve-hub": true }),
+      probe({ [checkout]: true }),
       "/home/me",
       "/repo/vsc-ext",
+      INSTALL,
     );
-    assert.equal(found, "/repo/target/release/nerve-hub");
+    assert.equal(found, checkout);
   });
 
-  test("homebrew beats cargo", () => {
-    const found = locateHub(
-      probe({
-        "/opt/homebrew/bin/nerve-hub": true,
-        "/home/me/.cargo/bin/nerve-hub": true,
-      }),
-      "/home/me",
-    );
-    assert.equal(found, "/opt/homebrew/bin/nerve-hub");
+  test("the first install directory beats the second", () => {
+    assert.equal(locate({ [first]: true, [second]: true }), first);
+  });
+
+  test("an install directory beats cargo", () => {
+    assert.equal(locate({ [second]: true, [cargo]: true }), second);
+  });
+
+  test("cargo beats PATH", () => {
+    assert.equal(locate({ [cargo]: true }, "/usr/bin/nerve-hub"), cargo);
   });
 
   test("falls through to PATH", () => {
-    const found = locateHub(probe({}, "/usr/bin/nerve-hub"), "/home/me");
-    assert.equal(found, "/usr/bin/nerve-hub");
+    assert.equal(locate({}, "/usr/bin/nerve-hub"), "/usr/bin/nerve-hub");
   });
 
   test("missing is undefined", () => {
-    assert.equal(locateHub(probe({}), "/home/me"), undefined);
+    assert.equal(locate({}), undefined);
+  });
+
+  test("the binary name carries the platform suffix", () => {
+    assert.equal(
+      HUB_BINARY,
+      process.platform === "win32" ? "nerve-hub.exe" : "nerve-hub",
+    );
+  });
+
+  test("windows install directories come from the environment", () => {
+    const dirs = platformFixedDirectories({
+      LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local",
+      ProgramFiles: "C:\\Program Files",
+    });
+    if (process.platform !== "win32") {
+      // Off Windows the function answers for this host, not for that env.
+      assert.deepEqual(dirs, ["/opt/homebrew/bin", "/usr/local/bin"]);
+      return;
+    }
+    assert.deepEqual(dirs, [
+      join("C:\\Users\\me\\AppData\\Local", "Programs", "Nerve"),
+      join("C:\\Program Files", "Programs", "Nerve"),
+    ]);
   });
 });

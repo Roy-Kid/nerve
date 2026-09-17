@@ -5,6 +5,7 @@ import {
   pathFromOpenUrl,
 } from "../model/job";
 import { foreignAlias } from "../model/machine";
+import { isAbsolutePath, isInside } from "../model/path";
 import { bestHost, type SshHost } from "./ssh";
 
 export interface TerminalHint {
@@ -30,11 +31,7 @@ export type FocusTarget =
   | { kind: "copy"; text: string; reason: string };
 
 function inFolders(path: string, folders: readonly string[]): boolean {
-  const normalised = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
-  return folders.some((folder) => {
-    const root = folder.length > 1 && folder.endsWith("/") ? folder.slice(0, -1) : folder;
-    return normalised === root || normalised.startsWith(`${root}/`);
-  });
+  return folders.some((folder) => isInside(path, folder));
 }
 
 function breadcrumb(job: Job, fallback: string): FocusTarget {
@@ -78,7 +75,7 @@ function rankLocal(job: Job, ctx: FocusContext): FocusTarget {
   }
 
   const path = pathFromOpenUrl(job.location?.openURL) ?? workspace;
-  if (path?.startsWith("/")) {
+  if (path && isAbsolutePath(path)) {
     return { kind: "folder", path };
   }
 

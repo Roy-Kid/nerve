@@ -22,6 +22,14 @@ suite("filter", () => {
     );
   });
 
+  test("this folder matches a windows workspace too", () => {
+    // The folder filter was dead on Windows: the comparison only knew `/`.
+    const row = job({ context: { workspace: "C:\\Users\\me\\work\\nerve" } });
+    assert.equal(jobInFolder(row, ["C:\\Users\\me\\work"]), true);
+    assert.equal(jobInFolder(row, ["C:/Users/me/work"]), true);
+    assert.equal(jobInFolder(row, ["C:\\Users\\me\\other"]), false);
+  });
+
   test("attention filter includes problem", () => {
     assert.equal(
       matchesFilter(

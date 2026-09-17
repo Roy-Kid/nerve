@@ -31,6 +31,9 @@ class DetachedSpawner {
     const child = spawn(program, [...args], {
       detached: true,
       stdio: "ignore",
+      // Without this, Windows gives the hub a console window of its own and
+      // one flashes on screen every time the extension starts it.
+      windowsHide: true,
     });
     child.unref();
   }

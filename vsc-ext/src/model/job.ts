@@ -1,3 +1,4 @@
+import { decode, isAbsolutePath, pathFromFileUri } from "./path";
 /** Wire job subset this surface paints. Lenient: only `id` is required. */
 
 export type Lifecycle =
@@ -352,17 +353,19 @@ export function jobWorkspace(job: Job): string | undefined {
 export function pathFromOpenUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
   const trimmed = url.trim();
-  if (trimmed.startsWith("file://")) {
-    try {
-      return decodeURIComponent(trimmed.slice("file://".length));
-    } catch {
-      return trimmed.slice("file://".length);
-    }
-  }
+  if (trimmed.startsWith("file://")) return pathFromFileUri(trimmed);
+
   const ide = /^(?:vscode|cursor|vscode-insiders):\/\/file(\/.*)$/i.exec(
     trimmed,
   );
-  if (ide) return ide[1];
-  if (trimmed.startsWith("/")) return trimmed;
+  if (ide) {
+    const decoded = decode(ide[1]);
+    // `vscode://file/C:/work` — the leading slash is the URL's, not the path's.
+    const afterSlash = decoded.slice(1);
+    if (isAbsolutePath(afterSlash)) return afterSlash;
+    if (isAbsolutePath(decoded)) return decoded;
+    return undefined;
+  }
+  if (isAbsolutePath(trimmed)) return trimmed;
   return undefined;
 }

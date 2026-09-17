@@ -216,7 +216,7 @@
     "watch": "npm-run-all -p watch:extension watch:typecheck",
     "dev": "npm run watch",
     "typecheck": "tsc --noEmit",
-    "package:prepare": "NODE_ENV=production npm run build",
+    "package:prepare": "cross-env NODE_ENV=production npm run build",
     "package": "npm run package:prepare",
     "vscode:prepublish": "npm run package",
     "test:compile": "tsc --project tsconfig.test.json",
@@ -230,6 +230,7 @@
     "@types/node": "^22.15.0",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "^3.9.1",
+    "cross-env": "^10.1.0",
     "mocha": "^11.8.0",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.8.3"

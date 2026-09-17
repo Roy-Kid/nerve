@@ -1,5 +1,6 @@
 import type { Job, Status } from "./job";
 import { jobWorkspace } from "./job";
+import { isInside } from "./path";
 import { statusOf, statusRank } from "./status";
 
 export type JobFilter = "all" | "attention" | "running" | "folder";
@@ -10,15 +11,7 @@ const RUNNING_STATUSES = new Set<Status>(["running", "monitor"]);
 export function jobInFolder(job: Job, folders: readonly string[]): boolean {
   const workspace = jobWorkspace(job);
   if (!workspace || folders.length === 0) return false;
-  const normalised = stripTrailingSlash(workspace);
-  return folders.some((folder) => {
-    const root = stripTrailingSlash(folder);
-    return normalised === root || normalised.startsWith(`${root}/`);
-  });
-}
-
-function stripTrailingSlash(path: string): string {
-  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+  return folders.some((folder) => isInside(workspace, folder));
 }
 
 export function matchesFilter(
