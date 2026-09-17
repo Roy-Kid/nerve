@@ -1,6 +1,5 @@
 //! Application state for the sidebar TUI.
 
-use std::cmp::Ordering;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -8,7 +7,16 @@ use std::time::{Duration, Instant};
 use time::OffsetDateTime;
 
 use crate::filter::StatusFilter;
-use crate::frame::{Health, JobView, Outcome};
+use crate::frame::JobView;
+use nerve_surface_core::group::{group_by_machine, MachineSection};
+
+// Re-exported while the extraction lands: `preview.rs` and `panes.rs` reach
+// for these through `crate::state::`. Removed with the rest of the facade.
+pub use nerve_surface_core::group::machine_label;
+pub use nerve_surface_core::jobpath::{
+    is_ide_deep_link, job_path, path_from_focus_hint, workspace_path_from_url,
+};
+
 use crate::git::GitSnapshot;
 use crate::preview::PanePreview;
 use crate::store::{JobsSnapshot, JobsStore};
@@ -26,15 +34,6 @@ const GIT_MIN_INTERVAL: Duration = Duration::from_secs(2);
 pub enum BottomTab {
     Prompt,
     Git,
-}
-
-/// One machine (alias) section — same grouping as macOS `panelGroupMode = .machine`.
-///
-/// Holds indices into [`AppState::jobs`] rather than borrows, so the grouping
-/// can be computed once per snapshot and cached instead of rebuilt per read.
-pub struct MachineSection {
-    pub title: String,
-    pub jobs: Vec<usize>,
 }
 
 pub struct AppState {
@@ -157,32 +156,7 @@ impl AppState {
     /// works off the cached result instead of redoing this per call.
     fn rebuild_sections(&mut self) {
         let snapshot = Arc::clone(&self.snapshot);
-        let mut buckets: Vec<(String, Vec<usize>)> = Vec::new();
-        for (index, job) in snapshot.jobs.iter().enumerate() {
-            if !self.status_filter.matches(job) {
-                continue;
-            }
-            let key = match machine_label(job) {
-                "" => UNKNOWN_MACHINE,
-                label => label,
-            };
-            if let Some(bucket) = buckets.iter_mut().find(|(title, _)| title == key) {
-                bucket.1.push(index);
-            } else {
-                buckets.push((key.to_string(), vec![index]));
-            }
-        }
-        buckets.sort_unstable_by(|(a, _), (b, _)| case_insensitive(a, b));
-        let now = self.now;
-        self.sections = buckets
-            .into_iter()
-            .map(|(title, mut jobs)| {
-                jobs.sort_unstable_by(|a, b| {
-                    compare_jobs(now, &snapshot.jobs[*a], &snapshot.jobs[*b])
-                });
-                MachineSection { title, jobs }
-            })
-            .collect();
+        self.sections = group_by_machine(&snapshot.jobs, self.now, self.status_filter);
         self.visible = self
             .sections
             .iter()
@@ -442,252 +416,6 @@ fn job_running_as(jobs: &[JobView], pids: &[u32]) -> Option<String> {
     jobs.iter()
         .find(|job| job.extensions.pid.is_some_and(|pid| pids.contains(&pid)))
         .map(|job| job.id.clone())
-}
-
-pub fn machine_label(job: &JobView) -> &str {
-    job.alias.trim()
-}
-
-/// Section title for a job whose producer named no machine.
-const UNKNOWN_MACHINE: &str = "unknown";
-
-/// Order two section titles the way `to_lowercase()` would, without building
-/// the two lower-cased copies it takes to answer.
-fn case_insensitive(a: &str, b: &str) -> Ordering {
-    a.chars()
-        .flat_map(char::to_lowercase)
-        .cmp(b.chars().flat_map(char::to_lowercase))
-}
-
-pub fn job_path(job: &JobView) -> Option<PathBuf> {
-    if let Some(url) = job.location.as_ref().and_then(|l| l.open_url.as_deref()) {
-        if let Some(path) = workspace_path_from_url(url) {
-            return Some(path);
-        }
-    }
-    if let Some(path) = job
-        .context
-        .workspace
-        .as_deref()
-        .map(str::trim)
-        .filter(|w| w.starts_with('/'))
-    {
-        return Some(PathBuf::from(path));
-    }
-    path_from_focus_hint(job.location.as_ref().and_then(|l| l.focus_hint.as_deref()))
-}
-
-/// Last absolute path segment in a focus breadcrumb (`… · /Users/…/proj`).
-pub fn path_from_focus_hint(hint: Option<&str>) -> Option<PathBuf> {
-    let hint = hint?.trim();
-    if hint.is_empty() {
-        return None;
-    }
-    if hint.starts_with('/') {
-        return Some(PathBuf::from(percent_decode(hint)));
-    }
-    if let Some(pos) = hint.find(" · /") {
-        let path = hint[pos + 3..].trim();
-        if path.starts_with('/') {
-            return Some(PathBuf::from(percent_decode(path)));
-        }
-    }
-    None
-}
-
-/// Extract a filesystem path from producer `openURL` shapes.
-///
-/// Hooks emit either `file:///path` or IDE deep links like
-/// `cursor://file/Users/…` / `vscode://file/Users/…`.
-pub fn workspace_path_from_url(url: &str) -> Option<PathBuf> {
-    let url = url.trim();
-    if url.is_empty() {
-        return None;
-    }
-    if let Some(path) = url.strip_prefix("file://") {
-        let path = path
-            .strip_prefix("localhost")
-            .or_else(|| path.strip_prefix("//localhost"))
-            .unwrap_or(path);
-        let path = if path.starts_with('/') {
-            path
-        } else {
-            return None;
-        };
-        return Some(PathBuf::from(percent_decode(path)));
-    }
-    for scheme in ["cursor://file", "vscode://file", "vscode-insiders://file"] {
-        if let Some(path) = url.strip_prefix(scheme) {
-            if path.starts_with('/') {
-                return Some(PathBuf::from(percent_decode(path)));
-            }
-        }
-    }
-    None
-}
-
-/// `%20` → space, over the bytes of `input`.
-///
-/// Decoded as bytes and re-read as UTF-8 at the end, because that is what a
-/// percent escape encodes: a path with a non-ASCII character in it arrives as
-/// several escapes that only mean anything together, and reading each one as a
-/// character of its own turned `项目` into mojibake. Anything left that is not
-/// UTF-8 degrades per character rather than losing the path.
-fn percent_decode(input: &str) -> String {
-    if !input.contains('%') {
-        return input.to_string();
-    }
-    let bytes = input.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Some(byte) = hex_byte(bytes[i + 1], bytes[i + 2]) {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// One percent escape's two hex digits as the byte they spell.
-fn hex_byte(high: u8, low: u8) -> Option<u8> {
-    let digit = |c: u8| match c {
-        b'0'..=b'9' => Some(c - b'0'),
-        b'a'..=b'f' => Some(c - b'a' + 10),
-        b'A'..=b'F' => Some(c - b'A' + 10),
-        _ => None,
-    };
-    Some(digit(high)? << 4 | digit(low)?)
-}
-
-/// Whether `openURL` is an IDE deep link the OS should open (`cursor://`, `vscode://`).
-///
-/// Plain `file://` workspace URIs mean the hook saw Terminal/iTerm/tmux — not
-/// the Cursor/VS Code app — and tmux jump should handle those jobs instead.
-pub fn is_ide_deep_link(url: &str) -> bool {
-    let url = url.trim().to_ascii_lowercase();
-    url.starts_with("cursor://")
-        || url.starts_with("vscode://")
-        || url.starts_with("vscode-insiders://")
-}
-
-/// Same ordering as macOS `SubjectStore.sortComparator`.
-fn compare_jobs(now: OffsetDateTime, a: &JobView, b: &JobView) -> Ordering {
-    match a.attention.level.cmp(&b.attention.level).reverse() {
-        Ordering::Equal => {}
-        o => return o,
-    }
-    match health_rank(a.health).cmp(&health_rank(b.health)).reverse() {
-        Ordering::Equal => {}
-        o => return o,
-    }
-    let a_fail = a.outcome == Some(Outcome::Failure);
-    let b_fail = b.outcome == Some(Outcome::Failure);
-    if a_fail != b_fail {
-        return if a_fail && !b_fail {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        };
-    }
-    match job_updated(now, a).cmp(&job_updated(now, b)).reverse() {
-        Ordering::Equal => {}
-        o => return o,
-    }
-    job_started(now, a).cmp(&job_started(now, b)).reverse()
-}
-
-fn health_rank(health: Health) -> u8 {
-    match health {
-        Health::Unresponsive => 3,
-        Health::Degraded => 2,
-        Health::Unknown => 1,
-        Health::Ok => 0,
-    }
-}
-
-fn job_updated(now: OffsetDateTime, job: &JobView) -> OffsetDateTime {
-    job.updated_at.map(|t| t.instant()).unwrap_or(now)
-}
-
-fn job_started(now: OffsetDateTime, job: &JobView) -> OffsetDateTime {
-    job.created_at
-        .map(|t| t.instant())
-        .unwrap_or_else(|| job_updated(now, job))
-}
-
-#[cfg(test)]
-mod path_url_tests {
-    use super::*;
-
-    #[test]
-    fn parses_file_uri() {
-        assert_eq!(
-            workspace_path_from_url("file:///Users/me/proj"),
-            Some(PathBuf::from("/Users/me/proj"))
-        );
-    }
-
-    #[test]
-    fn parses_cursor_deep_link() {
-        assert_eq!(
-            workspace_path_from_url("cursor://file/Users/me/proj"),
-            Some(PathBuf::from("/Users/me/proj"))
-        );
-    }
-
-    #[test]
-    fn parses_vscode_deep_link() {
-        assert_eq!(
-            workspace_path_from_url("vscode://file/tmp/work"),
-            Some(PathBuf::from("/tmp/work"))
-        );
-    }
-
-    #[test]
-    fn ide_deep_link_is_not_file_uri() {
-        assert!(is_ide_deep_link("cursor://file/Users/me"));
-        assert!(!is_ide_deep_link("file:///Users/me"));
-    }
-
-    #[test]
-    fn parses_percent_encoded_file_uri() {
-        assert_eq!(
-            workspace_path_from_url("file:///Users/me/proj%20foo"),
-            Some(PathBuf::from("/Users/me/proj foo"))
-        );
-    }
-
-    #[test]
-    fn percent_escapes_spell_one_character_together() {
-        // Three escapes, one character: decoding them one at a time is what
-        // used to hand the Git panel a path that does not exist.
-        assert_eq!(
-            workspace_path_from_url("file:///Users/me/%E9%A1%B9%E7%9B%AE"),
-            Some(PathBuf::from("/Users/me/项目"))
-        );
-    }
-
-    #[test]
-    fn a_literal_percent_survives_decoding() {
-        assert_eq!(
-            workspace_path_from_url("file:///tmp/100%/done"),
-            Some(PathBuf::from("/tmp/100%/done"))
-        );
-    }
-
-    #[test]
-    fn path_from_focus_hint_breadcrumb() {
-        assert_eq!(
-            path_from_focus_hint(Some("Claude · nerve · iTerm · /Users/me/nerve")),
-            Some(PathBuf::from("/Users/me/nerve"))
-        );
-    }
 }
 
 #[cfg(test)]

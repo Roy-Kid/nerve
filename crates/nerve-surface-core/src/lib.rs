@@ -15,11 +15,14 @@
 
 pub mod filter;
 pub mod frame;
+pub mod group;
 pub mod hub;
 pub mod instance;
+pub mod jobpath;
 pub mod launch;
 pub mod locate;
 pub mod machine;
+pub mod sort;
 pub mod status;
 pub mod store;
 pub mod stream;
