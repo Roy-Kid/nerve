@@ -20,6 +20,10 @@ repository.workspace = true
 unsafe_code = "deny"
 
 [dependencies]
+# Percent coding is a spec, not a loop: the encode set is declared and the
+# decoder handles multi-byte sequences and malformed escapes. Already in the
+# tree via `reqwest`, so naming it here adds no crate.
+percent-encoding = "2"
 
 [target.'cfg(unix)'.dependencies]
 # `kill(pid, 0)` without hand-rolled FFI.

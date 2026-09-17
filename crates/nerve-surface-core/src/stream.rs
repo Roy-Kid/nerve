@@ -13,13 +13,10 @@
 use std::time::Duration;
 
 use crate::frame::Frame;
-use crate::hub::{Hub, HubError, HubReader};
+use crate::hub::{Hub, HubError, HubEvents};
 
 /// One-shot job list — same rows a connect frame carries, bare array.
 pub const JOBS_PATH: &str = "/v1/jobs";
-
-/// The SSE field that carries a frame.
-const DATA_FIELD: &str = "data:";
 
 /// The stream to open, labelled with which surface is asking.
 ///
@@ -93,7 +90,7 @@ pub trait FrameSource {
 pub struct HubFrameSource {
     hub: Hub,
     path: String,
-    reader: Option<HubReader>,
+    events: Option<HubEvents>,
 }
 
 impl HubFrameSource {
@@ -102,35 +99,35 @@ impl HubFrameSource {
         Self {
             hub,
             path: path.into(),
-            reader: None,
+            events: None,
         }
     }
 }
 
 impl FrameSource for HubFrameSource {
     fn open(&mut self) -> Result<(), StreamError> {
-        self.reader = None;
-        self.reader = Some(self.hub.open(&self.path).map_err(StreamError::from)?);
+        // Dropped first: the old connection has to leave the hub's refcount
+        // before the new one joins it, or a reconnect looks like a second
+        // surface.
+        self.events = None;
+        self.events = Some(self.hub.open(&self.path).map_err(StreamError::from)?);
         Ok(())
     }
 
     fn next_frame(&mut self) -> Result<Option<Frame>, StreamError> {
-        let reader = self
-            .reader
+        let events = self
+            .events
             .as_mut()
             .ok_or_else(|| StreamError::Broken("stream was never opened".to_string()))?;
 
-        // Everything the transport adds — chunk sizes, `:` keep-alive comments,
-        // `event:` and `id:` fields, blank separators — is not a frame.
-        while let Some(line) = reader.next_line().map_err(StreamError::from)? {
-            let Some(payload) = line.strip_prefix(DATA_FIELD) else {
-                continue;
-            };
-            return Frame::decode(payload.trim_start())
-                .map(Some)
-                .map_err(|err| StreamError::Broken(err.to_string()));
-        }
-        Ok(None)
+        // Keep-alive comments, `event:`/`id:`/`retry:` fields and the blank
+        // separators are the parser's business; only a payload reaches here.
+        let Some(payload) = events.next_payload().map_err(StreamError::from)? else {
+            return Ok(None);
+        };
+        Frame::decode(&payload)
+            .map(Some)
+            .map_err(|err| StreamError::Broken(err.to_string()))
     }
 }
 

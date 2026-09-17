@@ -12,6 +12,12 @@
 //! decode it. Its POSIX output is byte-for-byte what `nerve-hub` has always
 //! emitted, and `tests/file_uri.rs` pins that — four independent decoders (this
 //! crate, the Swift app, the VS Code extension, the site docs) read it.
+//!
+//! The percent coding itself is `percent-encoding`'s: the encode set is
+//! declared rather than hand-matched, and the decoder already knows about
+//! multi-byte sequences and malformed escapes.
+
+use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
 /// Which OS's rules a path string is written in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,25 +122,21 @@ pub fn from_file_uri(uri: &str) -> Option<String> {
     Some(format!("\\\\{}", decoded.replace('/', "\\")))
 }
 
-/// Percent-escape everything a `file://` path may not carry literally.
+/// The characters a `file://` path may carry literally.
 ///
-/// The unreserved set is deliberately narrow and deliberately frozen: this is
-/// the wire contract, and widening it would change URLs that four decoders and
-/// the published docs already agree on.
+/// Deliberately narrow and deliberately frozen: this is the wire contract, and
+/// widening it would change URLs that four decoders and the published docs
+/// already agree on. Everything outside it is escaped byte by byte.
+const UNRESERVED: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'/')
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
+
+/// Percent-escape everything a `file://` path may not carry literally.
 pub fn percent_encode_path(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for ch in input.chars() {
-        match ch {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '/' | '-' | '_' | '.' | '~' => out.push(ch),
-            other => {
-                let mut buf = [0u8; 4];
-                for byte in other.encode_utf8(&mut buf).bytes() {
-                    out.push_str(&format!("%{byte:02X}"));
-                }
-            }
-        }
-    }
-    out
+    utf8_percent_encode(input, UNRESERVED).to_string()
 }
 
 /// `%20` → space, over the *bytes* of `input`.
@@ -143,37 +145,10 @@ pub fn percent_encode_path(input: &str) -> String {
 /// percent escape encodes: a path with a non-ASCII character in it arrives as
 /// several escapes that only mean anything together, and reading each one as a
 /// character of its own turned `项目` into mojibake. Anything left that is not
-/// UTF-8 degrades per character rather than losing the path.
+/// UTF-8 degrades per character rather than losing the path, and a malformed
+/// escape is left standing so a directory really named `100%` survives.
 pub fn percent_decode(input: &str) -> String {
-    if !input.contains('%') {
-        return input.to_string();
-    }
-    let bytes = input.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Some(byte) = hex_byte(bytes[i + 1], bytes[i + 2]) {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// One percent escape's two hex digits as the byte they spell.
-fn hex_byte(high: u8, low: u8) -> Option<u8> {
-    let digit = |c: u8| match c {
-        b'0'..=b'9' => Some(c - b'0'),
-        b'a'..=b'f' => Some(c - b'a' + 10),
-        b'A'..=b'F' => Some(c - b'A' + 10),
-        _ => None,
-    };
-    Some(digit(high)? * 16 + digit(low)?)
+    percent_decode_str(input).decode_utf8_lossy().into_owned()
 }
 
 /// `C:` exactly — a drive with no path after it.

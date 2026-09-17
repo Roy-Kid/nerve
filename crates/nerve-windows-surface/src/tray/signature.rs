@@ -10,7 +10,9 @@
 //! the icon continuously through work whose colour never changed. This is the
 //! lesson `SubjectStore.ribbonSignature` already encodes on macOS.
 
-use nerve_surface_core::palette::Rgb;
+use std::hash::{Hash, Hasher};
+
+use rustc_hash::FxHasher;
 
 use super::bands::Band;
 use super::icon::Theme;
@@ -24,28 +26,20 @@ pub struct Signature(u64);
 /// Weights are quantised to a thousandth before hashing: below that they are
 /// the same pixels, and float noise would defeat the whole gate.
 pub fn of(bands: &[Band], offline: bool, theme: Theme, size: u32) -> Signature {
-    // FNV-1a: no dependency, and the cost has to stay under the shell call it
-    // is there to avoid.
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    let mut eat = |value: u64| {
-        for byte in value.to_le_bytes() {
-            hash ^= u64::from(byte);
-            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-    };
+    // A non-cryptographic hasher, because this runs on every frame and exists
+    // to avoid a shell round trip — it has to cost less than what it saves.
+    let mut hasher = FxHasher::default();
 
-    eat(size as u64);
-    eat(u64::from(offline));
-    eat(match theme {
-        Theme::Light => 1,
-        Theme::Dark => 2,
-    });
-    eat(bands.len() as u64);
+    size.hash(&mut hasher);
+    offline.hash(&mut hasher);
+    matches!(theme, Theme::Light).hash(&mut hasher);
+    bands.len().hash(&mut hasher);
     for band in bands {
-        let Rgb { r, g, b } = band.color;
-        eat(u64::from(r) << 16 | u64::from(g) << 8 | u64::from(b));
-        eat(band.count as u64);
-        eat((band.weight.clamp(0.0, 1.0) * 1000.0).round() as u64);
+        band.color.r.hash(&mut hasher);
+        band.color.g.hash(&mut hasher);
+        band.color.b.hash(&mut hasher);
+        band.count.hash(&mut hasher);
+        ((band.weight.clamp(0.0, 1.0) * 1000.0).round() as u64).hash(&mut hasher);
     }
-    Signature(hash)
+    Signature(hasher.finish())
 }

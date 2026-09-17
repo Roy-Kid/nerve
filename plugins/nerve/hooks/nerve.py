@@ -1080,43 +1080,47 @@ def _build_job(
 def _post_json(path: str, payload: dict[str, Any]) -> tuple[int, str]:
     """POST `payload` to the fixed ingest endpoint; return `(status, detail)`.
 
-    Written straight onto a socket rather than through ``urllib``: the hook is
-    one process per agent event, and importing ``urllib.request`` — which drags
-    in ``http.client``, ``email`` and ``ssl`` — costs more than the request it
-    would send. The peer is a known one at a fixed loopback address speaking a
-    contract we own (`crates/nerve-hub/src/http/`), so the whole of what this
-    needs from HTTP is a request line, four headers and a status line.
+    Framing is ``http.client``'s job, not this file's. A hand-written request
+    line plus headers works right up until it does not — a miscounted
+    ``Content-Length`` on a multibyte payload, or a response that arrives in
+    two reads — and an ingest that fails silently is the worst kind, because
+    the agent never sees it.
 
-    Raises whatever the socket raises; the caller is what fails open.
+    The import is local and deliberate: it costs about 9 ms, and the hook runs
+    as one process per agent event, so only events that actually post should
+    pay for it. Measured against a 5 s hook timeout that is noise; measured
+    against the early-exit paths above, it is worth keeping off them.
+
+    The endpoint is read from the module globals at call time rather than
+    captured in a default argument, which is the seam the transport tests
+    already use to point this at a stand-in on an ephemeral port. Production
+    never moves it: the ingest address is fixed (CLAUDE.md invariant 2).
+
+    Raises whatever the connection raises; the caller is what fails open.
     """
+    import http.client
+
     body = json.dumps(payload).encode("utf-8")
-    head = (
-        f"POST {path} HTTP/1.1\r\n"
-        f"Host: {INGEST_HOST}:{INGEST_PORT}\r\n"
-        "User-Agent: nerve-hook/0.4\r\n"
-        "Content-Type: application/json\r\n"
-        # One request per connection: no keep-alive to manage, and the close is
-        # what ends the read below.
-        "Connection: close\r\n"
-        f"Content-Length: {len(body)}\r\n\r\n"
-    ).encode("ascii")
-
-    answer = b""
-    with socket.create_connection(
-        (INGEST_HOST, INGEST_PORT), timeout=INGEST_TIMEOUT
-    ) as sock:
-        sock.sendall(head + body)
-        while len(answer) < _ANSWER_CAP:
-            piece = sock.recv(_ANSWER_CAP)
-            if not piece:
-                break
-            answer += piece
-
-    status_line, _, rest = answer.partition(b"\r\n")
-    fields = status_line.split(None, 2)
-    status = int(fields[1]) if len(fields) > 1 and fields[1].isdigit() else 0
-    detail = rest.partition(b"\r\n\r\n")[2].decode("utf-8", errors="replace")[:200]
-    return status, detail
+    connection = http.client.HTTPConnection(
+        INGEST_HOST, INGEST_PORT, timeout=INGEST_TIMEOUT
+    )
+    try:
+        connection.request(
+            "POST",
+            path,
+            body=body,
+            headers={
+                "User-Agent": "nerve-hook/0.4",
+                "Content-Type": "application/json",
+                # One request per connection: no keep-alive to manage.
+                "Connection": "close",
+            },
+        )
+        response = connection.getresponse()
+        detail = response.read(_ANSWER_CAP).decode("utf-8", errors="replace")[:200]
+        return response.status, detail
+    finally:
+        connection.close()
 
 
 def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:

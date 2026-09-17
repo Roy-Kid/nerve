@@ -8,7 +8,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
-const net = require("net");
+const http = require("http");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -542,10 +542,18 @@ function slotClear(id, session) {
   } catch (_) {}
 }
 
-function postSnapshot(alias, kind, job) {
+// Node's own HTTP client, not a hand-written request over a raw socket.
+// Framing, `Content-Length`, the response and connection teardown are the
+// runtime's job; getting any of them subtly wrong here would corrupt an ingest
+// the agent never sees fail.
+//
+// Fail-open in every arm (CLAUDE.md invariant 2): unreachable, refused and slow
+// all resolve rather than reject, so no hook event can ever block an agent.
+// `port` is for tests only: production never passes it, because the ingest
+// address is fixed (CLAUDE.md invariant 2) and a test must never bind 17890 —
+// that port belongs to the hub a developer is actually running.
+function postSnapshot(alias, kind, job, port = INGEST_PORT) {
   const body = Buffer.from(JSON.stringify({ alias, machineKind: kind, jobs: [job] }));
-  const head =
-    `POST /v1/snapshot HTTP/1.1\r\nHost: ${INGEST_HOST}:${INGEST_PORT}\r\nUser-Agent: nerve-hook-node/0.1\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ${body.length}\r\n\r\n`;
   return new Promise((resolve) => {
     let done = false;
     const finish = () => {
@@ -553,26 +561,39 @@ function postSnapshot(alias, kind, job) {
       done = true;
       resolve();
     };
-    let sock;
+    let request;
     try {
-      sock = net.connect({ host: INGEST_HOST, port: INGEST_PORT });
+      request = http.request(
+        {
+          host: INGEST_HOST,
+          port,
+          method: "POST",
+          path: "/v1/snapshot",
+          headers: {
+            "User-Agent": "nerve-hook-node/0.1",
+            "Content-Type": "application/json",
+            "Content-Length": body.length,
+            Connection: "close",
+          },
+        },
+        (response) => {
+          // Drain so the socket can close; the body is of no interest.
+          response.resume();
+          response.on("end", finish);
+          response.on("error", finish);
+        },
+      );
     } catch (_) {
       finish();
       return;
     }
-    sock.setTimeout(INGEST_TIMEOUT_MS);
-    sock.on("connect", () => {
-      sock.write(head);
-      sock.write(body);
-      sock.end();
-    });
-    sock.on("error", finish);
-    sock.on("timeout", () => {
-      sock.destroy();
+    request.setTimeout(INGEST_TIMEOUT_MS, () => {
+      request.destroy();
       finish();
     });
-    sock.on("close", finish);
-    sock.resume();
+    request.on("error", finish);
+    request.on("close", finish);
+    request.end(body);
   });
 }
 
@@ -629,4 +650,7 @@ if (require.main === module) {
   main().then((code) => process.exit(code));
 }
 
-module.exports = { processEvent, mapEvent, eventName, sessionId, fileUri, pathStyle, buildLocation };
+module.exports = {
+  processEvent, mapEvent, eventName, sessionId,
+  fileUri, pathStyle, buildLocation, postSnapshot,
+};

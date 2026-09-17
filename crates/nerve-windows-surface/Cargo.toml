@@ -24,6 +24,10 @@ nerve-platform = { path = "../nerve-platform" }
 # at two sizes, so one rasteriser draws both. Pure safe-API Rust, no system
 # dependency — which is what keeps `unsafe_code = "forbid"` honest here.
 tiny-skia = "0.11"
+# The redraw gate's hash. Non-cryptographic and fast on purpose: it runs every
+# frame and exists to avoid a shell round trip, so it must cost less than what
+# it saves.
+rustc-hash = "2"
 
 [dev-dependencies]
 nerve-surface-core = { path = "../nerve-surface-core", features = ["testkit"] }

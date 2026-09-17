@@ -173,27 +173,28 @@ pub fn forward_stdin() -> i32 {
     0
 }
 
+/// Forward one event to the hub already running on this machine.
+///
+/// Fail-open in every arm (CLAUDE.md invariant 2): a hub that is not there, a
+/// refused connection and a slow answer all mean the same thing to the agent,
+/// which is that nothing happened and it may carry on. The caller exits 0
+/// regardless.
 fn post_loopback(path: &str, body: &[u8]) -> Result<(), ()> {
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
     use std::time::Duration;
-    let mut stream = TcpStream::connect_timeout(&crate::INGEST_ADDR, Duration::from_millis(400))
+
+    let url = format!("http://{}{path}", crate::INGEST_ADDR);
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_millis(400))
+        .timeout(Duration::from_millis(800))
+        .build()
         .map_err(|_| ())?;
-    stream
-        .set_read_timeout(Some(Duration::from_millis(800)))
-        .ok();
-    stream
-        .set_write_timeout(Some(Duration::from_millis(800)))
-        .ok();
-    let head = format!(
-        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:17890\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(head.as_bytes()).map_err(|_| ())?;
-    stream.write_all(body).map_err(|_| ())?;
-    let mut buf = [0u8; 256];
-    let _ = stream.read(&mut buf);
-    Ok(())
+    client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .body(body.to_vec())
+        .send()
+        .map(|_| ())
+        .map_err(|_| ())
 }
 
 #[cfg(test)]

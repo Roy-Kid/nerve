@@ -119,3 +119,75 @@ test("a windows cwd still reports a focus hint with the path in it", () => {
   const loc = buildLocation({}, "C:\\work\\nerve");
   assert.ok(loc.focusHint.endsWith(" · C:\\work\\nerve"));
 });
+
+// ── Transport ───────────────────────────────────────────────────────────────
+
+const http = require("node:http");
+const { postSnapshot } = require("./nerve.js");
+
+/** A throwaway ingest server on an ephemeral port. Never 17890. */
+function ingest(handler) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("{}");
+        handler({ method: req.method, url: req.url, headers: req.headers, body });
+      });
+    });
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  });
+}
+
+test("a snapshot arrives as a well-formed POST", async () => {
+  let seen;
+  const server = await ingest((request) => { seen = request; });
+  const { port } = server.address();
+  assert.notEqual(port, 17890, "a test must never take the hub's own port");
+
+  try {
+    await postSnapshot("thinkpad", "windows", { id: "j", name: "nerve" }, port);
+  } finally {
+    // The handler runs before the response is fully flushed to us; give the
+    // event loop the turn it needs before tearing the server down.
+    await new Promise((r) => setImmediate(r));
+    server.close();
+  }
+
+  assert.equal(seen.method, "POST");
+  assert.equal(seen.url, "/v1/snapshot");
+  assert.equal(seen.headers["content-type"], "application/json");
+  const payload = JSON.parse(seen.body);
+  assert.equal(payload.alias, "thinkpad");
+  assert.equal(payload.machineKind, "windows");
+  assert.deepEqual(payload.jobs, [{ id: "j", name: "nerve" }]);
+});
+
+test("a multibyte job name keeps its Content-Length honest", async () => {
+  // The hand-written request used `body.length` on a Buffer, which is bytes —
+  // correct, but only by luck of the author remembering. Pin it.
+  let seen;
+  const server = await ingest((request) => { seen = request; });
+  const { port } = server.address();
+  try {
+    await postSnapshot("mac", "darwin", { id: "j", name: "项目" }, port);
+  } finally {
+    await new Promise((r) => setImmediate(r));
+    server.close();
+  }
+  const expected = Buffer.byteLength(seen.body);
+  assert.equal(Number(seen.headers["content-length"]), expected);
+  assert.equal(JSON.parse(seen.body).jobs[0].name, "项目");
+});
+
+test("nothing listening resolves rather than throwing", async () => {
+  // Fail-open: no hook event may ever block or crash an agent.
+  const server = await ingest(() => {});
+  const { port } = server.address();
+  server.close();
+  await new Promise((r) => server.on("close", r));
+
+  await postSnapshot("mac", "darwin", { id: "j", name: "nerve" }, port);
+});

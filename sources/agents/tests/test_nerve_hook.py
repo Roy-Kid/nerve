@@ -764,7 +764,7 @@ class NerveHookTests(unittest.TestCase):
 
 
 class IngestTransportTests(unittest.TestCase):
-    """The hand-written loopback POST, against a real socket.
+    """The loopback POST, against a real socket.
 
     Every other test replaces ``_post_snapshot`` outright, so without this the
     transport that actually reaches ``nerve-hub`` would have no coverage at all.

@@ -45,6 +45,10 @@ futures-core = "0.3"
 # Both are OS-shaped, and the probe is the one place in the repo that needs
 # `unsafe`, so it lives behind this crate's audited boundary rather than here.
 nerve-platform = { path = "../nerve-platform" }
+# One blocking POST, for the `nerve-hub hook` forwarder. A total timeout is the
+# right shape here — unlike the surfaces' endless stream, this request either
+# finishes quickly or the agent should not be waiting on it.
+reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
 
 [dev-dependencies]
 # Contract tests drive the `Router` directly with `ServiceExt::oneshot`, so no

@@ -17,14 +17,31 @@ nerve-platform = { path = "../nerve-platform" }
 # Frame decoding only. A surface consumes the hub contract, it never serves.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# HTTP and SSE are protocols with real edge cases — chunked framing that can
+# split a `data:` line in half, header folding, keep-alive — so they are a
+# dependency rather than something maintained here.
+#
+# `read_timeout` is why the async client rather than `reqwest::blocking`: it
+# resets after every successful read, which is exactly what an endless SSE
+# stream needs to notice a half-open socket. The blocking builder does not
+# expose it, and a total budget would kill a healthy stream instead.
+reqwest = { version = "0.13", default-features = false, features = ["stream"] }
+# WHATWG event-stream framing, straight off `Response::bytes_stream`.
+eventsource-stream = "0.2"
+# The byte type `reqwest` streams and `eventsource-stream` consumes.
+bytes = "1"
+futures-util = { version = "0.3", default-features = false }
+# One current-thread runtime per `Hub`, private to it. No worker threads, and
+# every method stays blocking to its caller.
+tokio = { version = "1", features = ["rt", "time"] }
 # The wire is ISO8601 second-precision `Z` (`crates/nerve-hub/src/model/time.rs`),
 # so the same date library the hub already pulls in parses it here.
 time = { version = "0.3", features = ["formatting", "parsing", "macros", "serde"] }
 
-# No `tokio`, no HTTP client, no terminal library, no GUI toolkit — on purpose.
-# This crate is the part of a surface that has no pixels: every port is
-# blocking and pull-based so the composition root owns scheduling, and every
-# derivation is a pure function a test can call without an OS.
+# No terminal library and no GUI toolkit: this crate is the part of a surface
+# that has no pixels. Every port it exposes is still blocking and pull-based so
+# the composition root owns scheduling — the runtime below lives inside the
+# transport and never reaches a UI loop.
 
 [features]
 # Frame fixtures shared by every surface's tests. Never enabled by a binary.
@@ -34,3 +51,10 @@ testkit = []
 # The fixtures this crate's own tests read.
 nerve-surface-core = { path = ".", features = ["testkit"] }
 serde_json = "1"
+# `tests/transport.rs` drives this crate's client against a real `nerve-hub`
+# on an ephemeral port — the only place the two halves of the contract meet.
+nerve-hub = { path = "../nerve-hub" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+time = { version = "0.3", features = ["macros"] }
+tower = "0.5"
