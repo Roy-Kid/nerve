@@ -13,4 +13,6 @@
 //! below, tested on whatever machine runs `cargo test`. Only the pixels need
 //! Windows.
 
+pub mod actions;
+pub mod flyout;
 pub mod tray;

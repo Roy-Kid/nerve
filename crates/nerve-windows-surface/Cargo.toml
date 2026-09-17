@@ -17,6 +17,9 @@ path = "src/lib.rs"
 [dependencies]
 # Everything this surface does that is not drawing.
 nerve-surface-core = { path = "../nerve-surface-core" }
+# Path shape, for deciding whether a reported location is one this machine
+# could open at all.
+nerve-platform = { path = "../nerve-platform" }
 # The tray icon and the in-panel ribbon are the same axis-aligned rounded bars
 # at two sizes, so one rasteriser draws both. Pure safe-API Rust, no system
 # dependency — which is what keeps `unsafe_code = "forbid"` honest here.

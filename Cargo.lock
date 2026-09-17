@@ -944,6 +944,7 @@ dependencies = [
 name = "nerve-windows-surface"
 version = "0.1.0"
 dependencies = [
+ "nerve-platform",
  "nerve-surface-core",
  "serde_json",
  "tiny-skia",
