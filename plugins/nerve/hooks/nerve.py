@@ -847,17 +847,29 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
 def _file_uri(path: str) -> str | None:
     """Percent-encoded file:// URI for an absolute path (or None if not absolute).
 
+    Absoluteness is asked of ``Path``, not of a leading slash: this hook runs on
+    the machine that owns ``cwd``, so the host's own rules are the right ones,
+    and ``C:\\work\\nerve`` used to answer None on the very platform where it is
+    absolute. ``as_uri`` then emits ``file:///C:/work/nerve``, which is what the
+    surfaces decode.
+
     Uses the path as given (no resolve) so unit tests and missing dirs still work.
     """
-    if not path or not str(path).startswith("/"):
+    if not path:
         return None
     try:
-        return Path(path).as_uri()
+        candidate = Path(path)
+    except (TypeError, ValueError):
+        return None
+    if not candidate.is_absolute():
+        return None
+    try:
+        return candidate.as_uri()
     except ValueError:
         # Extremely odd paths — last-resort encoding.
         from urllib.parse import quote
 
-        return "file://" + quote(path, safe="/")
+        return "file://" + quote(str(path).replace("\\", "/"), safe="/:")
 
 
 def _detect_ide_scheme() -> str | None:
@@ -927,9 +939,13 @@ def _build_location(
 
     open_url: str | None = None
     scheme = _detect_ide_scheme()
-    if scheme and cwd and str(cwd).startswith("/"):
+    if scheme and cwd and Path(cwd).is_absolute():
         # vscode://file/Users/… and cursor://file/Users/… (no extra slash).
-        open_url = f"{scheme}://file{cwd}"
+        # A drive path needs the URL's own slash: vscode://file/C:/work/nerve.
+        target = str(cwd).replace("\\", "/")
+        if not target.startswith("/"):
+            target = "/" + target
+        open_url = f"{scheme}://file{target}"
     else:
         open_url = _file_uri(cwd)
 

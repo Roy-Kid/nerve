@@ -328,9 +328,41 @@ function detectIde() {
   return null;
 }
 
+// Wire paths. A cwd is written in this machine's rules, and the hub and every
+// surface may read it from another one, so shape is asked of the string rather
+// than of the host. Same rules as `nerve_platform::path` on the Rust side,
+// which is what decodes what we emit. The POSIX encoding is unchanged: it is
+// the contract four decoders already agree on.
+const DRIVE_ROOTED = /^[A-Za-z]:[\\/]/;
+
+function pathStyle(p) {
+  if (!p) return null;
+  if (p.startsWith("/")) return "posix";
+  if (p.startsWith("\\\\")) return "windows";
+  if (DRIVE_ROOTED.test(p)) return "windows";
+  return null;
+}
+
+function encodePath(p) {
+  return encodeURI(p).replace(/#/g, "%23");
+}
+
 function fileUri(p) {
-  if (!p || !p.startsWith("/")) return null;
-  return "file://" + encodeURI(p).replace(/#/g, "%23");
+  const style = pathStyle(p);
+  if (!style) return null;
+  if (style === "posix") return "file://" + encodePath(p);
+  const slashed = p.replace(/\\/g, "/");
+  // UNC: the server is the URL's authority (RFC 8089).
+  if (slashed.startsWith("//")) return "file://" + encodePath(slashed.slice(2));
+  return "file:///" + encodePath(slashed);
+}
+
+// `vscode://file/C:/work` — the drive needs the URL's leading slash, which a
+// POSIX path already supplies itself.
+function ideFilePath(cwd) {
+  if (pathStyle(cwd) === "posix") return cwd;
+  const slashed = cwd.replace(/\\/g, "/");
+  return slashed.startsWith("/") ? slashed : "/" + slashed;
 }
 
 function buildLocation(payload, cwd) {
@@ -338,7 +370,8 @@ function buildLocation(payload, cwd) {
   let focusHint = `Claude Code · ${project} · session`;
   if (cwd) focusHint += ` · ${cwd}`;
   const scheme = detectIde();
-  const openURL = scheme && cwd && cwd.startsWith("/") ? `${scheme}://file${cwd}` : fileUri(cwd);
+  const openURL =
+    scheme && pathStyle(cwd) ? `${scheme}://file${ideFilePath(cwd)}` : fileUri(cwd);
   const loc = { openURL, focusHint, logPath: get(payload, ["transcript_path", "transcriptPath"]) };
   return Object.fromEntries(Object.entries(loc).filter(([, v]) => v != null && v !== ""));
 }
@@ -403,18 +436,63 @@ function buildJob(payload, session, facets) {
   return job;
 }
 
+// Which terminal window this session belongs to, so a new session in the same
+// window supersedes the old one instead of stacking up.
+//
+// `WT_SESSION` (Windows Terminal) and `ConEmuPID` are here because without
+// them every Windows session fell through to the pid token, and two concurrent
+// sessions under one agent host collided on a single slot.
+const SLOT_ENV_KEYS = [
+  "TERM_SESSION_ID",
+  "ITERM_SESSION_ID",
+  "WEZTERM_PANE",
+  "KITTY_WINDOW_ID",
+  "TMUX_PANE",
+  "WT_SESSION",
+  "ConEmuPID",
+];
+
 function slotId(payload) {
-  const token =
-    process.env.TERM_SESSION_ID ? `TERM_SESSION_ID:${process.env.TERM_SESSION_ID}` :
-    process.env.ITERM_SESSION_ID ? `ITERM_SESSION_ID:${process.env.ITERM_SESSION_ID}` :
-    process.env.WEZTERM_PANE ? `WEZTERM_PANE:${process.env.WEZTERM_PANE}` :
-    process.env.KITTY_WINDOW_ID ? `KITTY_WINDOW_ID:${process.env.KITTY_WINDOW_ID}` :
-    process.env.TMUX_PANE ? `TMUX_PANE:${process.env.TMUX_PANE}` :
-    agentPid() ? `pid:${agentPid()}` : "default";
+  let token = "default";
+  for (const key of SLOT_ENV_KEYS) {
+    const value = process.env[key];
+    if (value) { token = `${key}:${value}`; break; }
+  }
+  if (token === "default") {
+    const pid = agentPid();
+    if (pid) token = `pid:${pid}`;
+  }
   return crypto.createHash("sha256").update(`claude\0${machineAlias()}\0${token}`).digest("hex").slice(0, 32);
 }
 
+// The agent process, as best this hook can tell.
+//
+// Answered once per hook run: `slotId` and the job body both want it, and on
+// POSIX each answer costs up to six `ps` spawns.
+let _agentPid;
+let _agentPidResolved = false;
 function agentPid() {
+  if (_agentPidResolved) return _agentPid;
+  _agentPidResolved = true;
+  _agentPid = process.platform === "win32" ? windowsAgentPid() : posixAgentPid();
+  return _agentPid;
+}
+
+// Windows has no `ps`, and the equivalent — `Get-CimInstance Win32_Process` —
+// costs roughly half a second to start. This hook runs on every event and must
+// never be what makes an agent feel slow, so it does not climb at all.
+//
+// It does not need to: `hooks.json` invokes us in exec form (`node` + args,
+// no shell), so the parent already *is* the agent host. The POSIX climb below
+// exists to see past a shell wrapper, which is not in the way here. If this is
+// ever wrong the cost is a row that leaves on SessionEnd instead of on reap —
+// the same fail-open posture as every other arm of this file.
+function windowsAgentPid() {
+  const pid = process.ppid;
+  return pid > 1 ? pid : null;
+}
+
+function posixAgentPid() {
   let pid = process.ppid;
   let last = pid;
   for (let i = 0; i < 6 && pid && pid > 1; i++) {
@@ -551,4 +629,4 @@ if (require.main === module) {
   main().then((code) => process.exit(code));
 }
 
-module.exports = { processEvent, mapEvent, eventName, sessionId };
+module.exports = { processEvent, mapEvent, eventName, sessionId, fileUri, pathStyle, buildLocation };
