@@ -14,6 +14,8 @@
 //! Windows.
 
 pub mod actions;
+pub mod app;
 pub mod flyout;
 pub mod notify;
+pub mod platform;
 pub mod tray;

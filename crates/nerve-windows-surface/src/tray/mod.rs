@@ -5,3 +5,4 @@ pub mod dpi;
 pub mod icon;
 pub mod signature;
 pub mod tooltip;
+pub mod view;

@@ -71,10 +71,12 @@ jobs:
         run: >
           cargo test -p nerve-platform -p nerve-hub -p nerve-surface-core -p nerve-windows-surface
           --all-features
-      - name: build the hub
-        run: cargo build --release -p nerve-hub
+      - name: build the hub and the tray surface
+        run: cargo build --release -p nerve-hub -p nerve-windows-surface
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nerve-hub-windows-x64
-          path: target/release/nerve-hub.exe
+          name: nerve-windows-x64
+          path: |
+            target/release/nerve-hub.exe
+            target/release/nerve-windows-surface.exe
