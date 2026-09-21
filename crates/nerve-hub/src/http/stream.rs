@@ -20,7 +20,7 @@ use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 
-use crate::lifecycle::{Presence, Subscription};
+use crate::lifecycle::{RosterGuard, SurfaceRoster};
 use crate::sse::Broadcaster;
 
 use super::{guard, routes};
@@ -35,12 +35,12 @@ const CONNECTION_BACKLOG: usize = 4;
 #[derive(Clone)]
 pub struct StreamState {
     frames: Arc<Broadcaster>,
-    presence: Presence,
+    roster: SurfaceRoster,
 }
 
 impl StreamState {
-    pub fn new(frames: Arc<Broadcaster>, presence: Presence) -> Self {
-        Self { frames, presence }
+    pub fn new(frames: Arc<Broadcaster>, roster: SurfaceRoster) -> Self {
+        Self { frames, roster }
     }
 }
 
@@ -58,9 +58,8 @@ pub fn stream_router(state: StreamState) -> Router {
         .layer(middleware::from_fn(guard::allow_any_origin))
 }
 
-/// `?surface=<label>`: a log tag and nothing else. Every surface sees every
-/// frame — there is no per-surface filtering, and adding one would break the
-/// "frames are the authoritative full set" rule that makes reconnects free.
+/// `?surface=<label>` names this connection for the notify lease. Every
+/// surface still sees every frame — there is no per-surface job filtering.
 #[derive(Debug, Deserialize)]
 struct SurfaceQuery {
     surface: Option<String>,
@@ -70,11 +69,9 @@ async fn stream(
     State(state): State<StreamState>,
     Query(query): Query<SurfaceQuery>,
 ) -> Sse<KeepAliveStream<FrameStream>> {
-    let presence = state.presence.subscribe();
-    eprintln!(
-        "nerve-hub: surface `{}` attached",
-        query.surface.as_deref().unwrap_or("anonymous")
-    );
+    let label = query.surface.as_deref().unwrap_or("anonymous");
+    let presence = state.roster.subscribe(label);
+    tracing::info!(surface = label, "surface attached");
 
     let (updates, connect) = state.frames.join();
     let (outgoing, incoming) = mpsc::channel(CONNECTION_BACKLOG);
@@ -125,7 +122,7 @@ async fn relay(
 /// reference, so the lifecycle needs no notion of sockets at all.
 struct FrameStream {
     frames: mpsc::Receiver<Arc<str>>,
-    _presence: Subscription,
+    _presence: RosterGuard,
 }
 
 impl Stream for FrameStream {

@@ -13,6 +13,7 @@ use axum::{middleware, Json, Router};
 use serde_json::{json, Value};
 
 use crate::hook::SlotMap;
+use crate::lifecycle::SurfaceRoster;
 use crate::sse::ChangeSignal;
 use crate::state::JobStore;
 
@@ -29,6 +30,7 @@ pub struct HubState {
     store: Arc<Mutex<JobStore>>,
     slots: Arc<Mutex<SlotMap>>,
     changes: ChangeSignal,
+    roster: SurfaceRoster,
 }
 
 impl HubState {
@@ -37,18 +39,30 @@ impl HubState {
     ///
     /// The change signal such a state raises has no reader: a store nobody else
     /// holds cannot be rendered into frames by anyone. Serving REST only is a
-    /// legitimate way to use these routes.
+    /// legitimate way to use these routes. The roster starts empty, so health
+    /// reports zero watchers.
     pub fn new(store: JobStore) -> Self {
-        Self::from_shared(Arc::new(Mutex::new(store)), ChangeSignal::new())
+        let changes = ChangeSignal::new();
+        let roster = SurfaceRoster::new(changes.clone());
+        Self::from_shared(Arc::new(Mutex::new(store)), changes, roster)
     }
 
     /// The same routes over a store the runtime also renders frames from.
-    pub fn from_shared(store: Arc<Mutex<JobStore>>, changes: ChangeSignal) -> Self {
+    pub fn from_shared(
+        store: Arc<Mutex<JobStore>>,
+        changes: ChangeSignal,
+        roster: SurfaceRoster,
+    ) -> Self {
         Self {
             store,
             slots: Arc::new(Mutex::new(SlotMap::new())),
             changes,
+            roster,
         }
+    }
+
+    pub(super) fn roster(&self) -> &SurfaceRoster {
+        &self.roster
     }
 
     /// Lock the store for the length of one handler.
@@ -90,8 +104,10 @@ pub fn router(state: HubState) -> Router {
         .route("/v1/hook", post(super::hook::ingest))
         .route("/v1/actions/pending", get(actions::pending))
         .route("/v1/actions/result", post(actions::result))
+        .route("/v1/refresh", post(admin::refresh))
         .route("/v1/demo", post(admin::demo))
         .route("/v1/clear", post(admin::clear))
+        .route("/v1/notify", get(admin::notify).put(admin::put_notify))
         // `POST /v1/actions/invoke` is deliberately absent: invoking an action
         // is an NSWorkspace side effect and belongs to a surface. It falls
         // through here like any other unknown path.

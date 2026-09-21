@@ -169,6 +169,19 @@ fn test_line_40_beats_an_ended_success() {
 // ── :43-:53 — elevated attention (>= suggested) ─────────────────────────────
 
 #[test]
+fn test_busy_current_beats_stale_ask() {
+    assert_eq!(
+        class(json!({
+            "id": "a",
+            "lifecycle": "active",
+            "current": { "type": "tool", "summary": "Using Read" },
+            "attention": { "level": "required", "reason": "approval", "title": "Approval needed in agent" }
+        })),
+        StatusClass::Running
+    );
+}
+
+#[test]
 fn test_line_49_required_attention_asking_for_input_is_attention() {
     assert_eq!(
         class(json!({

@@ -31,6 +31,7 @@ const EXIT_OK: u8 = 0;
 const EXIT_USAGE: u8 = 2;
 
 fn main() -> ExitCode {
+    nerve_surface_core::log::init("nerve-tmux");
     let args: Vec<String> = env::args().skip(1).collect();
     if let Some(code) = cli::run(&args) {
         return ExitCode::from(code.clamp(0, 255) as u8);

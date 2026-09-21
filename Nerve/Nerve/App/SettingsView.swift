@@ -304,7 +304,7 @@ struct PreferencesView: View {
 
                 Section {
                     if settings.machines.isEmpty {
-                        Text("No Host entries in ~/.ssh/config. Add a Host there, then refresh.")
+                        Text("No SSH hosts.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 4)
@@ -402,11 +402,23 @@ struct PreferencesView: View {
 
                 Spacer()
 
-                Button("Connect") { tunnels.connect(id: machine.id) }
-                    .disabled(!machine.enabled || state == .connecting)
-                Button("Disconnect") { tunnels.disconnect(id: machine.id, clearError: true) }
+                PanelIconButton(
+                    systemName: "bolt.horizontal",
+                    help: "Connect",
+                    accessibilityLabel: "Connect",
+                    enabled: machine.enabled && state != .connecting
+                ) {
+                    tunnels.connect(id: machine.id)
+                }
+                PanelIconButton(
+                    systemName: "xmark",
+                    help: "Disconnect",
+                    accessibilityLabel: "Disconnect",
+                    enabled: state != .idle
+                ) {
+                    tunnels.disconnect(id: machine.id, clearError: true)
+                }
             }
-            .buttonStyle(.borderless)
         }
         .padding(.vertical, 4)
     }
@@ -568,9 +580,33 @@ struct PreferencesView: View {
 
     // MARK: Notifications
 
+    private var notifyPolicyBinding: Binding<String> {
+        Binding(
+            get: { store.notify.policy == .all ? "all" : "single" },
+            set: { store.notifyPolicySink?($0) }
+        )
+    }
+
     private var notificationsPane: some View {
         SettingsPage(tab: .notifications) {
             Form {
+                Section {
+                    Picker("When several surfaces are open", selection: notifyPolicyBinding) {
+                        Text("One surface (recommended)").tag("single")
+                        Text("Every surface").tag("all")
+                    }
+                    .help("The hub elects one owner when macOS Nerve and Tether (or VS Code) are both connected, so the same Ask is not bannered twice.")
+                    if let owner = store.notify.owner, store.notify.policy == .single {
+                        Text("Current owner: \(owner)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Broadcast")
+                } footer: {
+                    Text("One surface lets the hub pick a single notifier from the connected Nerve surfaces. Every surface is the old behaviour: each app that has notifications on may fire.")
+                }
+
                 Section {
                     PreferenceToggleRow(
                         title: "Pause all",

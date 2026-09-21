@@ -62,7 +62,7 @@ final class MachineTunnelManager {
             do {
                 try SSHConfigWriter.sync(machines: machines, localIngestPort: port)
             } catch {
-                NSLog("[Nerve] SSH config sync failed: %@", "\(error)")
+                NerveLog.tunnel.error("SSH config sync failed: \(String(describing: error), privacy: .public)")
             }
         }
     }
@@ -91,7 +91,7 @@ final class MachineTunnelManager {
             do {
                 try SSHConfigWriter.sync(machines: machines, localIngestPort: localPort)
             } catch {
-                NSLog("[Nerve] SSH config sync failed: %@", "\(error)")
+                NerveLog.tunnel.error("SSH config sync failed: \(String(describing: error), privacy: .public)")
             }
 
             let known = Self.hostKeyKnown(host: probeHost, alias: alias, port: probePort)

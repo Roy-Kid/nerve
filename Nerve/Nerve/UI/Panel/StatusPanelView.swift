@@ -1,6 +1,44 @@
 import AppKit
 import SwiftUI
 
+/// One size for every panel / chrome icon: 14pt glyph in a 28pt hit target.
+enum PanelChrome {
+    static let symbolSize: CGFloat = 14
+    static let hit: CGFloat = 28
+
+    static func symbol(_ systemName: String, weight: Font.Weight = .medium) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: symbolSize, weight: weight))
+            .symbolRenderingMode(.hierarchical)
+    }
+}
+
+/// Borderless, icon-only control. Title lives in the help tag and VoiceOver.
+struct PanelIconButton: View {
+    let systemName: String
+    var help: String
+    var accessibilityLabel: String
+    var accessibilityHint: String = ""
+    var emphasized: Bool = false
+    var enabled: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            PanelChrome.symbol(systemName)
+                .foregroundStyle(emphasized ? Color.red : Color.primary.opacity(enabled ? 0.75 : 0.28))
+                .frame(width: PanelChrome.hit, height: PanelChrome.hit)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 private enum PanelConfirmation: Identifiable {
     case clearAll
     case destructiveAction(actionId: String, jobId: String, title: String, producer: String)
@@ -195,9 +233,9 @@ struct StatusPanelView: View {
     private var refreshButton: some View {
         headerIconButton(
             systemName: "arrow.clockwise",
-            help: "Refresh ribbon and expire stale pending actions",
+            help: "Ask the hub to reap dead jobs and republish",
             accessibilityLabel: "Refresh",
-            accessibilityHint: "Refreshes presentation"
+            accessibilityHint: "Runs hub maintenance and reloads the job list"
         ) {
             refreshPresentation()
         }
@@ -232,20 +270,14 @@ struct StatusPanelView: View {
         emphasized: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 11, weight: .medium))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(emphasized ? Color.red.opacity(0.9) : Color.secondary)
-                .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
-        }
-        // `.plain` is more reliable than `.borderless` for icon hits in MenuBarExtra.
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(accessibilityHint)
-        .accessibilityAddTraits(.isButton)
+        PanelIconButton(
+            systemName: systemName,
+            help: help,
+            accessibilityLabel: accessibilityLabel,
+            accessibilityHint: accessibilityHint,
+            emphasized: emphasized,
+            action: action
+        )
     }
 
     private func cycleGroupMode() {
@@ -262,9 +294,7 @@ struct StatusPanelView: View {
     }
 
     private func refreshPresentation() {
-        // Job upkeep (expiry, PID reaping) belongs to the hub; the panel only
-        // asks the ribbon to repaint what the latest frame already says.
-        store.ribbonInvalidationSink?()
+        store.refreshFromHub()
     }
 
     private func confirmClearAll() {
@@ -280,9 +310,9 @@ struct StatusPanelView: View {
     @ViewBuilder
     private func confirmationBar(_ item: PanelConfirmation) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11, weight: .semibold))
+            PanelChrome.symbol("exclamationmark.triangle.fill", weight: .semibold)
                 .foregroundStyle(.orange)
+                .frame(width: PanelChrome.hit, height: PanelChrome.hit)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -297,19 +327,23 @@ struct StatusPanelView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button("Cancel") {
+            PanelIconButton(
+                systemName: "xmark",
+                help: "Cancel",
+                accessibilityLabel: "Cancel"
+            ) {
                 confirmation = nil
             }
-            .buttonStyle(.bordered)
-            .controlSize(.mini)
             .keyboardShortcut(.cancelAction)
 
-            Button(confirmationConfirmLabel(item), role: .destructive) {
+            PanelIconButton(
+                systemName: confirmationConfirmSymbol(item),
+                help: confirmationConfirmLabel(item),
+                accessibilityLabel: confirmationConfirmLabel(item),
+                emphasized: true
+            ) {
                 performConfirmed(item)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.mini)
-            .tint(.red)
             .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 12)
@@ -343,6 +377,15 @@ struct StatusPanelView: View {
             return "Clear"
         case .destructiveAction:
             return "Confirm"
+        }
+    }
+
+    private func confirmationConfirmSymbol(_ item: PanelConfirmation) -> String {
+        switch item {
+        case .clearAll:
+            return "trash.fill"
+        case .destructiveAction:
+            return "checkmark"
         }
     }
 
@@ -381,7 +424,7 @@ struct StatusPanelView: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 groupModeButton
                 refreshButton
                 clearButton
@@ -389,7 +432,7 @@ struct StatusPanelView: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, 10)
-        .frame(height: 38)
+        .frame(height: PanelChrome.hit + 12)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Status")
         .accessibilityAddTraits(.isHeader)
@@ -409,13 +452,11 @@ struct StatusPanelView: View {
             scheme: colorScheme,
             map: settings.statusColors
         )
-        return HStack(spacing: 4) {
-            Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-                .frame(width: 14, height: 14)
+        return HStack(spacing: 2) {
+            PanelChrome.symbol(systemName, weight: .semibold)
+                .frame(width: PanelChrome.hit, height: PanelChrome.hit)
             Text("\(count)")
-                .font(.caption.weight(.semibold).monospacedDigit())
+                .font(.body.weight(.semibold).monospacedDigit())
         }
         .foregroundStyle(color)
         .help(help)
@@ -491,19 +532,9 @@ struct StatusPanelView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("Nothing Running", systemImage: "waveform.path.ecg")
-        } description: {
-            Text("Send snapshots to the local ingest API, or POST /v1/demo for sample data. State lives in memory only.")
-        } actions: {
-            Text("POST \(NerveEndpoint.host):\(NerveEndpoint.port)/v1/snapshot")
-                .font(.caption2.monospaced())
-                .foregroundStyle(.tertiary)
-                .textSelection(.enabled)
-        }
-        .symbolRenderingMode(.hierarchical)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(24)
+        ContentUnavailableView("No jobs", systemImage: "waveform.path.ecg")
+            .symbolRenderingMode(.hierarchical)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func sectionHeader(_ title: String) -> some View {

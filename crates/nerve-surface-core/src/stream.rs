@@ -20,10 +20,8 @@ pub const JOBS_PATH: &str = "/v1/jobs";
 
 /// The stream to open, labelled with which surface is asking.
 ///
-/// `?surface=` is a log tag and nothing else — the hub sends every frame to
-/// every surface, and filtering per surface would break the "frames are the
-/// authoritative full set" rule that makes reconnects free
-/// (`crates/nerve-hub/src/http/stream.rs`).
+/// `?surface=` names this connection for the hub's notify lease. Every
+/// surface still sees every job — the label is not a filter.
 pub fn stream_path(surface: &str) -> String {
     format!("/v1/stream?surface={surface}")
 }

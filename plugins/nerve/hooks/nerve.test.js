@@ -17,6 +17,16 @@ test("Stop without background is your turn", () => {
   assert.equal(f.attention.title, "Your turn in agent");
 });
 
+test("Stop while the gate is retrying stays running", () => {
+  const f = mapEvent("stop", { hook_event_name: "Stop", stopHookActive: true });
+  assert.equal(f.current.type, "thinking");
+  assert.equal(f.attention.level, "none");
+});
+
+test("session-end observe Stop does not paint your turn", () => {
+  assert.equal(mapEvent("stop", { hook_event_name: "Stop", reason: "channel_closed" }), null);
+});
+
 test("Stop with shell background is Running", () => {
   const f = mapEvent("stop", {
     hook_event_name: "Stop",
@@ -190,4 +200,32 @@ test("nothing listening resolves rather than throwing", async () => {
   await new Promise((r) => server.on("close", r));
 
   await postSnapshot("mac", "darwin", { id: "j", name: "nerve" }, port);
+});
+
+test("Grok hooks are command posts, not type:http to loopback", () => {
+  // Grok's HTTP runner blocks 127.0.0.1 (SSRF) and non-HTTPS URLs, so a
+  // type:http hook never reaches the hub.
+  const grok = require("./grok.json");
+  const events = Object.keys(grok.hooks);
+  assert.ok(events.includes("PreToolUse"));
+  assert.ok(events.includes("SessionStart"));
+  for (const event of events) {
+    for (const group of grok.hooks[event]) {
+      for (const hook of group.hooks) {
+        assert.equal(hook.type, "command", event);
+        assert.match(hook.command, /grok-post\.js/);
+        assert.equal(hook.timeout, 2);
+      }
+    }
+  }
+});
+
+test("grok-post.js exits 0 with empty stdin", async () => {
+  const { spawn } = require("child_process");
+  const child = spawn(process.execPath, [require("path").join(__dirname, "grok-post.js")], {
+    stdio: ["pipe", "ignore", "ignore"],
+  });
+  child.stdin.end();
+  const code = await new Promise((resolve) => child.on("close", resolve));
+  assert.equal(code, 0);
 });

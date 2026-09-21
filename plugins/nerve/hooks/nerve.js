@@ -196,6 +196,22 @@ function classifyToast(text) {
   return null;
 }
 
+function stopHookActive(payload) {
+  const v = payload.stopHookActive ?? payload.stop_hook_active;
+  return v === true || String(v).toLowerCase() === "true";
+}
+
+function stopFacets(payload) {
+  const reason = String(get(payload, ["reason"], "") || "").trim();
+  if (reason === "channel_closed" || reason === "shutdown") return null;
+  if (stopHookActive(payload)) {
+    return { lifecycle: "active", current: { type: "thinking", summary: "Continuing", startedAt: nowIso() }, attention: { level: "none" }, health: "ok" };
+  }
+  const bg = bgTasks(payload);
+  if (bg.length) return backgroundWork(bg);
+  return yourTurn("Return to the agent to continue");
+}
+
 function yourTurn(summary) {
   return {
     lifecycle: "active",
@@ -304,8 +320,9 @@ function mapEvent(event, payload) {
     return { lifecycle: "active", current: { type: "info", summary }, attention: { level: "none" }, health: "ok" };
   }
   if (event === "stop") {
-    const bg = bgTasks(payload);
-    if (bg.length) return backgroundWork(bg);
+    return stopFacets(payload);
+  }
+  if (event === "stopcancelled") {
     return yourTurn("Return to the agent to continue");
   }
   if (event === "precompact") {
@@ -314,9 +331,7 @@ function mapEvent(event, payload) {
     return { lifecycle: "active", current: { type: "thinking", summary: "Compacting context", startedAt: nowIso() }, attention: { level: "none" }, health: "ok" };
   }
   if (event === "postcompact") {
-    const bg = bgTasks(payload);
-    if (bg.length) return backgroundWork(bg);
-    return yourTurn("Return to the agent to continue");
+    return stopFacets(payload) || yourTurn("Return to the agent to continue");
   }
   return null;
 }
@@ -577,6 +592,19 @@ function postSnapshot(alias, kind, job, port = INGEST_PORT) {
           },
         },
         (response) => {
+          try {
+            const fs = require("fs");
+            const os = require("os");
+            const path = require("path");
+            const dir = path.join(os.homedir(), "Library/Logs/Nerve");
+            fs.mkdirSync(dir, { recursive: true });
+            fs.appendFileSync(
+              path.join(dir, "nerve-hook.log"),
+              `${new Date().toISOString()} claude POST ${response.statusCode} ${job && job.id ? job.id : ""}\n`,
+            );
+          } catch (_) {
+            /* fail-open */
+          }
           // Drain so the socket can close; the body is of no interest.
           response.resume();
           response.on("end", finish);
@@ -604,7 +632,7 @@ async function processEvent(payload) {
     "sessionstart", "setup", "sessionend", "userpromptsubmit", "userpromptexpansion",
     "pretooluse", "posttooluse", "posttoolusefailure", "posttoolbatch",
     "permissionrequest", "permissiondenied", "notification", "messagedisplay",
-    "stop", "stopfailure", "subagentstart", "subagentstop",
+    "stop", "stopfailure", "stopcancelled", "subagentstart", "subagentstop",
     "taskcreated", "taskcompleted", "teammateidle", "instructionsloaded",
     "configchange", "cwdchanged", "directoryadded", "filechanged",
     "precompact", "postcompact", "elicitation", "elicitationresult",

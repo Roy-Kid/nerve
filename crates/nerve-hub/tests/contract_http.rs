@@ -276,7 +276,18 @@ async fn test_health_returns_the_service_literal() {
     // `IngestServer.swift:168` — literal, including the pinned version string.
     assert_eq!(
         reply.json(),
-        json!({ "ok": true, "service": "nerve", "version": "0.1.0" })
+        json!({
+            "ok": true,
+            "service": "nerve",
+            "version": "0.1.0",
+            "watchers": 0,
+            "notify": {
+                "policy": "single",
+                "owner": null,
+                "surfaces": [],
+                "watchers": 0
+            }
+        })
     );
 }
 
@@ -433,6 +444,18 @@ async fn test_clear_empties_the_job_list() {
     call(&hub, post("/v1/clear", "")).await;
 
     assert_eq!(jobs_of(&hub).await, json!([]));
+}
+
+#[tokio::test]
+async fn test_refresh_returns_the_job_list() {
+    let hub = hub();
+    call(&hub, post("/v1/demo", "")).await;
+
+    let reply = call(&hub, post("/v1/refresh", "")).await;
+
+    assert_eq!(reply.status, StatusCode::OK);
+    assert_eq!(array(&reply.json()).len(), 4);
+    assert_eq!(jobs_of(&hub).await, reply.json());
 }
 
 #[tokio::test]
@@ -854,6 +877,7 @@ async fn test_no_input_shape_makes_a_handler_fail() {
         ("POST", "/v1/actions/result", "{}".to_string()),
         ("POST", "/v1/demo", "not json at all".to_string()),
         ("POST", "/v1/clear", "[1,2,3]".to_string()),
+        ("POST", "/v1/refresh", String::new()),
         ("GET", "/v1/actions/pending?producerId=a%20b", String::new()),
         ("GET", "/v1/jobs?producerId=&sourceId=", String::new()),
     ];

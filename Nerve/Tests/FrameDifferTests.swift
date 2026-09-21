@@ -405,6 +405,30 @@ private enum Fixture {
 
     /// Neither key present — an empty object is still a valid frame.
     static let payloadEmptyObject = "{}"
+
+    /// One valid job plus one unreadable row. The panel must keep the valid one.
+    static let payloadWithOneBadJob = """
+    {
+      "jobs": [
+        {
+          "id": "claude-code:s1", "kind": "session", "name": "nerve", "alias": "local",
+          "lifecycle": "active",
+          "current": { "type": "thinking", "summary": "Planning" },
+          "attention": { "level": "none" },
+          "health": "ok",
+          "progress": { "kind": "none" },
+          "producer": { "id": "claude-code" },
+          "capabilities": [], "actions": [],
+          "createdAt": "2026-08-22T08:00:00Z",
+          "updatedAt": "2026-08-22T08:10:00Z",
+          "version": 1,
+          "extensions": {}
+        },
+        { "id": 12, "lifecycle": false }
+      ],
+      "departed": []
+    }
+    """
 }
 
 // MARK: - Decoding helper (hub wire: ISO-8601 dates)
@@ -566,6 +590,13 @@ private func test_decodeFrameAcceptsEmptyPayloads(_ t: TestRun) throws {
     t.equal(bare.departed.count, 0, "missing departed key decodes as empty array")
 }
 
+/// A single unreadable job must not blank the whole frame (and the panel).
+private func test_decodeFrameKeepsGoodJobsWhenOneRowIsBad(_ t: TestRun) throws {
+    let frame = try decodeFrame(Fixture.payloadWithOneBadJob)
+    t.equal(frame.jobs.count, 1, "valid job survives a sibling that will not decode")
+    t.equal(frame.jobs.first?.id, "claude-code:s1", "the readable job is the one kept")
+}
+
 // MARK: - Tests: last prompt (panel detail)
 
 /// The prompt the hub kept reaches the panel, trimmed.
@@ -706,6 +737,7 @@ enum FrameDifferTestMain {
         ("test_decodeFrameWithoutDepartedKeyYieldsEmptyArray", test_decodeFrameWithoutDepartedKeyYieldsEmptyArray),
         ("test_decodeFrameIgnoresUnknownKeys", test_decodeFrameIgnoresUnknownKeys),
         ("test_decodeFrameAcceptsEmptyPayloads", test_decodeFrameAcceptsEmptyPayloads),
+        ("test_decodeFrameKeepsGoodJobsWhenOneRowIsBad", test_decodeFrameKeepsGoodJobsWhenOneRowIsBad),
         // Panel detail — what the human asked
         ("test_lastPromptDecodesFromExtensions", test_lastPromptDecodesFromExtensions),
         ("test_blankOrAbsentPromptIsNil", test_blankOrAbsentPromptIsNil),

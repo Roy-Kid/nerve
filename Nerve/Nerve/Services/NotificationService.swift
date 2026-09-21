@@ -32,13 +32,13 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             case .notDetermined:
                 self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
                     if let error {
-                        NSLog("[Nerve] notification auth: %@", "\(error)")
+                        NerveLog.notify.error("notification auth: \(String(describing: error), privacy: .public)")
                     } else if !granted {
-                        NSLog("[Nerve] notification auth: user denied")
+                        NerveLog.notify.error("notification auth: user denied")
                     }
                 }
             case .denied:
-                NSLog("[Nerve] notifications denied — enable in System Settings → Notifications → Nerve")
+                NerveLog.notify.error("notifications denied — enable in System Settings → Notifications → Nerve")
             default:
                 break
             }
@@ -197,7 +197,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         )
         center.add(request) { error in
             if let error {
-                NSLog("[Nerve] notify failed: %@", "\(error)")
+                NerveLog.notify.error("notify failed: \(String(describing: error), privacy: .public)")
             }
         }
     }

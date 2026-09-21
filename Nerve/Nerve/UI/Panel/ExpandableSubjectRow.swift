@@ -15,9 +15,8 @@ private struct StatusColorDot: View {
                 Circle()
                     .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
             }
-            .frame(width: 8, height: 8)
-            // Keep the native help target comfortable without enlarging the dot.
-            .frame(width: 16, height: 16)
+            .frame(width: PanelChrome.symbolSize, height: PanelChrome.symbolSize)
+            .frame(width: PanelChrome.hit, height: PanelChrome.hit)
             .contentShape(Rectangle())
             .help(status.title)
             .accessibilityLabel(status.title)
@@ -66,17 +65,14 @@ struct ExpandableSubjectRow: View {
             HStack(spacing: 8) {
                 // Tree disclosure + status
                 if depth == 0 && hasSubtasks {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                    PanelChrome.symbol(isExpanded ? "chevron.down" : "chevron.right", weight: .semibold)
                         .foregroundStyle(.tertiary)
-                        .frame(width: 10)
+                        .frame(width: PanelChrome.hit, height: PanelChrome.hit)
                         .accessibilityHidden(true)
                 } else if depth > 0 {
-                    // Subtask marker
-                    Image(systemName: "arrow.turn.down.right")
-                        .font(.caption2)
+                    PanelChrome.symbol("arrow.turn.down.right")
                         .foregroundStyle(.quaternary)
-                        .frame(width: 10)
+                        .frame(width: PanelChrome.hit, height: PanelChrome.hit)
                         .accessibilityHidden(true)
                 }
 
@@ -95,12 +91,10 @@ struct ExpandableSubjectRow: View {
                             columnCell(column)
                         }
 
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .symbolRenderingMode(.hierarchical)
+                        PanelChrome.symbol("chevron.right", weight: .semibold)
                             .foregroundStyle(.quaternary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                            .frame(width: 12, alignment: .trailing)
+                            .frame(width: PanelChrome.hit, height: PanelChrome.hit)
                             .accessibilityHidden(true)
                     }
                     .contentShape(Rectangle())
@@ -256,7 +250,11 @@ struct ExpandableSubjectRow: View {
     }
 
     private var activityText: String {
-        if subject.attention.level >= .suggested, let title = subject.attention.title, !title.isEmpty {
+        let busy = ["subagent", "tool", "thinking", "info"]
+            .contains(subject.current?.type.lowercased() ?? "")
+        if !busy,
+           subject.attention.level >= .suggested,
+           let title = subject.attention.title, !title.isEmpty {
             return title
         }
         if let s = subject.current?.summary, !s.isEmpty { return s }
@@ -298,12 +296,12 @@ struct ExpandableSubjectRow: View {
                 meta("Updated", format(subject.updatedAt))
 
                 if !subject.actions.isEmpty {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 0) {
                         ForEach(subject.actions) { action in
                             actionButton(action)
                         }
                     }
-                    .padding(.top, 5)
+                    .padding(.top, 4)
                 }
 
                 if !timeline.isEmpty {
@@ -369,27 +367,28 @@ struct ExpandableSubjectRow: View {
     private func actionButton(_ action: JobAction) -> some View {
         let isOpen = ActionService.isOpenKind(action.kind)
         let helpText = isOpen
-            ? "Jump to the agent UI / workspace (Nerve does not type or approve)"
-            : action.kind
-        if isOpen {
-            Button(action.title) {
-                onAction(action.id)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.mini)
-            .disabled(action.state != .available)
-            .help(helpText)
-        } else {
-            Button(
-                action.title,
-                role: ActionService.isDestructive(action) ? .destructive : nil
-            ) {
-                onAction(action.id)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.mini)
-            .disabled(action.state != .available)
-            .help(helpText)
+            ? ActionService.focusActionTitle(for: subject)
+            : action.title
+        PanelIconButton(
+            systemName: symbol(for: action),
+            help: helpText,
+            accessibilityLabel: helpText,
+            emphasized: ActionService.isDestructive(action),
+            enabled: action.state == .available
+        ) {
+            onAction(action.id)
+        }
+    }
+
+    private func symbol(for action: JobAction) -> String {
+        let kind = action.kind.lowercased()
+        if ActionService.isOpenKind(kind) { return "arrow.up.forward.app" }
+        switch kind {
+        case "copy", "copy_summary", "copysummary": return "doc.on.doc"
+        case "open_logs", "openlogs": return "doc.text"
+        case "hide", "mute": return "bell.slash"
+        default:
+            return ActionService.isDestructive(action) ? "exclamationmark.triangle" : "ellipsis"
         }
     }
 

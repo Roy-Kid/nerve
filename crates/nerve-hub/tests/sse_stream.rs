@@ -54,8 +54,10 @@
 //!   transport adds (chunked-encoding size lines, `:` keep-alive comments,
 //!   `event:` / `id:` lines) is ignored by the reader below, so T7 is free to
 //!   add them — but a frame may not be split across two `data:` lines.
-//! * Frame body is exactly `{"jobs":[…],"departed":[…]}`: two keys, no delta
-//!   protocol, no other event type.
+//! * Frame body is `{"jobs":[…],"departed":[…],"notify":{…}}`: three keys, no
+//!   delta protocol, no other event type. `notify` is the interrupt lease
+//!   (policy, elected owner, connected surface labels) — it is not a filter
+//!   on `jobs`.
 //! * `jobs` is the authoritative full set and is byte-for-byte what
 //!   `GET /v1/jobs` returns, embedded `timeline` included.
 //! * `departed` holds the **terminal** state of jobs evicted since the previous
@@ -64,7 +66,8 @@
 //!   drained by the frame that carries it.
 //! * Connect pushes one frame immediately (full resync); later changes coalesce
 //!   in a ~150 ms window.
-//! * `?surface=<label>` is a log tag only and never changes a frame.
+//! * `?surface=<label>` names the connection for the notify lease. It never
+//!   changes which jobs a frame contains.
 //!
 //! ─────────────────────────────────────────────────────────────────────────
 //! HARNESS
@@ -474,8 +477,9 @@ async fn test_a_frame_carries_exactly_the_two_contract_keys() {
         .unwrap_or_else(|| panic!("a frame must be a JSON object, got {frame}"));
     let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
     keys.sort_unstable();
-    // No delta protocol, no event-type tag, no cursor: two keys, forever.
-    assert_eq!(keys, ["departed", "jobs"]);
+    // No delta protocol, no event-type tag, no cursor: jobs, departed, notify.
+    assert_eq!(keys, ["departed", "jobs", "notify"]);
+    assert_eq!(frame["notify"]["policy"], "single");
 }
 
 #[tokio::test]
@@ -684,8 +688,10 @@ async fn test_the_surface_label_does_not_change_the_frame() {
         .await;
     let plain = SseClient::connect(address, "").await.frame().await;
 
-    // `?surface=` is a log tag. No per-surface filtering, ever.
-    assert_eq!(labelled, plain);
+    // `?surface=` names the notify lease. It never filters jobs.
+    assert_eq!(labelled["jobs"], plain["jobs"]);
+    assert_eq!(labelled["departed"], plain["departed"]);
+    assert_eq!(labelled["notify"]["surfaces"], json!(["tmux"]));
 }
 
 // ════════════════════════════════════════════════════════════════════════════

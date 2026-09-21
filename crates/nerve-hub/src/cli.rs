@@ -1,8 +1,7 @@
 //! The whole command-line surface, plus the exit-code contract.
 //!
-//! There is exactly one command and one flag. In particular there is **no**
-//! `--port`: the port is the single-instance lock and is hard-coded by the
-//! agent hooks, so it must not be overridable.
+//! There is **no** `--port`: the port is the single-instance lock and is
+//! hard-coded by the agent hooks, so it must not be overridable.
 
 use std::fmt;
 use std::time::Duration;
@@ -22,7 +21,7 @@ pub const USAGE: &str = "\
 nerve-hub - Nerve status hub daemon
 
 Usage:
-  nerve-hub serve [--grace-secs N]
+  nerve-hub serve [--grace-secs N] [-v|--verbose]
   nerve-hub hook
 
 Commands:
@@ -35,6 +34,9 @@ Options:
       --grace-secs N   Seconds to keep running after the last surface
                        disconnects, and after startup while no surface has
                        ever connected. Default 30; 0 exits immediately.
+  -v, --verbose        Debug logs (event names, job ids, attach/detach).
+                       Override with RUST_LOG. Files go under the OS log
+                       directory (macOS: ~/Library/Logs/Nerve/).
   -h, --help           Print this message.
 
 The port is fixed. It doubles as the single-instance lock and is hard-coded
@@ -81,6 +83,7 @@ impl Command {
 #[derive(Debug)]
 pub struct ServeArgs {
     grace: Duration,
+    verbose: bool,
 }
 
 impl ServeArgs {
@@ -89,11 +92,21 @@ impl ServeArgs {
         self.grace
     }
 
+    /// `debug` filter when `RUST_LOG` is unset.
+    pub fn verbose(&self) -> bool {
+        self.verbose
+    }
+
     fn parse(args: Vec<String>) -> Result<Self, UsageError> {
         let mut grace_secs = DEFAULT_GRACE_SECS;
+        let mut verbose = false;
         let mut args = args.into_iter();
 
         while let Some(arg) = args.next() {
+            if arg == "-v" || arg == "--verbose" {
+                verbose = true;
+                continue;
+            }
             let raw = if let Some(value) = arg.strip_prefix("--grace-secs=") {
                 value.to_owned()
             } else if arg == "--grace-secs" {
@@ -112,6 +125,7 @@ impl ServeArgs {
 
         Ok(Self {
             grace: Duration::from_secs(grace_secs),
+            verbose,
         })
     }
 }
@@ -137,3 +151,27 @@ impl fmt::Display for UsageError {
 }
 
 impl std::error::Error for UsageError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serve_defaults_are_quiet() {
+        let args = ServeArgs::parse(vec![]).unwrap();
+        assert_eq!(args.grace(), Duration::from_secs(DEFAULT_GRACE_SECS));
+        assert!(!args.verbose());
+    }
+
+    #[test]
+    fn serve_accepts_verbose_and_grace() {
+        let args = ServeArgs::parse(vec!["-v".into(), "--grace-secs".into(), "10".into()]).unwrap();
+        assert_eq!(args.grace(), Duration::from_secs(10));
+        assert!(args.verbose());
+    }
+
+    #[test]
+    fn serve_rejects_unknown_flags() {
+        assert!(ServeArgs::parse(vec!["--port".into(), "9".into()]).is_err());
+    }
+}

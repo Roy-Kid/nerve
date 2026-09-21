@@ -83,11 +83,14 @@ pub fn map_event(payload: &Value) -> Option<Facets> {
         }
         "subagentstop" => Some(subagent_stop(payload)),
         "posttoolusefailure" | "stopfailure" => Some(failure(&event, payload)),
-        "permissionrequest" => Some(permission(payload)),
+        "permissionrequest" | "permissiondenied" => Some(permission(payload)),
         "notification" => Some(notification(payload)),
-        "stop" => Some(stop(payload)),
+        "stop" => stop(payload),
+        "stopcancelled" => Some(your_turn("Return to the agent to continue".into())),
         "precompact" => Some(precompact(payload)),
-        "postcompact" => Some(stop(payload)),
+        "postcompact" => {
+            stop(payload).or_else(|| Some(your_turn("Return to the agent to continue".into())))
+        }
         _ => None,
     }
 }
@@ -321,12 +324,34 @@ fn notification(payload: &Value) -> Facets {
     Facets::active("info", Some(summary), None)
 }
 
-fn stop(payload: &Value) -> Facets {
+fn stop_hook_active(payload: &Value) -> bool {
+    match payload
+        .get("stopHookActive")
+        .or_else(|| payload.get("stop_hook_active"))
+    {
+        Some(Value::Bool(true)) => true,
+        Some(Value::String(s)) if s.eq_ignore_ascii_case("true") => true,
+        _ => false,
+    }
+}
+
+/// `None` = this Stop is not a turn idle (keep the last facets).
+fn stop(payload: &Value) -> Option<Facets> {
+    // Grok fires an extra observe Stop at session end. That is not "your turn".
+    let reason = get_str(payload, &["reason"]).unwrap_or("").trim();
+    if matches!(reason, "channel_closed" | "shutdown") {
+        return None;
+    }
+    // A blocking Stop gate retries while the agent is still working.
+    // Painting Ask here is the "running but orange" bug.
+    if stop_hook_active(payload) {
+        return Some(Facets::active("thinking", Some("Continuing".into()), None));
+    }
     let bg = background_tasks(payload);
     if !bg.is_empty() {
-        return background_work(bg);
+        return Some(background_work(bg));
     }
-    your_turn("Return to the agent to continue".into())
+    Some(your_turn("Return to the agent to continue".into()))
 }
 
 fn precompact(payload: &Value) -> Facets {
@@ -484,6 +509,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn grok_permission_denied_is_an_ask() {
+        let f = map_event(&json!({
+            "hook_event_name": "PermissionDenied",
+            "toolName": "run_terminal_command"
+        }))
+        .unwrap();
+        assert_eq!(f.current_type, "waiting");
+        assert_eq!(f.attention_reason, Some("approval"));
+    }
+
+    #[test]
     fn session_start_is_ready_not_running() {
         let f = map_event(&json!({"hook_event_name": "SessionStart"})).unwrap();
         assert_eq!(f.current_type, "starting");
@@ -496,6 +532,26 @@ mod tests {
         assert_eq!(f.current_type, "idle");
         assert_eq!(f.attention_reason, Some("input"));
         assert_eq!(f.attention_title, Some("Your turn in agent"));
+    }
+
+    #[test]
+    fn stop_while_the_gate_is_retrying_stays_running() {
+        let f = map_event(&json!({
+            "hook_event_name": "Stop",
+            "stopHookActive": true
+        }))
+        .unwrap();
+        assert_eq!(f.current_type, "thinking");
+        assert_eq!(f.attention_level, "none");
+    }
+
+    #[test]
+    fn session_end_observe_stop_does_not_paint_your_turn() {
+        assert!(map_event(&json!({
+            "hook_event_name": "Stop",
+            "reason": "channel_closed"
+        }))
+        .is_none());
     }
 
     #[test]

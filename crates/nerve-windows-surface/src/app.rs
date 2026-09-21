@@ -152,6 +152,9 @@ impl App {
             sound: self.settings.toast_sound,
             floor: self.settings.toast_floor,
         };
+        if !snapshot.notify.may_interrupt("windows") {
+            return;
+        }
         for toast in self
             .notifier
             .evaluate(&snapshot.jobs, settings, Instant::now())

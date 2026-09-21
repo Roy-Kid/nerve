@@ -1,8 +1,9 @@
-import type { Frame, Job } from "../model/job";
+import { LEGACY_NOTIFY, type Frame, type Job, type NotifyLease } from "../model/job";
 
 export interface StoreSnapshot {
   jobs: readonly Job[];
   connected: boolean;
+  notify: NotifyLease;
 }
 
 type Listener = () => void;
@@ -11,14 +12,16 @@ type Listener = () => void;
 export class JobStore {
   private jobs: Job[] = [];
   private connected = false;
+  private notify: NotifyLease = LEGACY_NOTIFY;
   private readonly listeners = new Set<Listener>();
 
   snapshot(): StoreSnapshot {
-    return { jobs: this.jobs, connected: this.connected };
+    return { jobs: this.jobs, connected: this.connected, notify: this.notify };
   }
 
   applyFrame(frame: Frame): void {
     this.jobs = frame.jobs;
+    this.notify = frame.notify;
     this.connected = true;
     this.emit();
   }

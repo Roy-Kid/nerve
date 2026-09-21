@@ -14,6 +14,8 @@ use serde::{Deserialize, Deserializer};
 use time::format_description::well_known::Rfc3339;
 use time::{OffsetDateTime, UtcOffset};
 
+use crate::notify::NotifyLease;
+
 /// Declare a wire enum that survives values it has never heard of.
 ///
 /// Ported from `crates/nerve-hub/src/model/facet.rs`: input is trimmed and
@@ -314,16 +316,19 @@ impl JobView {
     }
 }
 
-/// One frame: two keys, forever (`crates/nerve-hub/src/sse/frame.rs`).
+/// One frame from `GET /v1/stream`.
 ///
-/// `departed` is a removal hint and is kept apart from `jobs` structurally, so
-/// no caller can count it by accident.
+/// `jobs` is the authority; `departed` is a removal hint kept apart so no
+/// caller can count it by accident. `notify` is the interrupt lease — absent
+/// on an older hub, which decodes as "everyone may fire".
 #[derive(Debug, Deserialize)]
 pub struct Frame {
     #[serde(default)]
     pub jobs: Vec<JobView>,
     #[serde(default)]
     pub departed: Vec<JobView>,
+    #[serde(default)]
+    pub notify: NotifyLease,
 }
 
 impl Frame {

@@ -33,6 +33,7 @@ const SURFACE: &str = "windows";
 const LOGIN_SETTLE: Duration = Duration::from_secs(4);
 
 fn main() {
+    nerve_surface_core::log::init("nerve-windows");
     let autostarted = std::env::args().any(|arg| arg == "--autostart");
     if autostarted {
         std::thread::sleep(LOGIN_SETTLE);
@@ -40,6 +41,7 @@ fn main() {
 
     let _lock = match claim(LOCK_PORT) {
         Ok(Claim::Yield) => {
+            tracing::info!("another tray surface already has this machine");
             eprintln!("nerve: another tray surface already has this machine");
             return;
         }
@@ -47,6 +49,7 @@ fn main() {
         // Could not bind at all — a sandbox, most likely. Running unlocked is
         // worse than running locked, and better than not running.
         Err(error) => {
+            tracing::warn!(%error, "surface lock failed");
             eprintln!("nerve: could not take the surface lock ({error}); carrying on");
             None
         }
@@ -86,6 +89,7 @@ fn main() {
         Box::new(move |cc| Ok(Box::new(App::new(cc, store, hub_installed)))),
     );
     if let Err(error) = result {
+        tracing::error!(%error, "event loop ended");
         eprintln!("nerve: event loop ended ({error})");
     }
 }

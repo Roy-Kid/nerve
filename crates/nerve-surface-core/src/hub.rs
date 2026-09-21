@@ -78,8 +78,10 @@ impl From<reqwest::Error> for HubError {
         // Nothing listening and a connection that died mid-flight are different
         // states to a surface: one paints "offline", the other reconnects.
         if error.is_connect() {
+            tracing::debug!(error = %error, "hub unreachable");
             Self::Unreachable(error.to_string())
         } else {
+            tracing::debug!(error = %error, "hub broken");
             Self::Broken(error.to_string())
         }
     }

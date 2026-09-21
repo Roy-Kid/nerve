@@ -47,6 +47,8 @@ final class JobStore {
     /// Dormant: the producer action queue lives in the hub and no surface path
     /// fills this yet. Kept exposed so the panel's observation surface is stable.
     private(set) var pendingActions: [PendingActionRequest] = []
+    /// Hub-elected notify lease. Older hubs leave this as ``NotifyLease/legacy``.
+    private(set) var notify: NotifyLease = .legacy
 
     private let clock: () -> Date
 
@@ -69,6 +71,10 @@ final class JobStore {
     var clearRequestSink: (() -> Void)?
     /// Set by AppModel: asks the hub to load its demo jobs.
     var demoRequestSink: (() -> Void)?
+    /// Set by AppModel: `POST /v1/refresh` so the hub reaps, then paint the list.
+    var refreshRequestSink: (() -> Void)?
+    /// Set by AppModel: PUT `/v1/notify` `{ "policy": "single"|"all" }`.
+    var notifyPolicySink: ((String) -> Void)?
 
     /// In-memory only. Subjects/timelines/pending actions are never written to disk.
     init(clock: @escaping () -> Date = { Date() }) {
@@ -413,7 +419,11 @@ final class JobStore {
     /// `ensureLocalActions` runs per job here, the way `commit` used to run it
     /// per write: the hub stores the producer's raw actions and the NSWorkspace
     /// Open/Focus semantics stay on this side.
-    func applyFrame(jobs incoming: [Job], timelines incomingTimelines: [String: [TimelineEntry]]) {
+    func applyFrame(
+        jobs incoming: [Job],
+        timelines incomingTimelines: [String: [TimelineEntry]],
+        notify incomingNotify: NotifyLease = .legacy
+    ) {
         var next: [String: Job] = [:]
         next.reserveCapacity(incoming.count)
         for job in incoming {
@@ -423,6 +433,7 @@ final class JobStore {
         jobs = next
         rederive()
         timelines = incomingTimelines
+        notify = incomingNotify
         // A selected row that left the frame must not keep the panel expanded
         // on a job that no longer exists.
         if let selected = selectedJobId, next[selected] == nil {
@@ -574,6 +585,12 @@ final class JobStore {
     /// First-run coach / Settings demo. The hub owns the demo jobs.
     func loadDemo() {
         demoRequestSink?()
+    }
+
+    /// Panel Refresh. Asks the hub to reap and republish; the returned list
+    /// overwrites the cache. Does not tear the SSE stream.
+    func refreshFromHub() {
+        refreshRequestSink?()
     }
 
     /// Select + expand a job in the status panel (notification deep-link / keyboard).

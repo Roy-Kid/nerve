@@ -15,7 +15,11 @@ fn jobs(value: serde_json::Value) -> Vec<JobView> {
 }
 
 fn snapshot(jobs: Vec<JobView>, offline: bool) -> JobsSnapshot {
-    JobsSnapshot { jobs, offline }
+    JobsSnapshot {
+        jobs,
+        offline,
+        notify: Default::default(),
+    }
 }
 
 fn view(snapshot: &JobsSnapshot, hub_installed: bool) -> view::View {

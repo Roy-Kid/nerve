@@ -9,6 +9,7 @@ pub mod clock;
 pub mod hook;
 pub mod http;
 pub mod lifecycle;
+pub mod log;
 pub mod model;
 mod runtime;
 pub mod sse;
@@ -62,14 +63,16 @@ impl Hub {
         let listener = match TcpListener::bind(INGEST_ADDR).await {
             Ok(listener) => listener,
             Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
-                return Err(ServeError::AlreadyRunning)
+                tracing::info!("already running");
+                return Err(ServeError::AlreadyRunning);
             }
             Err(err) => return Err(ServeError::Io(err)),
         };
 
-        eprintln!(
-            "nerve-hub serving http://{INGEST_ADDR} (grace {}s)",
-            self.grace.as_secs()
+        tracing::info!(
+            addr = %INGEST_ADDR,
+            grace_secs = self.grace.as_secs(),
+            "serving"
         );
 
         let hub = HubRuntime::new(self.store(), self.grace);

@@ -35,10 +35,14 @@ enum NerveEndpoint {
     /// Server-Sent Events — full ``HubFrame`` per event, never a delta.
     /// Callers add their own `surface` query item.
     static let stream = baseURL.appending(path: "/v1/stream")
+    /// Run hub maintenance (PID reap, expire pending) and return the job list.
+    static let refresh = baseURL.appending(path: "/v1/refresh")
     /// Drop every job the hub holds.
     static let clear = baseURL.appending(path: "/v1/clear")
     /// Load the built-in demo jobs.
     static let demo = baseURL.appending(path: "/v1/demo")
+    /// Notify lease: GET the current owner, PUT `{ "policy": "single"|"all" }`.
+    static let notify = baseURL.appending(path: "/v1/notify")
     /// Poll a producer's action queue (`producerId` query item added by caller).
     static let actionsPending = baseURL.appending(path: "/v1/actions/pending")
     /// Report action completion (`producerId` query item added by caller).

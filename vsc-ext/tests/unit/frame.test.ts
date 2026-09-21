@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { parseFrame, parseJobsList, lastPrompt, jobPid } from "../../src/model/job";
+import { parseFrame, parseJobsList, lastPrompt, jobPid, mayInterrupt } from "../../src/model/job";
 
 suite("frame", () => {
   test("decodes jobs and departed", () => {
@@ -13,6 +13,25 @@ suite("frame", () => {
     assert.equal(frame.jobs[0]?.id, "a");
     assert.equal(frame.departed.length, 1);
     assert.equal(frame.departed[0]?.id, "b");
+    assert.equal(frame.notify.policy, "all");
+  });
+
+  test("reads the notify lease when the hub sends one", () => {
+    const frame = parseFrame(
+      JSON.stringify({
+        jobs: [],
+        departed: [],
+        notify: {
+          policy: "single",
+          owner: "macos",
+          surfaces: ["macos", "vscode"],
+          watchers: 2,
+        },
+      }),
+    );
+    assert.equal(frame.notify.owner, "macos");
+    assert.equal(mayInterrupt(frame.notify, "vscode"), false);
+    assert.equal(mayInterrupt(frame.notify, "macos"), true);
   });
 
   test("drops rows without id rather than refusing the frame", () => {

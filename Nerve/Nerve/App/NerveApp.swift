@@ -7,6 +7,10 @@ struct NerveApp: App {
     @State private var menuBarItemEnabled = true
 
     var body: some Scene {
+        // MenuBarExtra will not re-evaluate the label unless this Scene
+        // itself reads store state. `revision` is the write counter.
+        let _ = appDelegate.model.store.revision
+        let _ = appDelegate.model.store.activeCount
         MenuBarExtra(isInserted: menuBarInsertion) {
             StatusPanelRoot(
                 store: appDelegate.model.store,

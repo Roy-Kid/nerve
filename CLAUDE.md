@@ -20,7 +20,8 @@ Stack: `nerve-hub` + tmux helper (Rust, `crates/`), SwiftUI menu-bar app (`Nerve
 | Shared surface logic | `crates/nerve-surface-core/` (frames, status, grouping, hub client) |
 | OS primitives | `crates/nerve-platform/` (wire paths, process liveness) |
 | VS Code surface | `vsc-ext/` (Activity Bar + status bar; rslib/rspack) |
-| Marketplace plugin | `plugins/nerve/` — Claude `hooks/nerve.js`, Codex `hooks/nerve.py`, Grok `hooks/grok.json` (HTTP) |
+| Tether surface | `surfaces/tether/` (Swift package `NervePlugin`; compile into Tether) |
+| Marketplace plugin | `plugins/nerve/` — Claude `hooks/nerve.js`, Codex `hooks/nerve.py`, Grok `hooks/grok-post.js` (command POST to `/v1/hook`) |
 | Grok HTTP mapper | `crates/nerve-hub/src/hook/` — `POST /v1/hook` |
 | Website + **public docs** | `index/` → routes `/docs/*`; body `index/src/docs/content.ts` |
 | Demo / scripts | `fixtures/`, `scripts/` |
@@ -64,7 +65,7 @@ cd index && npm test && npm run build               # site tests + static build
 4. **Memory-only runtime jobs** — jobs/timelines/pending live in `nerve-hub` process RAM; hub exits ~30s after the last surface disconnects (SSE refcount). Settings + managed `~/.ssh/config` only on disk.
 5. **Open alias ingest** — any snapshot `alias` shows; Settings Machines are tunnels only (Hosts from local `~/.ssh/config` + known_hosts; managed block is RemoteForward-only; ControlMaster via `ssh -O forward` when master is up). Tunnels target 17890, so remote producers *and* remote surfaces reach the hub for free.
 6. **Display only** — Nerve never reverse-controls agents or jobs (no approve/cancel/submit_input). Local actions: **Open/Focus** (location) + Copy; rows leave via SessionEnd / slot supersede / PID reap. Attention means “return to agent UI”, not “type here”.
-7. **Surfaces are peers** — macOS app, tmux plugin, VS Code extension, and Windows tray only consume the hub contract (`GET /v1/jobs`, `GET /v1/stream` full frames with `departed` terminal states); none owns state, none knows the others. Notifications are a **per-surface, per-machine, user-toggled** capability: the hub never notifies, and each surface dedupes locally on the Ask channel (`reason ∈ Ask`, `level ≥ suggested`, first sight or level upgrade, 120 s window). Because peers do not know each other, two on one machine may both fire — that is the user's toggle to resolve, not a thing to coordinate. Hook wire contract is unchanged by all of this.
+7. **Surfaces are peers** — macOS app, tmux plugin, VS Code extension, Windows tray, and Tether plugin only consume the hub contract (`GET /v1/jobs`, `GET /v1/stream` full frames with `departed` terminal states); none owns state, none knows the others. The hub never sends OS notifications. It *does* count open streams and publish a **notify lease** (`notify.policy` `single`|`all`, elected `owner`) so two surfaces on one machine do not both banner the same Ask. Default is `single` (prefer `macos`, then `tether`, then `windows`, then `vscode`, then `tmux`). `PUT /v1/notify` sets the policy. Each surface still dedupes locally on the Ask channel (`reason ∈ Ask`, `level ≥ suggested`, first sight or level upgrade, 120 s window) and only fires when the lease says it may. Hook wire contract is unchanged.
 8. **Public docs** — edit `index/src/docs/content.ts` (and site UI), not a repo `docs/` folder. Keep root/plugin READMEs as short pointers.
 
 ## Default workflow
@@ -72,7 +73,7 @@ cd index && npm test && npm run build               # site tests + static build
 1. Product copy / API handbook → `index/src/docs/content.ts` (+ pages under `src/pages/`)
 2. Hook lifecycle → `plugins/nerve/hooks/nerve.js` (Claude) · `nerve.py` (Codex) · hub `/v1/hook` (Grok HTTP)
 3. State semantics / ingest contract → `crates/nerve-hub/` (golden parity tests guard it)
-4. App UI / surface glue → `Nerve/Nerve/`; tmux surface → `surfaces/tmux/` + `crates/nerve-tmux-surface/`; VS Code surface → `vsc-ext/`; Windows tray → `crates/nerve-windows-surface/`
+4. App UI / surface glue → `Nerve/Nerve/`; tmux surface → `surfaces/tmux/` + `crates/nerve-tmux-surface/`; VS Code surface → `vsc-ext/`; Windows tray → `crates/nerve-windows-surface/`; Tether plugin → `surfaces/tether/`
 5. Capture decisions → `.claude/notes/notes.md`
 
 <!-- nerve:harness:managed end -->

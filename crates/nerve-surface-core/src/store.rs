@@ -8,12 +8,14 @@ use crate::frame::{Frame, JobView};
 use crate::hub::Hub;
 use crate::launch::{DetachedSpawner, HttpHealth, HubLauncher, SystemClock};
 use crate::locate::{FileProbe, HubLocator};
+use crate::notify::NotifyLease;
 use crate::stream::{Backoff, FrameSource, HubFrameSource, JOBS_PATH};
 
 #[derive(Clone, Debug, Default)]
 pub struct JobsSnapshot {
     pub jobs: Vec<JobView>,
     pub offline: bool,
+    pub notify: NotifyLease,
 }
 
 #[derive(Clone)]
@@ -50,15 +52,28 @@ impl JobsStore {
         self.set_jobs(jobs);
     }
 
+    /// Replace the whole set from one SSE frame, lease included.
+    pub fn apply_frame(&self, frame: Frame) {
+        if let Ok(mut guard) = self.inner.write() {
+            *guard = Arc::new(JobsSnapshot {
+                jobs: frame.jobs,
+                notify: frame.notify,
+                offline: false,
+            });
+        }
+    }
+
     /// Replace the whole set, wholesale.
     ///
     /// Never merged: a frame is the authoritative full list, which is exactly
     /// what makes a dropped connection cost nothing. Also how a surface's tests
-    /// seed a store without a hub.
+    /// seed a store without a hub. The notify lease is left as it was, so a
+    /// test that only cares about jobs does not have to invent one.
     pub fn set_jobs(&self, jobs: Vec<JobView>) {
         if let Ok(mut guard) = self.inner.write() {
             *guard = Arc::new(JobsSnapshot {
                 jobs,
+                notify: guard.notify.clone(),
                 offline: false,
             });
         }
@@ -71,6 +86,7 @@ impl JobsStore {
             }
             *guard = Arc::new(JobsSnapshot {
                 jobs: guard.jobs.clone(),
+                notify: guard.notify.clone(),
                 offline: true,
             });
         }
@@ -94,26 +110,49 @@ impl JobsStore {
                 SystemClock,
                 HttpHealth::new(Hub::loopback()),
             );
-            let mut source = HubFrameSource::new(Hub::loopback(), stream_path);
+            let mut source = HubFrameSource::new(Hub::loopback(), stream_path.clone());
             let mut backoff = Backoff::new();
             loop {
-                launcher.ensure(locator.locate().as_deref());
+                let launch = launcher.ensure(locator.locate().as_deref());
+                tracing::debug!(?launch, path = stream_path.as_str(), "hub launch");
                 self.fetch_from_hub();
-                if source.open().is_err() {
+                if let Err(error) = source.open() {
+                    tracing::warn!(?error, path = stream_path.as_str(), "stream open failed");
                     self.set_offline();
                     thread::sleep(backoff.fail());
                     continue;
                 }
+                tracing::info!(path = stream_path.as_str(), "stream attached");
                 let mut frames = 0usize;
-                while let Ok(Some(frame)) = source.next_frame() {
-                    frames += 1;
-                    self.set_jobs(frame.jobs);
+                loop {
+                    match source.next_frame() {
+                        Ok(Some(frame)) => {
+                            frames += 1;
+                            tracing::debug!(jobs = frame.jobs.len(), "frame");
+                            self.apply_frame(frame);
+                        }
+                        Ok(None) => {
+                            tracing::info!(path = stream_path.as_str(), frames, "stream closed");
+                            break;
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                ?error,
+                                path = stream_path.as_str(),
+                                frames,
+                                "stream ended"
+                            );
+                            break;
+                        }
+                    }
                 }
                 self.set_offline();
                 if frames > 0 {
                     backoff.reset();
                 }
-                thread::sleep(backoff.fail());
+                let delay = backoff.fail();
+                tracing::debug!(?delay, "reconnect");
+                thread::sleep(delay);
             }
         })
     }

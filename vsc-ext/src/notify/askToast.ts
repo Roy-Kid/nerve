@@ -4,7 +4,8 @@
  */
 
 import * as vscode from "vscode";
-import type { Job } from "../model/job";
+import type { Job, NotifyLease } from "../model/job";
+import { LEGACY_NOTIFY, mayInterrupt } from "../model/job";
 import { askCopy, shouldNotifyAsk } from "../model/status";
 import { performFocus } from "../ui/focus";
 
@@ -15,11 +16,11 @@ export class AskToast {
   private previous = new Map<string, Job>();
 
   /** Diff the latest snapshot against the previous one; toast on Ask upgrades. */
-  evaluate(jobs: readonly Job[]): void {
+  evaluate(jobs: readonly Job[], notify: NotifyLease = LEGACY_NOTIFY): void {
     const askOn = vscode.workspace
       .getConfiguration("nerve")
       .get("notifications.ask", true);
-    if (!askOn) {
+    if (!askOn || !mayInterrupt(notify, "vscode")) {
       this.previous = new Map(jobs.map((job) => [job.id, job]));
       return;
     }

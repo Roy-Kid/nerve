@@ -39,9 +39,15 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         if outcome == .failure { return .problem }
         if health == .unresponsive { return .problem }
 
-        // Elevated attention → needs a look (you or the system). One color.
+        // Elevated attention → needs a look, unless the agent is already
+        // executing. A stale Ask must not stay orange over a live tool.
         if attention.level >= .suggested {
-            return .attention
+            switch current?.type.lowercased() {
+            case "subagent", "tool", "thinking", "info":
+                break
+            default:
+                return .attention
+            }
         }
 
         if attention.level >= .informational, let reason = attention.reason?.lowercased() {

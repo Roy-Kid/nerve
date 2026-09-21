@@ -1,5 +1,29 @@
 # Notes
 
+<!-- mol:note:topic:hub-refresh -->
+## 2026-09-18 — Panel Refresh is `POST /v1/refresh`
+
+The surface refresh button asks the hub to reap dead local PIDs, expire pending, and republish a frame. It returns the same bare job array as `GET /v1/jobs`. A GET-only refresh only re-read RAM and could not drop ghosts. SSE is not torn down.
+
+<!-- mol:note:topic:debug-logs -->
+## 2026-09-18 — Debug logs: tracing + Unified Logging + VS Code channel
+
+Hub and Rust surfaces use `tracing` (stderr + daily file under the OS log dir; `RUST_LOG` / `nerve-hub serve --verbose`). macOS app and Tether use `os.Logger` (`app.nerve.Nerve` / `app.nerve.tether`). VS Code uses a log OutputChannel named Nerve. No prompt bodies. Spawners still discard hub stdio — the hub writes its own file.
+
+<!-- mol:note:topic:grok-loopback-ssrf -->
+## 2026-09-18 — Grok `type: http` cannot reach the hub
+
+Grok's HTTP hook runner refuses loopback and non-HTTPS URLs (SSRF). `http://127.0.0.1:17890/v1/hook` is dropped fail-open, so a plugin that only registers `type: http` never updates Nerve. Grok hooks are `command` → `hooks/grok-post.js` POSTing the same body. Hub mapping is unchanged.
+
+<!-- mol:note:topic:tether-surface -->
+## 2026-09-18 — Tether plugin, one hub, notify lease
+
+Tether (`~/work/Tether`) is a compile-time Swift plugin host. Nerve’s surface lives in `surfaces/tether` and is registered in Tether’s composition root. It probes `/v1/health` before spawn, same as every other surface; 17890 remains the lock. A second `nerve-hub serve` that loses the bind already exits `AlreadyRunning`.
+
+Notifications: the hub never talks to UserNotifications. It now names SSE connections (`?surface=`), publishes `notify` on every frame (`policy` `single`|`all`, elected `owner`, `surfaces`, `watchers`), and accepts `GET`/`PUT /v1/notify`. Default `single` prefers macos → tether → windows → vscode → tmux so Nerve.app and Tether do not both banner. Missing `notify` (old hub) still means everyone fires. Presence 0→1 does not republish (the connect frame is enough); 1→2 and drops do, so the remaining owner learns.
+
+<!-- mol:note:topic:windows-surface -->
+
 <!-- mol:note:topic:windows-surface -->
 ## 2026-09-17 — Windows: four crates, and what the move exposed
 

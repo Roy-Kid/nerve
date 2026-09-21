@@ -1,19 +1,20 @@
 {
-  "description": "Nerve — Grok official HTTP hook. Every documented lifecycle event is registered.",
+  "description": "Nerve — Grok command hook. type:http cannot POST to 127.0.0.1 (SSRF). grok-post.js fail-open POSTs the event to /v1/hook.",
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "PreToolUse": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "PostToolUse": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "PostToolUseFailure": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "PermissionDenied": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "Stop": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "StopFailure": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "Notification": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "SubagentStart": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "SubagentStop": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "PreCompact": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }],
-    "PostCompact": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:17890/v1/hook?producer=grok", "timeout": 2 }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "PermissionDenied": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "StopCancelled": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }]
   }
 }

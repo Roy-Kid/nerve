@@ -85,7 +85,7 @@ impl Producer {
     }
 }
 
-/// Last session_id per UI slot, so SessionStart can close a superseded row.
+/// Last session_id per UI slot, so a new session can close a superseded row.
 #[derive(Debug, Default)]
 pub struct SlotMap {
     inner: HashMap<String, String>,
@@ -118,23 +118,22 @@ pub fn jobs_from_event(
     clock: &dyn Clock,
     slots: &mut SlotMap,
 ) -> Vec<Job> {
-    if payload::skip_subagent_noise(&event_name(payload), payload) {
+    let event = event_name(payload);
+    if payload::skip_subagent_noise(producer, &event, payload) {
+        tracing::debug!(producer = producer.key(), event, "skipped subagent noise");
         return Vec::new();
     }
     let Some(facets) = map::map_event(payload) else {
+        tracing::debug!(producer = producer.key(), event, "unmapped event");
         return Vec::new();
     };
     let session = payload::session_id(payload);
     let slot = build::slot_id(producer, payload);
     let mut jobs = Vec::new();
-    if event_name(payload) == "sessionstart" {
-        if let Some(prev) = slots.supersede(slot.clone(), session.clone()) {
-            jobs.push(build::ended_supersede(payload, producer, &prev, clock));
-        }
-    } else if event_name(payload) == "sessionend" {
+    if event == "sessionend" {
         slots.clear_if(&slot, &session);
-    } else {
-        let _ = slots.supersede(slot, session.clone());
+    } else if let Some(prev) = slots.supersede(slot.clone(), session.clone()) {
+        jobs.push(build::ended_supersede(payload, producer, &prev, clock));
     }
     let job = build::build_job(payload, producer, clock, &facets, &session);
     // Python refused ids with two or more extra colons (legacy children).
@@ -152,9 +151,30 @@ pub fn apply(
     producer: Producer,
     payload: &Value,
 ) -> usize {
-    let jobs = jobs_from_event(producer, payload, store.clock(), slots);
+    let mut jobs = jobs_from_event(producer, payload, store.clock(), slots);
     if jobs.is_empty() {
         return 0;
+    }
+    let incoming = jobs.iter().find(|job| !job.is_ended()).map(|job| {
+        let workspace = job
+            .context
+            .as_ref()
+            .and_then(|context| context.workspace.clone())
+            .unwrap_or_default();
+        (job.id.clone(), workspace)
+    });
+    if let Some((incoming_id, workspace)) = incoming {
+        let prefix = format!("{}:", producer.id());
+        for occupant in store.live_ids_in_workspace(producer.id(), &workspace) {
+            if occupant == incoming_id {
+                continue;
+            }
+            let prev = occupant.strip_prefix(&prefix).unwrap_or(occupant.as_str());
+            jobs.insert(
+                0,
+                build::ended_supersede(payload, producer, prev, store.clock()),
+            );
+        }
     }
     store.apply_snapshot(jobs)
 }
@@ -263,6 +283,112 @@ mod tests {
             !ids.contains(&"claude-code:old"),
             "superseded row is evicted"
         );
+    }
+
+    #[test]
+    fn a_tool_event_in_a_new_session_supersedes_the_same_slot() {
+        let (mut store, mut slots) = store();
+        apply(
+            &mut store,
+            &mut slots,
+            Producer::Grok,
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "old",
+                "cwd": "/tmp/p",
+                "tool_name": "read_file"
+            }),
+        );
+        apply(
+            &mut store,
+            &mut slots,
+            Producer::Grok,
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "new",
+                "cwd": "/tmp/p",
+                "tool_name": "read_file"
+            }),
+        );
+        let ids: Vec<String> = store
+            .jobs_json()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|job| job["id"].as_str().map(str::to_string))
+            .collect();
+        assert_eq!(ids, vec!["grok:new".to_string()]);
+    }
+
+    #[test]
+    fn a_new_session_evicts_a_same_workspace_row_after_slot_map_reset() {
+        let (mut store, mut slots) = store();
+        apply(
+            &mut store,
+            &mut slots,
+            Producer::Grok,
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "ghost",
+                "cwd": "/tmp/p",
+                "tool_name": "read_file"
+            }),
+        );
+        let mut fresh = SlotMap::new();
+        apply(
+            &mut store,
+            &mut fresh,
+            Producer::Grok,
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "session_id": "live",
+                "cwd": "/tmp/p",
+                "tool_name": "read_file"
+            }),
+        );
+        let ids: Vec<String> = store
+            .jobs_json()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|job| job["id"].as_str().map(str::to_string))
+            .collect();
+        assert_eq!(ids, vec!["grok:live".to_string()]);
+    }
+
+    #[test]
+    fn grok_main_session_tool_events_are_kept_even_with_agent_id() {
+        let (mut store, mut slots) = store();
+        let n = apply(
+            &mut store,
+            &mut slots,
+            Producer::Grok,
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "sessionId": "s1",
+                "agent_id": "grok-main",
+                "tool_name": "run_terminal_command"
+            }),
+        );
+        assert_eq!(n, 1);
+        assert_eq!(store.jobs_json()[0]["id"], "grok:s1");
+    }
+
+    #[test]
+    fn grok_nested_subagent_tool_events_are_ignored() {
+        let (mut store, mut slots) = store();
+        let n = apply(
+            &mut store,
+            &mut slots,
+            Producer::Grok,
+            &json!({
+                "hook_event_name": "PreToolUse",
+                "sessionId": "s1",
+                "subagentType": "explore",
+                "tool_name": "read_file"
+            }),
+        );
+        assert_eq!(n, 0);
     }
 
     #[test]

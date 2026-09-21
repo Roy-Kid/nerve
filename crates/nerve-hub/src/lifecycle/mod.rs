@@ -1,12 +1,16 @@
-//! How long the hub stays alive.
+//! How long the hub stays alive, and who may interrupt.
 //!
-//! Two collaborators, split so neither needs the other to be tested: a
-//! reference count of the surfaces watching ([`refcount`]), and the timer that
-//! turns "nobody is watching" into an exit decision ([`grace`]). They meet over
-//! a `watch` channel of the count, never over a shared struct.
+//! [`refcount`] counts the surfaces watching; [`grace`] turns a count of zero
+//! into an exit. [`roster`] hangs a label on each subscription so [`notify`]
+//! can elect one owner for OS banners. Count and lease meet over a `watch`
+//! channel and a change signal, never over a shared struct.
 
 pub mod grace;
+pub mod notify;
 pub mod refcount;
+pub mod roster;
 
 pub use grace::{ExitSignal, GraceTimer};
+pub use notify::{NotifyLease, NotifyPolicy};
 pub use refcount::{Presence, Subscription, Watchers};
+pub use roster::{RosterGuard, SurfaceRoster};

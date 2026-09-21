@@ -6,7 +6,8 @@ Agent entry for Codex / Grok / other harnesses. Same contract as [`CLAUDE.md`](.
 
 - **App:** `Nerve/Nerve/` (Swift, menu bar + ingest)
 - **VS Code surface:** `vsc-ext/` (rslib/rspack; `cd vsc-ext && npm test`)
-- **Plugin:** `plugins/nerve/hooks/` — Claude `nerve.js` (Node exec), Codex `nerve.py` (python3), Grok `type: http`
+- **Tether surface:** `surfaces/tether/` (`swift test --package-path surfaces/tether`)
+- **Plugin:** `plugins/nerve/hooks/` — Claude `nerve.js` (Node exec), Codex `nerve.py` (python3), Grok `grok-post.js` (command POST; Grok `type: http` cannot reach loopback)
 - **Hook tests:** `python3 sources/agents/tests/test_nerve_hook.py` · `node --test plugins/nerve/hooks/nerve.test.js`
 - **Public docs (website only):** `index/src/docs/content.ts` → `/docs/*`
 - **Agent notes:** `.claude/notes/`

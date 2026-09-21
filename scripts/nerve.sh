@@ -672,6 +672,12 @@ if [[ $DO_APP -eq 1 ]]; then
   cp "$ROOT/target/release/nerve-hub" "$app/Contents/MacOS/nerve-hub"
   chmod +x "$app/Contents/MacOS/nerve-hub"
   codesign --force --sign - --preserve-metadata=entitlements,requirements,flags "$app"
+  # `open` of a running app only activates it — the just-built binary would
+  # never replace the instance already in the menu bar.
+  if pgrep -x Nerve >/dev/null 2>&1; then
+    killall Nerve 2>/dev/null || true
+    sleep 0.4
+  fi
   open "$app"
   echo "Nerve.app launched (ingest $NERVE_BASE)"
 fi

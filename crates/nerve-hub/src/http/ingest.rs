@@ -23,10 +23,13 @@ type Reply = (StatusCode, Json<Value>);
 pub(super) async fn snapshot(State(state): State<HubState>, body: Bytes) -> Reply {
     match Envelope::decode_snapshot(&body) {
         Ok(envelope) => apply(&state, envelope),
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": error.to_string() })),
-        ),
+        Err(error) => {
+            tracing::debug!(error = %error, "snapshot rejected");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": error.to_string() })),
+            )
+        }
     }
 }
 
@@ -35,10 +38,13 @@ pub(super) async fn snapshot(State(state): State<HubState>, body: Bytes) -> Repl
 pub(super) async fn events(State(state): State<HubState>, body: Bytes) -> Reply {
     match Envelope::decode_events(&body) {
         Ok(envelope) => apply(&state, envelope),
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": error.to_string() })),
-        ),
+        Err(error) => {
+            tracing::debug!(error = %error, "events rejected");
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": error.to_string() })),
+            )
+        }
     }
 }
 
@@ -46,12 +52,19 @@ fn apply(state: &HubState, mut envelope: Envelope) -> Reply {
     if let Err(rejection) = fill_alias(&mut envelope) {
         return rejection;
     }
+    let alias = envelope.alias.clone();
     let applied = read(&mut state.store(), envelope);
     if applied > 0 {
         // A batch the hub read is a batch surfaces must see. One that read
         // nothing — every event a duplicate, every job stale — leaves the
         // frames alone.
+        tracing::info!(applied, alias = alias.as_deref().unwrap_or(""), "snapshot");
         state.changed();
+    } else {
+        tracing::debug!(
+            alias = alias.as_deref().unwrap_or(""),
+            "snapshot applied nothing"
+        );
     }
     (StatusCode::OK, Json(json!({ "applied": applied })))
 }

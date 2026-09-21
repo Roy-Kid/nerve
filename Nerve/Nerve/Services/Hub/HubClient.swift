@@ -19,6 +19,9 @@ final class HubClient {
     private static let maxRetryDelay: TimeInterval = 30
     /// One-shot `GET /v1/jobs` — not the long-lived stream timeout.
     private static let jobsFetchTimeout: TimeInterval = 5
+    /// While SSE is up, re-pull `/v1/jobs` on this interval. A hung URLSession
+    /// stream still looks ESTABLISHED; without this the panel stays empty.
+    private static let jobsPollInterval: TimeInterval = 3
 
     /// `?surface=` is a log tag on the hub side — every surface sees every frame.
     private static let streamURL: URL = {
@@ -34,6 +37,10 @@ final class HubClient {
 
     private let store: JobStore
     private let session: URLSession
+    /// Short GETs/POSTs. The stream session's 1h request timeout must not
+    /// apply to `/v1/jobs`, and a live SSE socket must not occupy the only
+    /// connection the refresh pull needs.
+    private let shortSession: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
@@ -45,18 +52,29 @@ final class HubClient {
 
     private var differ = FrameDiffer()
     private var stream: Task<Void, Never>?
+    /// Independent of the SSE reader so a hung `bytes.lines` cannot freeze Refresh.
+    private var poll: Task<Void, Never>?
     private var retryDelay: TimeInterval = HubClient.minRetryDelay
 
     init(store: JobStore) {
         self.store = store
 
         let configuration = URLSessionConfiguration.ephemeral
-        // A live stream is idle between frames; only a dead socket should time
-        // out, and the hub's keep-alive comments hold the timer off.
-        configuration.timeoutIntervalForRequest = 3600
+        // Keep-alives land every ~15s. A hung socket that still looks ESTABLISHED
+        // must die well before an hour, or the panel stays empty with no retry.
+        configuration.timeoutIntervalForRequest = 45
         configuration.waitsForConnectivity = false
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        self.session = URLSession(configuration: configuration)
+        let streamQueue = OperationQueue()
+        streamQueue.name = "app.nerve.Nerve.sse"
+        streamQueue.maxConcurrentOperationCount = 1
+        self.session = URLSession(configuration: configuration, delegate: nil, delegateQueue: streamQueue)
+
+        let short = URLSessionConfiguration.ephemeral
+        short.timeoutIntervalForRequest = Self.jobsFetchTimeout
+        short.waitsForConnectivity = false
+        short.requestCachePolicy = .reloadIgnoringLocalCacheData
+        self.shortSession = URLSession(configuration: short)
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -75,6 +93,9 @@ final class HubClient {
         stream = Task { [weak self] in
             await self?.readFrames()
         }
+        poll = Task { [weak self] in
+            await self?.pollJobsUntilCancelled()
+        }
     }
 
     /// Stop reading frames. The hub keeps running — other surfaces and the
@@ -82,6 +103,8 @@ final class HubClient {
     func disconnect() {
         stream?.cancel()
         stream = nil
+        poll?.cancel()
+        poll = nil
         retryDelay = Self.minRetryDelay
     }
 
@@ -97,6 +120,12 @@ final class HubClient {
     /// arrive the same way real ones do — as a frame.
     func loadDemo() {
         post(to: NerveEndpoint.demo, body: nil, what: "demo")
+    }
+
+    /// Panel Refresh: ask the hub to reap dead producers and republish, then
+    /// paint the returned job list. Do not tear the SSE stream down.
+    func refresh() {
+        Task { await driveHubRefresh() }
     }
 
     /// Report how an action the hub handed to a producer ended.
@@ -126,9 +155,9 @@ final class HubClient {
             await syncFromHub()
             do {
                 try await readOneConnection()
-                NSLog("[Nerve] hub closed the stream")
+                NerveLog.hub.info("hub closed the stream")
             } catch {
-                NSLog("[Nerve] hub stream ended: %@", "\(error)")
+                NerveLog.hub.error("hub stream ended: \(String(describing: error), privacy: .public)")
             }
             guard !Task.isCancelled else { return }
             // After the cancellation guard, so `disconnect()` never fires it.
@@ -136,7 +165,7 @@ final class HubClient {
 
             let delay = retryDelay
             retryDelay = min(Self.maxRetryDelay, retryDelay * 2)
-            NSLog("[Nerve] reconnecting to hub in %.0fs", delay)
+            NerveLog.hub.info("reconnecting to hub in \(delay, privacy: .public)s")
             try? await Task.sleep(for: .seconds(delay))
         }
     }
@@ -156,23 +185,42 @@ final class HubClient {
         }
 
         retryDelay = Self.minRetryDelay
-        NSLog("[Nerve] attached to hub at %@", Self.streamURL.absoluteString)
+        NerveLog.record("attached to hub at \(Self.streamURL.absoluteString)")
 
-        // SSE framing: `data:` lines accumulate until a blank line ends the
-        // event, and a line opening with `:` is the keep-alive comment.
+        // Read off the main actor. A MainActor `for await bytes.lines` can
+        // stall the executor: Refresh, polling and SwiftUI then all freeze
+        // while the TCP socket still looks ESTABLISHED.
+        try await Self.iterateSSE(bytes) { [weak self] event in
+            await self?.apply(event)
+        }
+    }
+
+    private nonisolated static func iterateSSE(
+        _ bytes: URLSession.AsyncBytes,
+        onEvent: @escaping @Sendable (String) async -> Void
+    ) async throws {
         var payload: [String] = []
         for try await line in bytes.lines {
             if line.isEmpty {
                 if !payload.isEmpty {
-                    apply(payload.joined(separator: "\n"))
+                    let event = payload.joined(separator: "\n")
                     payload.removeAll(keepingCapacity: true)
+                    await onEvent(event)
                 }
                 continue
             }
             if line.hasPrefix(":") { continue }
-            if let value = Self.value(ofField: "data", in: line) {
+            if let value = value(ofField: "data", in: line) {
                 payload.append(value)
             }
+        }
+    }
+
+    private func pollJobsUntilCancelled() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(Self.jobsPollInterval))
+            guard !Task.isCancelled else { return }
+            await syncFromHub()
         }
     }
 
@@ -184,10 +232,36 @@ final class HubClient {
         } catch {
             // One unreadable frame is not worth dropping the connection over:
             // the next frame is a full snapshot and restores everything.
-            NSLog("[Nerve] hub frame ignored (decode failed): %@", "\(error)")
+            NerveLog.record("hub frame ignored (decode failed): \(error)")
             return
         }
+        NerveLog.record("frame jobs=\(frame.jobs.count) notify=\(frame.notify.owner ?? "-")")
         applyFrame(frame)
+    }
+
+    /// `POST /v1/refresh` — hub runs maintenance and answers the job list.
+    /// Falls back to `GET /v1/jobs` on an older hub that does not have the route.
+    private func driveHubRefresh() async {
+        var request = URLRequest(url: NerveEndpoint.refresh)
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = Self.jobsFetchTimeout
+        do {
+            let (data, response) = try await shortSession.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                NerveLog.record("hub refresh HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0); falling back to GET")
+                await syncFromHub()
+                return
+            }
+            var frame = try HubFrame(jobsListJSON: data, decoder: decoder)
+            frame.notify = store.notify
+            NerveLog.record("hub refresh jobs=\(frame.jobs.count)")
+            applyFrame(frame)
+        } catch {
+            NerveLog.record("hub refresh failed: \(error); falling back to GET")
+            await syncFromHub()
+        }
     }
 
     /// `GET /v1/jobs` before (re)attaching to SSE — paint immediately, not
@@ -198,28 +272,36 @@ final class HubClient {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = Self.jobsFetchTimeout
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await shortSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
                 return
             }
-            let frame = try HubFrame(jobsListJSON: data, decoder: decoder)
+            var frame = try HubFrame(jobsListJSON: data, decoder: decoder)
+            // `/v1/jobs` is a bare array — it has no notify lease. Keep the
+            // one the stream already elected, or a refresh would look like an
+            // older hub (everyone may banner) until the next SSE frame.
+            frame.notify = store.notify
+            if frame.jobs.count != store.activeCount {
+                NerveLog.record("jobs pull \(frame.jobs.count)")
+            }
             applyFrame(frame)
         } catch {
-            NSLog("[Nerve] hub jobs fetch failed: %@", "\(error)")
+            NerveLog.record("hub jobs fetch failed: \(error)")
         }
     }
 
     private func applyFrame(_ frame: HubFrame) {
         let pairs = differ.pairs(for: frame)
-        store.applyFrame(jobs: frame.jobs, timelines: frame.timelines)
+        store.applyFrame(jobs: frame.jobs, timelines: frame.timelines, notify: frame.notify)
+        guard frame.notify.mayInterrupt(surface: "macos") else { return }
         for pair in pairs {
             store.notificationSink?(pair.previous, pair.next)
         }
     }
 
     /// The value of one SSE field line, or nil when the line names another field.
-    private static func value(ofField field: String, in line: String) -> String? {
+    private nonisolated static func value(ofField field: String, in line: String) -> String? {
         guard let colon = line.firstIndex(of: ":") else { return nil }
         guard String(line[line.startIndex..<colon]) == field else { return nil }
         var value = line[line.index(after: colon)...]
@@ -230,6 +312,32 @@ final class HubClient {
 
     // MARK: - Writes
 
+    /// `PUT /v1/notify` — `single` (one owner) or `all` (every surface).
+    func setNotifyPolicy(_ policy: String) {
+        let body = try? encoder.encode(["policy": policy])
+        put(to: NerveEndpoint.notify, body: body, what: "notify")
+    }
+
+    private func put(to url: URL, body: Data?, what: String) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        Task { [shortSession] in
+            do {
+                let (_, response) = try await shortSession.data(for: request)
+                if let http = response as? HTTPURLResponse,
+                   !(200..<300).contains(http.statusCode) {
+                    NerveLog.hub.error("hub refused \(what, privacy: .public) (HTTP \(http.statusCode, privacy: .public))")
+                }
+            } catch {
+                NerveLog.hub.error("hub \(what, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
     private func post(to url: URL, body: Data?, what: String) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -238,15 +346,15 @@ final class HubClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        Task { [session] in
+        Task { [shortSession] in
             do {
-                let (_, response) = try await session.data(for: request)
+                let (_, response) = try await shortSession.data(for: request)
                 if let http = response as? HTTPURLResponse,
                    !(200..<300).contains(http.statusCode) {
-                    NSLog("[Nerve] hub refused %@ (HTTP %d)", what, http.statusCode)
+                    NerveLog.hub.error("hub refused \(what, privacy: .public) (HTTP \(http.statusCode, privacy: .public))")
                 }
             } catch {
-                NSLog("[Nerve] hub %@ failed: %@", what, "\(error)")
+                NerveLog.hub.error("hub \(what, privacy: .public) failed: \(String(describing: error), privacy: .public)")
             }
         }
     }

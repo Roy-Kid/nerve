@@ -49,6 +49,10 @@ nerve-platform = { path = "../nerve-platform" }
 # right shape here — unlike the surfaces' endless stream, this request either
 # finishes quickly or the agent should not be waiting on it.
 reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
+# Structured logs on stderr and a daily file under the OS log directory.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
 
 [dev-dependencies]
 # Contract tests drive the `Router` directly with `ServiceExt::oneshot`, so no

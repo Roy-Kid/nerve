@@ -58,8 +58,10 @@ struct MenuBarRibbonLabel: View {
     private var phase: TimeInterval { ambientActive ? clock.phase : 0 }
 
     var body: some View {
-        // Observe ambient ticks while motion is on.
+        // Observe ambient ticks while motion is on, and every hub write so
+        // MenuBarExtra cannot keep a frozen ribbon after a frame arrives.
         let _ = clock.tick
+        let _ = store.revision
         ribbonImage
             // Explicit frame keeps MenuBarExtra from collapsing a zero-size label.
             .frame(width: preferredWidth, height: 22)

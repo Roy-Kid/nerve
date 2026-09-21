@@ -12,7 +12,10 @@ fn main() -> ExitCode {
             ExitCode::from(EXIT_OK)
         }
         Ok(Command::Hook) => ExitCode::from(nerve_hub::hook::forward_stdin() as u8),
-        Ok(Command::Serve(args)) => serve(args),
+        Ok(Command::Serve(args)) => {
+            nerve_hub::log::init(args.verbose());
+            serve(args)
+        }
         Err(err) => {
             eprintln!("nerve-hub: {err}\n\n{USAGE}");
             ExitCode::from(EXIT_USAGE)

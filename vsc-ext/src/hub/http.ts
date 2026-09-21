@@ -48,6 +48,45 @@ export function getText(
   });
 }
 
+export function postText(
+  path: string,
+  timeoutMs: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        host: HUB_HOST,
+        port: HUB_PORT,
+        path,
+        method: "POST",
+        timeout: timeoutMs,
+        headers: { Accept: "application/json, */*", "Content-Length": 0 },
+      },
+      (response) => {
+        const status = response.statusCode ?? 0;
+        if (status < 200 || status >= 300) {
+          response.resume();
+          reject(new HubHttpError(`hub answered HTTP ${status}`, status));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        response.on("end", () => {
+          resolve(Buffer.concat(chunks).toString("utf8"));
+        });
+        response.on("error", reject);
+      },
+    );
+    request.on("timeout", () => {
+      request.destroy(new HubHttpError("hub request timed out"));
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
 export function getStream(
   path: string,
   onData: (chunk: string) => void,

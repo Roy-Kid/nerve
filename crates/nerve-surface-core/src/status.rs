@@ -125,8 +125,17 @@ impl StatusClass {
 
     /// `Subject.swift:43-66` — what the job is asking of a human.
     fn from_attention(job: &JobView) -> Option<Self> {
-        // :43 — elevated attention is attention, never running.
+        // :43 — elevated attention is attention, unless the agent is
+        // already executing. A stale Ask (Stop retry, permission prompt
+        // that already proceeded) must not stay orange over a live tool.
         if job.attention.level >= AttentionLevel::Suggested {
+            if job
+                .current
+                .as_ref()
+                .is_some_and(|current| names(&current.kind, &BUSY_KINDS))
+            {
+                return None;
+            }
             return Some(Self::Attention);
         }
 

@@ -281,10 +281,13 @@ fn is_wire_date(raw: &str) -> bool {
 async fn test_health_answers_the_literal_the_script_greps() {
     let reply = call(&hub(), get("/v1/health")).await.ok();
 
-    assert_eq!(
-        reply.json(),
-        json!({ "ok": true, "service": "nerve", "version": "0.1.0" })
-    );
+    let body = reply.json();
+    // The script greps `"ok":true`; extra keys (watchers, notify) are fine.
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["service"], "nerve");
+    assert_eq!(body["version"], "0.1.0");
+    assert_eq!(body["watchers"], 0);
+    assert_eq!(body["notify"]["policy"], "single");
 }
 
 /// `verify_loop.sh:18-19` — `curl -sf -X POST …/v1/clear`.

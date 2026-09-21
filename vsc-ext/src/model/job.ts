@@ -117,9 +117,31 @@ export interface Job {
   updatedAt?: string;
 }
 
+export type NotifyPolicy = "all" | "single";
+
+export interface NotifyLease {
+  policy: NotifyPolicy;
+  owner?: string;
+  surfaces: string[];
+  watchers: number;
+}
+
+/** Older hub omitted `notify`; every surface may fire. */
+export const LEGACY_NOTIFY: NotifyLease = {
+  policy: "all",
+  surfaces: [],
+  watchers: 0,
+};
+
+export function mayInterrupt(lease: NotifyLease, surface: string): boolean {
+  if (lease.policy === "all") return true;
+  return lease.owner === surface;
+}
+
 export interface Frame {
   jobs: Job[];
   departed: Job[];
+  notify: NotifyLease;
 }
 
 const LIFECYCLES = new Set<Lifecycle>([
@@ -292,7 +314,22 @@ export function parseFrame(raw: string): Frame {
         .map(parseJob)
         .filter((job): job is Job => job !== undefined)
     : [];
-  return { jobs, departed };
+  return { jobs, departed, notify: parseNotify(record.notify) };
+}
+
+function parseNotify(value: unknown): NotifyLease {
+  const record = asRecord(value);
+  if (!record) return LEGACY_NOTIFY;
+  const policy: NotifyPolicy = record.policy === "single" ? "single" : "all";
+  const owner = asString(record.owner);
+  const surfaces = Array.isArray(record.surfaces)
+    ? record.surfaces.filter((item): item is string => typeof item === "string")
+    : [];
+  const watchers =
+    typeof record.watchers === "number" && Number.isFinite(record.watchers)
+      ? record.watchers
+      : 0;
+  return { policy, owner, surfaces, watchers };
 }
 
 export function parseJobsList(raw: string): Job[] {

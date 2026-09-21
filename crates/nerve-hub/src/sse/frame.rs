@@ -16,15 +16,26 @@
 
 use serde::Serialize;
 
+use crate::lifecycle::NotifyLease;
 use crate::model::Job;
 use crate::state::{JobStore, JobView, JobsSeq};
 
-/// One frame: two keys, forever.
+/// Compact JSON written when serialising the real frame fails. Same three
+/// keys a healthy empty hub publishes, so a surface's parser still sees the
+/// contract shape.
+const EMPTY_FRAME: &str =
+    r#"{"jobs":[],"departed":[],"notify":{"policy":"single","surfaces":[],"watchers":0}}"#;
+
+/// One frame: jobs, departed, and the notify lease.
+///
+/// `jobs` is the authority; `departed` is the eviction hint; `notify` is who
+/// may raise an OS banner given the surfaces currently holding this stream.
 pub struct Frame<'a> {
     store: &'a JobStore,
     /// Owned because draining is what makes them this frame's — the store no
     /// longer has them to lend.
     departed: Vec<Job>,
+    notify: NotifyLease,
 }
 
 /// The wire shape, assembled only for the length of one [`Frame::render`].
@@ -35,6 +46,7 @@ pub struct Frame<'a> {
 struct Wire<'a> {
     jobs: JobsSeq<'a>,
     departed: Vec<JobView<'a>>,
+    notify: NotifyLease,
 }
 
 impl<'a> Frame<'a> {
@@ -43,20 +55,22 @@ impl<'a> Frame<'a> {
     /// Nothing is taken from the departed buffer: it belongs to every
     /// subscriber, and a surface that has just arrived has no earlier frame to
     /// reconcile it with anyway.
-    pub fn connect(store: &'a JobStore) -> Self {
+    pub fn connect(store: &'a JobStore, notify: NotifyLease) -> Self {
         Self {
             store,
             departed: Vec::new(),
+            notify,
         }
     }
 
     /// The frame a change produces: the full set, plus the terminal states
     /// buffered since the previous frame, which this one drains.
-    pub fn published(store: &'a mut JobStore) -> Self {
+    pub fn published(store: &'a mut JobStore, notify: NotifyLease) -> Self {
         let departed = store.drain_departed_deduped();
         Self {
             store: &*store,
             departed,
+            notify,
         }
     }
 
@@ -68,6 +82,7 @@ impl<'a> Frame<'a> {
         let wire = Wire {
             jobs: JobsSeq(self.store),
             departed: self.departed.iter().map(JobView::departed).collect(),
+            notify: self.notify.clone(),
         };
         // Sized for a quiet hub (empty set) and grown by serde; a busy one
         // still writes once into this buffer instead of building a Value tree.
@@ -76,9 +91,8 @@ impl<'a> Frame<'a> {
         // fallback keeps the shape rather than the content, because a frame
         // with the wrong keys would break a surface's parser outright.
         match serde_json::to_writer(&mut buf, &wire) {
-            Ok(()) => String::from_utf8(buf)
-                .unwrap_or_else(|_| r#"{"jobs":[],"departed":[]}"#.to_string()),
-            Err(_) => r#"{"jobs":[],"departed":[]}"#.to_string(),
+            Ok(()) => String::from_utf8(buf).unwrap_or_else(|_| EMPTY_FRAME.to_string()),
+            Err(_) => EMPTY_FRAME.to_string(),
         }
     }
 }

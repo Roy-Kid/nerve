@@ -52,6 +52,7 @@ crates/nerve-hub/       Hub daemon (+ Grok HTTP mapper at POST /v1/hook)
 Nerve/                  macOS menu-bar app (surface)
 crates/                 Rust: nerve-hub daemon + nerve-tmux-surface helper
 surfaces/tmux/          tmux plugin surface (TPM entry)
+surfaces/tether/        Tether plugin surface (compile-time Swift package)
 vsc-ext/                VS Code / Cursor surface (status bar + Activity Bar)
 index/                  Marketing site + /docs SPA
 fixtures/ · scripts/ · assets/

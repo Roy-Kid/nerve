@@ -3,6 +3,7 @@ import type { JobFilter } from "../model/filter";
 import type { Job } from "../model/job";
 import { isAskElevated, statusOf } from "../model/status";
 import { HubClient } from "../hub/client";
+import { createNerveLog } from "../log";
 import { AskToast } from "../notify/askToast";
 import { JobStore } from "../store/jobStore";
 import { copyLocation, copySummary, performFocus } from "../ui/focus";
@@ -23,15 +24,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.getConfiguration("nerve").get("statusBar.enabled", true),
   );
   const askToast = new AskToast();
+  const log = createNerveLog();
   const client = new HubClient(store, {
     extensionPath: context.extensionPath,
     spawnEnabled: () =>
       vscode.workspace.getConfiguration("nerve").get("hub.spawn", true),
+    log,
   });
 
   const applyChrome = (): void => {
     const snapshot = store.snapshot();
-    askToast.evaluate(snapshot.jobs);
+    askToast.evaluate(snapshot.jobs, snapshot.notify);
 
     const badgeCount = snapshot.jobs.filter((job) => {
       return statusOf(job) === "problem" || isAskElevated(job);
@@ -74,6 +77,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
+    log,
     treeView,
     statusBar,
     vscode.commands.registerCommand("nerve.showJobs", async () => {

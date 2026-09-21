@@ -21,6 +21,7 @@ path = "src/lib.rs"
 [dependencies]
 # Everything this surface does that is not drawing.
 nerve-surface-core = { path = "../nerve-surface-core" }
+tracing = "0.1"
 # Path shape, for deciding whether a reported location is one this machine
 # could open at all.
 nerve-platform = { path = "../nerve-platform" }

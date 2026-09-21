@@ -8,7 +8,7 @@ Each host uses **its official native hook type and language**:
 |------|---------------|---------------|
 | Claude Code | `command` exec form (`node` + `args`) | `hooks/nerve.js` |
 | Codex | `command` (`python3 ${PLUGIN_ROOT}/…`) | `hooks/nerve.py` |
-| Grok | `http` | Grok POSTs event JSON to `/v1/hook` (no user script) |
+| Grok | `command` | `hooks/grok-post.js` POSTs stdin to `/v1/hook`. Grok `type: http` blocks loopback (SSRF). |
 
 Fail-open: never block the agent.
 

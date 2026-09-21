@@ -34,6 +34,12 @@ final class AppModel {
         store.demoRequestSink = { [weak self] in
             self?.hubClient.loadDemo()
         }
+        store.refreshRequestSink = { [weak self] in
+            self?.hubClient.refresh()
+        }
+        store.notifyPolicySink = { [weak self] policy in
+            self?.hubClient.setNotifyPolicy(policy)
+        }
         tunnels.attach(settings: settings)
     }
 

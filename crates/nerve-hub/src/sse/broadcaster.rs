@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use tokio::sync::{broadcast, Notify};
 
+use crate::lifecycle::SurfaceRoster;
 use crate::state::JobStore;
 
 use super::frame::Frame;
@@ -78,6 +79,7 @@ pub struct Broadcaster {
     changes: ChangeSignal,
     window: Duration,
     frames: broadcast::Sender<Arc<str>>,
+    roster: SurfaceRoster,
 }
 
 impl Broadcaster {
@@ -85,13 +87,19 @@ impl Broadcaster {
     /// frame, short enough that a surface still feels immediate.
     pub const WINDOW: Duration = Duration::from_millis(150);
 
-    pub fn new(store: Arc<Mutex<JobStore>>, changes: ChangeSignal, window: Duration) -> Self {
+    pub fn new(
+        store: Arc<Mutex<JobStore>>,
+        changes: ChangeSignal,
+        window: Duration,
+        roster: SurfaceRoster,
+    ) -> Self {
         let (frames, _) = broadcast::channel(FRAME_BACKLOG);
         Self {
             store,
             changes,
             window,
             frames,
+            roster,
         }
     }
 
@@ -104,13 +112,15 @@ impl Broadcaster {
     pub fn join(&self) -> (broadcast::Receiver<Arc<str>>, Arc<str>) {
         let store = self.store();
         let receiver = self.frames.subscribe();
-        (receiver, Arc::from(Frame::connect(&store).render()))
+        let notify = self.roster.lease();
+        (receiver, Arc::from(Frame::connect(&store, notify).render()))
     }
 
     /// The authoritative set, taking nothing from the departed buffer — what a
     /// subscriber that fell too far behind is resynchronised with.
     pub fn resync(&self) -> Arc<str> {
-        Arc::from(Frame::connect(&self.store()).render())
+        let notify = self.roster.lease();
+        Arc::from(Frame::connect(&self.store(), notify).render())
     }
 
     /// Coalesce changes into frames until the runtime drops this task.
@@ -135,7 +145,8 @@ impl Broadcaster {
         // schedules the next frame instead of being folded into a frame that
         // may already have passed it.
         self.changes.take();
-        let frame: Arc<str> = Arc::from(Frame::published(&mut store).render());
+        let notify = self.roster.lease();
+        let frame: Arc<str> = Arc::from(Frame::published(&mut store, notify).render());
         // No subscriber is not an error: a hub with no surface attached still
         // keeps its state, it simply has nobody to tell.
         let _ = self.frames.send(frame);

@@ -519,6 +519,29 @@ impl JobStore {
     }
 
     /// Every stored job as a bare JSON array, each with its timeline.
+    /// Live conversation rows for this producer in this workspace.
+    ///
+    /// Used by hook ingest to close a superseded session when the in-memory
+    /// slot map was empty (hub restart) or the new session never sent
+    /// `SessionStart`.
+    pub fn live_ids_in_workspace(&self, producer_id: &str, workspace: &str) -> Vec<String> {
+        if workspace.is_empty() {
+            return Vec::new();
+        }
+        self.jobs
+            .values()
+            .filter(|job| {
+                job.producer.id == producer_id
+                    && job
+                        .context
+                        .as_ref()
+                        .and_then(|context| context.workspace.as_deref())
+                        == Some(workspace)
+            })
+            .map(|job| job.id.clone())
+            .collect()
+    }
+
     pub fn jobs_json(&self) -> Value {
         // See `pending_json`: plain data, unreachable fallback, array shape kept.
         serde_json::to_value(self.job_views()).unwrap_or_else(|_| Value::Array(Vec::new()))

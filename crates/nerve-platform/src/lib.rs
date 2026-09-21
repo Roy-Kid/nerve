@@ -12,5 +12,6 @@
 //!
 //! Nothing here knows about jobs, frames or HTTP.
 
+pub mod logs;
 pub mod path;
 pub mod pid;

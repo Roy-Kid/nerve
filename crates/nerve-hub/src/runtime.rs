@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 
 use crate::http::{self, HubState, StreamState};
-use crate::lifecycle::{ExitSignal, GraceTimer, Presence, Subscription};
+use crate::lifecycle::{ExitSignal, GraceTimer, RosterGuard, SurfaceRoster};
 use crate::sse::{Broadcaster, ChangeSignal};
 use crate::state::JobStore;
 
@@ -26,7 +26,7 @@ pub struct HubRuntime {
     store: Arc<Mutex<JobStore>>,
     changes: ChangeSignal,
     frames: Arc<Broadcaster>,
-    presence: Presence,
+    roster: SurfaceRoster,
     exit: ExitSignal,
     background: Vec<JoinHandle<()>>,
 }
@@ -43,17 +43,18 @@ impl HubRuntime {
     pub fn new(store: JobStore, grace: Duration) -> Self {
         let store = Arc::new(Mutex::new(store));
         let changes = ChangeSignal::new();
+        let roster = SurfaceRoster::new(changes.clone());
         let frames = Arc::new(Broadcaster::new(
             Arc::clone(&store),
             changes.clone(),
             Broadcaster::WINDOW,
+            roster.clone(),
         ));
-        let presence = Presence::new();
         let exit = ExitSignal::new();
 
         let background = vec![
             tokio::spawn(Arc::clone(&frames).pump()),
-            tokio::spawn(GraceTimer::new(grace, presence.watch(), exit.clone()).run()),
+            tokio::spawn(GraceTimer::new(grace, roster.watch(), exit.clone()).run()),
             tokio::spawn(
                 Maintenance {
                     store: Arc::clone(&store),
@@ -68,7 +69,7 @@ impl HubRuntime {
             store,
             changes,
             frames,
-            presence,
+            roster,
             exit,
             background,
         }
@@ -83,19 +84,21 @@ impl HubRuntime {
         http::router(HubState::from_shared(
             Arc::clone(&self.store),
             self.changes.clone(),
+            self.roster.clone(),
         ))
         .merge(http::stream_router(StreamState::new(
             Arc::clone(&self.frames),
-            self.presence.clone(),
+            self.roster.clone(),
         )))
     }
 
     /// Count one surface as present until the returned guard drops.
     ///
     /// The SSE route takes one per connection; a caller can take one directly
-    /// to hold the hub open for its own reasons.
-    pub fn subscribe(&self) -> Subscription {
-        self.presence.subscribe()
+    /// to hold the hub open for its own reasons. Lifecycle tests use this
+    /// rather than opening a socket.
+    pub fn subscribe(&self) -> RosterGuard {
+        self.roster.subscribe("anonymous")
     }
 
     /// Resolve when the hub has decided to stop.
@@ -139,6 +142,7 @@ impl Maintenance {
                 .unwrap_or_else(PoisonError::into_inner)
                 .expire_and_reap();
             if changed {
+                tracing::debug!("maintenance published");
                 self.changes.raise();
             }
         }

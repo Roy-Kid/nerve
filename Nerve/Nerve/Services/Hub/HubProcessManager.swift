@@ -89,7 +89,7 @@ final class HubProcessManager {
 
         guard let binary = Self.locateBinary() else {
             state = .notInstalled
-            NSLog("[Nerve] no %@ binary found — start one by hand or reinstall Nerve", Self.binaryName)
+            NerveLog.hub.error("no \(Self.binaryName, privacy: .public) binary found — start one by hand or reinstall Nerve")
             return
         }
 
@@ -101,7 +101,7 @@ final class HubProcessManager {
             // must say so — leaving the previous `.running` would have the UI
             // claim a hub that is demonstrably not answering.
             state = .unreachable("hub is not answering; waiting out the restart window")
-            NSLog("[Nerve] hub spawn throttled (one per %.0fs)", Self.spawnThrottle)
+            NerveLog.hub.info("hub spawn throttled (one per \(Self.spawnThrottle, privacy: .public)s)")
             return
         }
         lastSpawnAt = now
@@ -110,16 +110,16 @@ final class HubProcessManager {
             try Self.spawn(binary)
         } catch {
             state = .unreachable(error.localizedDescription)
-            NSLog("[Nerve] could not spawn %@: %@", binary.path, "\(error)")
+            NerveLog.hub.error("could not spawn \(binary.path, privacy: .public): \(String(describing: error), privacy: .public)")
             return
         }
-        NSLog("[Nerve] spawned hub: %@ serve", binary.path)
+        NerveLog.hub.info("spawned hub: \(binary.path, privacy: .public) serve")
 
         if await waitForHub() {
             state = .running
         } else {
             state = .unreachable("hub did not answer within \(Int(Self.startupTimeout))s of starting")
-            NSLog("[Nerve] hub silent %.0fs after spawn", Self.startupTimeout)
+            NerveLog.hub.error("hub silent \(Self.startupTimeout, privacy: .public)s after spawn")
         }
     }
 

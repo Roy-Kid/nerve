@@ -7,14 +7,15 @@
 ```
 plugins/nerve/hooks/nerve.js  →  Claude Node exec  →  POST /v1/snapshot
 plugins/nerve/hooks/nerve.py  →  Codex python3     →  POST /v1/snapshot
-plugins/nerve/hooks/grok.json →  Grok type:http    →  POST /v1/hook
+plugins/nerve/hooks/grok.json →  Grok command + grok-post.js →  POST /v1/hook
 crates/nerve-hub/src/hook/    →  Grok HTTP body → job facets
-crates/nerve-hub/            →  state authority: ingest + SSE frames + refcount lifecycle
+crates/nerve-hub/            →  state authority: ingest + SSE frames + refcount lifecycle + tracing logs
 Nerve/Nerve/Services/Hub     →  macOS surface client (spawn, SSE, frame diff)
 Nerve/Nerve/Store            →  JobStore (frame-fed read-only cache + ribbon segments)
 Nerve/Nerve/UI               →  menu-bar ribbon + status panel
 surfaces/tmux/nerve.tmux + crates/nerve-tmux-surface/  →  tmux surface (trampoline → rust install + sidebar)
 vsc-ext/                →  VS Code surface (status bar + Activity Bar tree; SSE ?surface=vscode)
+surfaces/tether/        →  Tether plugin (SSE ?surface=tether; health-first hub spawn)
 index/                  →  marketing + /docs handbook (React SPA)
 ```
 

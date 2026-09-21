@@ -165,6 +165,18 @@ pub const SUBAGENT_NOISE: &[&str] = &[
     "userpromptsubmit",
 ];
 
-pub fn skip_subagent_noise(event: &str, payload: &Value) -> bool {
-    agent_id(payload).is_some() && SUBAGENT_NOISE.contains(&event)
+pub fn skip_subagent_noise(producer: super::Producer, event: &str, payload: &Value) -> bool {
+    if !SUBAGENT_NOISE.contains(&event) {
+        return false;
+    }
+    match producer {
+        // Grok marks nested agents with `subagentType`. It may still send
+        // `agent_id` on the main session; that is not a child.
+        super::Producer::Grok => get_str(
+            payload,
+            &["subagentType", "subagent_type", "subagent_id", "subagentId"],
+        )
+        .is_some(),
+        super::Producer::Claude | super::Producer::Codex => agent_id(payload).is_some(),
+    }
 }
