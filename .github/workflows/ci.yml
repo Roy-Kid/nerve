@@ -74,9 +74,24 @@ jobs:
       - name: build the hub and the tray surface
         run: cargo build --release -p nerve-hub -p nerve-windows-surface
 
+      - name: verify the Windows ingest loop
+        shell: powershell
+        run: ./scripts/nerve.ps1 -VerifyLoop -BinaryDirectory ./target/release
+
+      - name: test Windows installer helpers
+        shell: powershell
+        run: ./scripts/tests/nerve-windows.ps1
+
+      - name: stage the Windows download
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force package/scripts, package/fixtures | Out-Null
+          Copy-Item target/release/nerve-hub.exe, target/release/nerve-windows-surface.exe package/
+          Copy-Item scripts/nerve.ps1 package/scripts/
+          Copy-Item fixtures/demo_snapshot.json package/fixtures/
+
       - uses: actions/upload-artifact@v4
         with:
           name: nerve-windows-x64
-          path: |
-            target/release/nerve-hub.exe
-            target/release/nerve-windows-surface.exe
+          path: package/
+          if-no-files-found: error

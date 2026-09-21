@@ -22,6 +22,8 @@ use shell::ShellOpener;
 pub struct Outcome {
     pub message: String,
     pub succeeded: bool,
+    /// A successful navigation dismisses the panel; a copy keeps its explanation visible.
+    pub opened: bool,
 }
 
 /// Carry out whatever [`plan`] decided.
@@ -35,16 +37,16 @@ pub fn perform(
     clipboard: &mut dyn Clipboard,
 ) -> Outcome {
     match plan(job, local_alias) {
-        OpenPlan::Shell(url) => outcome(opener.open_url(&url), "Opened", "Nothing opened it"),
-        OpenPlan::Reveal(path) => outcome(
+        OpenPlan::Shell(url) => navigation(opener.open_url(&url), "Nothing opened it"),
+        OpenPlan::Reveal(path) => navigation(
             opener.open_path(std::path::Path::new(&path)),
-            "Opened",
             "Could not open that folder",
         ),
         OpenPlan::Copy { text, reason } => {
             let copied = clipboard.set_text(&text);
             Outcome {
                 succeeded: copied,
+                opened: false,
                 message: if copied {
                     format!("Copied — {reason}")
                 } else {
@@ -55,6 +57,7 @@ pub fn perform(
         OpenPlan::None(reason) => Outcome {
             message: reason.to_string(),
             succeeded: false,
+            opened: false,
         },
     }
 }
@@ -73,5 +76,12 @@ fn outcome(ok: bool, good: &str, bad: &str) -> Outcome {
     Outcome {
         message: if ok { good } else { bad }.to_string(),
         succeeded: ok,
+        opened: false,
     }
+}
+
+fn navigation(ok: bool, failure: &str) -> Outcome {
+    let mut result = outcome(ok, "Opened", failure);
+    result.opened = ok;
+    result
 }

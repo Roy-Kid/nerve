@@ -43,17 +43,11 @@ pub fn show(
             ui.horizontal(|ui| {
                 dot(ui, StatusClass::of(job));
                 ui.add_space(6.0);
-                ui.label(RichText::new(job.name.trim()).strong());
-
-                let activity = activity_text(job).trim();
-                if !activity.is_empty() {
-                    ui.add_space(6.0);
-                    ui.label(
-                        RichText::new(truncate(activity, 48))
-                            .color(secondary(theme))
-                            .small(),
-                    );
-                }
+                ui.add_sized(
+                    [(ui.available_width() - 55.0).max(0.0), 20.0],
+                    egui::Label::new(RichText::new(job.name.trim()).strong()).truncate(),
+                )
+                .on_hover_text(job.name.trim());
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.label(
@@ -63,6 +57,14 @@ pub fn show(
                     );
                 });
             });
+            let activity = activity_text(job).trim();
+            if !activity.is_empty() {
+                ui.add(
+                    egui::Label::new(RichText::new(activity).color(secondary(theme)).small())
+                        .truncate(),
+                )
+                .on_hover_text(activity);
+            }
         })
         .response
         .interact(Sense::click());
@@ -111,6 +113,16 @@ fn detail(
         }
     }
 
+    if let Some(location) = &job.location {
+        if let Some(value) = location
+            .focus_hint
+            .as_deref()
+            .or(location.open_url.as_deref())
+        {
+            field(ui, "Location", value.trim(), muted);
+        }
+    }
+
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         if ui.small_button("Open").clicked() {
@@ -143,7 +155,8 @@ fn field(ui: &mut Ui, label: &str, value: &str, muted: Color32) {
     }
     ui.horizontal(|ui| {
         ui.label(RichText::new(label).color(muted).small());
-        ui.label(RichText::new(truncate(value, 44)).small());
+        ui.add(egui::Label::new(RichText::new(value).small()).truncate())
+            .on_hover_text(value);
     });
 }
 

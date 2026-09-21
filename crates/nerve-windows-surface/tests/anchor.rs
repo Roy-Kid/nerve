@@ -136,3 +136,20 @@ fn a_hidpi_monitor_is_just_a_bigger_rectangle() {
     assert!(x + SIZE.0 <= retina.right());
     assert!(y + SIZE.1 <= retina.bottom());
 }
+
+#[test]
+fn viewport_commands_convert_physical_pixels_to_logical_points() {
+    use nerve_windows_surface::flyout::anchor::place_scaled;
+    for scale in [1.0, 1.5, 2.0] {
+        let screen = Rect::new(0, 0, (1920.0 * scale) as i32, (1080.0 * scale) as i32);
+        let tray = Rect::new(
+            (1800.0 * scale) as i32,
+            (1040.0 * scale) as i32,
+            (24.0 * scale) as i32,
+            (24.0 * scale) as i32,
+        );
+        let (x, y) = place_scaled(tray, screen, (380.0, 460.0), scale);
+        assert!((x + 380.0 - 1824.0).abs() < 1.0);
+        assert!(y + 460.0 < 1040.0);
+    }
+}

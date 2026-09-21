@@ -29,7 +29,7 @@ pub fn platform_fixed_directories() -> Vec<PathBuf> {
     {
         ["LOCALAPPDATA", "ProgramFiles"]
             .iter()
-            .filter_map(|key| env::var_os(key))
+            .filter_map(env::var_os)
             .map(|root| Path::new(&root).join("Programs").join("Nerve"))
             .collect()
     }

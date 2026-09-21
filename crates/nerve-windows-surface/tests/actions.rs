@@ -24,6 +24,7 @@ fn a_local_folder_is_opened() {
     let outcome = perform(&row, LOCAL, &opener, &mut clipboard);
 
     assert!(outcome.succeeded, "{}", outcome.message);
+    assert!(outcome.opened);
     assert_eq!(opener.opened.borrow().as_slice(), ["path:C:/work/nerve"]);
     assert!(clipboard.copied.is_empty(), "it copied instead of opening");
 }
@@ -59,6 +60,8 @@ fn another_machines_path_is_copied_and_never_opened() {
 
     let outcome = perform(&row, LOCAL, &opener, &mut clipboard);
 
+    assert!(outcome.succeeded);
+    assert!(!outcome.opened, "keep the copy explanation visible");
     assert!(opener.opened.borrow().is_empty(), "it opened a remote path");
     assert_eq!(clipboard.copied.len(), 1);
     assert!(

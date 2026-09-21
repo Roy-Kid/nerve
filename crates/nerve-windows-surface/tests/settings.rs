@@ -106,3 +106,19 @@ fn an_attention_floor_survives_the_round_trip_as_its_wire_spelling() {
     assert_eq!(Settings::load(&path).toast_floor, AttentionLevel::Urgent);
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+#[test]
+fn resizing_is_saved_and_keeps_window_bounds() {
+    let path = temp_path("resize");
+    let mut settings = Settings::default();
+    settings.set_panel_size(510.0, 700.0);
+    settings.save(&path).expect("save resize");
+    let loaded = Settings::load(&path);
+    assert_eq!((loaded.panel_width, loaded.panel_height), (510.0, 700.0));
+    settings.set_panel_size(1.0, 10000.0);
+    assert_eq!(
+        (settings.panel_width, settings.panel_height),
+        (320.0, 800.0)
+    );
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

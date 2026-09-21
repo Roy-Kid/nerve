@@ -113,6 +113,24 @@ pub fn place(anchor: &Anchor) -> (i32, i32) {
     )
 }
 
+/// Bridge physical tray coordinates and egui's logical viewport commands.
+pub fn place_scaled(tray: Rect, monitor: Rect, size: (f32, f32), scale: f32) -> (f32, f32) {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let (x, y) = place(&Anchor {
+        tray,
+        monitor,
+        size: (
+            (size.0 * scale).round() as i32,
+            (size.1 * scale).round() as i32,
+        ),
+    });
+    (x as f32 / scale, y as f32 / scale)
+}
+
 /// Clamp that survives a flyout larger than the monitor.
 ///
 /// `i32::clamp` panics when `min > max`, which is exactly the case a panel

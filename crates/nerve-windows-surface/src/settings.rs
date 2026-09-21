@@ -15,8 +15,8 @@ use nerve_surface_core::frame::AttentionLevel;
 use serde::{Deserialize, Serialize};
 
 /// Panel size limits, mirroring `SettingsStore.clampPanelWidth/Height`.
-const WIDTH: (f32, f32) = (320.0, 560.0);
-const HEIGHT: (f32, f32) = (240.0, 800.0);
+pub const WIDTH: (f32, f32) = (320.0, 560.0);
+pub const HEIGHT: (f32, f32) = (240.0, 800.0);
 const DEFAULT_SIZE: (f32, f32) = (380.0, 460.0);
 
 /// How rows are bucketed in the panel.
@@ -85,6 +85,12 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Remember a user resize using the same bounds as the native window.
+    pub fn set_panel_size(&mut self, width: f32, height: f32) {
+        self.panel_width = clamp(width, WIDTH, DEFAULT_SIZE.0);
+        self.panel_height = clamp(height, HEIGHT, DEFAULT_SIZE.1);
+    }
+
     /// Pull every field back into a range the panel can actually draw.
     ///
     /// Applied on load as well as on save, because the file is editable and a

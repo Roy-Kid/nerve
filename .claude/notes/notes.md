@@ -1,5 +1,11 @@
 # Notes
 
+## 2026-09-21 — Windows interaction and distribution hardening
+
+Tray/menu/toast events explicitly wake egui. Only left-button release toggles the flyout; focus dismissal waits for the new window to acquire focus. Alt+F4 hides, while the tray Quit action exits. Icon and tooltip caches are independent and only advance after successful shell updates. Copy fallbacks keep their explanation visible. Panel bounds persist, placement converts between physical pixels and egui points, and disconnected empty state no longer claims nothing is running.
+
+The Windows CI artifact now includes `scripts/nerve.ps1` and fixtures beside both binaries. The launcher detects that bundle or accepts `-BinaryDirectory`, so installation does not require Rust. Verification refuses an existing hub, checks the surface stream count, bounds second-instance startup, and cleans up owned processes. Installer helper tests run without desktop/registry mutations. The shortcut remains a plain WScript shortcut, not an AUMID property-store registration; docs no longer claim otherwise. Native Windows tray/toast behavior still needs desktop verification; the existing monitor lookup still assumes the primary monitor origin.
+
 <!-- mol:note:topic:hub-refresh -->
 ## 2026-09-18 — Panel Refresh is `POST /v1/refresh`
 

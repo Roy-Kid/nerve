@@ -45,14 +45,15 @@ impl Toaster for SilentToaster {
 #[derive(Debug)]
 pub struct WindowsToaster {
     clicked: Sender<String>,
+    wake: egui::Context,
 }
 
 #[cfg(windows)]
 impl WindowsToaster {
     /// The toaster, and the stream of job ids whose banners were clicked.
-    pub fn new() -> (Self, Receiver<String>) {
+    pub fn new(wake: egui::Context) -> (Self, Receiver<String>) {
         let (clicked, clicks) = channel();
-        (Self { clicked }, clicks)
+        (Self { clicked, wake }, clicks)
     }
 }
 
@@ -62,6 +63,7 @@ impl Toaster for WindowsToaster {
         use tauri_winrt_notification::{Duration, Sound, Toast as WinToast};
 
         let clicked = self.clicked.clone();
+        let wake = self.wake.clone();
         let job_id = toast.job_id.clone();
 
         let mut banner = WinToast::new(crate::platform::aumid::AUMID)
@@ -74,6 +76,7 @@ impl Toaster for WindowsToaster {
                 // A closed receiver means the surface is shutting down; there
                 // is nothing to take the user back to.
                 let _ = clicked.send(job_id.clone());
+                wake.request_repaint();
                 Ok(())
             });
 
@@ -97,7 +100,7 @@ pub struct WindowsToaster;
 
 #[cfg(not(windows))]
 impl WindowsToaster {
-    pub fn new() -> (Self, Receiver<String>) {
+    pub fn new(_wake: egui::Context) -> (Self, Receiver<String>) {
         let (_sender, clicks) = channel::<String>();
         (Self, clicks)
     }

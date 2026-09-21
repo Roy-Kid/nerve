@@ -10,8 +10,8 @@
 //!    `IconUri` — plain registry, which is what [`register`] writes.
 //! 2. A Start Menu shortcut carrying `System.AppUserModel.ID` as a property.
 //!    That needs a shell link's property store, which means COM and `unsafe`,
-//!    so it belongs to the installer (`scripts/nerve.ps1 -Install`, and WiX or
-//!    Inno for the MSI) rather than to the running surface.
+//!    so it belongs to a future installer integration rather than to the
+//!    running surface. The PowerShell launcher creates a plain shortcut only.
 //!
 //! Whether (1) alone is enough has drifted across Windows builds, which is why
 //! [`shortcut_path`] exists for the installer to fill in and why toasts ship
@@ -47,7 +47,7 @@ pub fn register(icon: Option<&std::path::Path>) -> bool {
         return false;
     }
     if let Some(icon) = icon {
-        let _ = key.set_string("IconUri", &icon.display().to_string());
+        let _ = key.set_string("IconUri", icon.display().to_string());
     }
     true
 }

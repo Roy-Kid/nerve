@@ -64,7 +64,7 @@ pub fn show(
     ui.separator();
 
     if snapshot.jobs.is_empty() {
-        empty(ui, hub_installed, theme);
+        empty(ui, snapshot.offline, hub_installed, theme);
         return action;
     }
 
@@ -126,27 +126,29 @@ fn header(ui: &mut Ui, tally: &Tally, offline: bool, group_mode: GroupMode, them
 ///
 /// Two different nothings: a hub that is running and has no jobs wants the
 /// ingest address, and a machine with no hub at all wants an install line.
-fn empty(ui: &mut Ui, hub_installed: bool, theme: Theme) {
+pub fn empty_message(offline: bool, hub_installed: bool) -> (&'static str, &'static str) {
+    match (offline, hub_installed) {
+        (false, _) => (
+            "Nothing running",
+            "Start an agent with the Nerve plugin to see its progress here.",
+        ),
+        (true, true) => (
+            "Connecting to Nerve",
+            "Reconnecting automatically. Your jobs will appear when the connection returns.",
+        ),
+        (true, false) => (
+            "Nerve hub is missing",
+            "Install both Nerve applications, then restart Nerve.",
+        ),
+    }
+}
+
+fn empty(ui: &mut Ui, offline: bool, hub_installed: bool, theme: Theme) {
     ui.add_space(24.0);
     ui.vertical_centered(|ui| {
-        if hub_installed {
-            ui.label(RichText::new("Nothing Running").strong());
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new("Send snapshots to the local ingest API")
-                    .color(secondary(theme))
-                    .small(),
-            );
-            ui.add_space(6.0);
-            ui.label(
-                RichText::new("POST 127.0.0.1:17890/v1/snapshot")
-                    .monospace()
-                    .small(),
-            );
-        } else {
-            ui.label(RichText::new("nerve-hub not installed").strong());
-            ui.add_space(6.0);
-            ui.label(RichText::new("cargo install nerve-hub").monospace().small());
-        }
+        let (title, message) = empty_message(offline, hub_installed);
+        ui.label(RichText::new(title).strong());
+        ui.add_space(6.0);
+        ui.label(RichText::new(message).color(secondary(theme)).small());
     });
 }

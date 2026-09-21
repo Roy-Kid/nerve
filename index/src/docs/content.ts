@@ -647,12 +647,13 @@ npm run watch`,
       { type: 'h2', text: 'The panel' },
       {
         type: 'p',
-        text: 'Click the icon. The real ribbon runs along the top, drawn with the same weights as the macOS menu bar, then counts, then rows grouped by machine, priority or status. Clicking a row opens its detail: the prompt you actually typed, where it is running, Open and Copy, and the last five timeline entries.',
+        text: 'Left-click the icon to open or close the panel; right-click for startup and notification preferences. The real ribbon runs along the top, drawn with the same weights as the macOS menu bar, then counts, then rows grouped by machine, priority or status. Clicking a row opens its detail: the prompt you actually typed, where it is running, Open and Copy, and the last five timeline entries.',
       },
       {
         type: 'ul',
         items: [
           'It dismisses on focus loss or Escape. No taskbar button and no Alt-Tab entry \u2014 it is a glance, not a window to manage.',
+          'Resize the panel to suit your display; its size is remembered next time. Escape, focus loss and Alt+F4 hide the panel. Use Quit in the tray menu to exit Nerve.',
           'Hiding it never drops the stream. That connection is what keeps the hub alive, so it outlives any window.',
           'Open takes you to the job; Copy puts its line on the clipboard. There is no approve, cancel or submit \u2014 Nerve never reverse-controls an agent.',
           'A job on another machine is never opened locally: the same path very likely exists here too, and opening the wrong one silently is worse than opening nothing. Its location is copied instead, and the panel says why.',
@@ -662,7 +663,10 @@ npm run watch`,
       {
         type: 'code',
         lang: 'powershell',
-        code: `# from a checkout
+        code: `# from the extracted Windows download (no Rust required)
+.\\scripts\\nerve.ps1 -Install -Run
+
+# from a checkout (requires Rust and the MSVC build tools)
 .\\scripts\\nerve.ps1 -Install
 .\\scripts\\nerve.ps1 -Run
 
@@ -671,7 +675,7 @@ cargo install nerve-hub nerve-windows-surface`,
       },
       {
         type: 'p',
-        text: '-Install copies both binaries to %LOCALAPPDATA%\\Programs\\Nerve and creates the Start Menu shortcut. That shortcut is not decoration: it carries the AppUserModelID, which is what lets an unpackaged app raise a toast under its own name. A cargo install has no shortcut, so it has no toasts.',
+        text: '-Install copies both binaries to %LOCALAPPDATA%\\Programs\\Nerve and creates the Start Menu shortcut. The Windows download includes this script and both executables, so installation does not require compiling. From a checkout, the script builds them first. To use binaries in another folder, add -BinaryDirectory C:\\path\\to\\binaries. Quit Nerve and other connected surfaces before upgrading or uninstalling, then allow the hub 30 seconds to stop. -Uninstall keeps your preferences.',
       },
       {
         type: 'callout',
@@ -681,7 +685,7 @@ cargo install nerve-hub nerve-windows-surface`,
       { type: 'h2', text: 'Notifications' },
       {
         type: 'p',
-        text: 'Off by default. You very plausibly run the VS Code extension on the same machine, and surfaces are peers that cannot know about each other \u2014 so two banners for one Ask is a worse first impression than none. Turn them on from the tray\u2019s right-click menu.',
+        text: 'Off by default. You very plausibly run the VS Code extension on the same machine, and surfaces are peers that cannot know about each other \u2014 so two banners for one Ask is a worse first impression than none. Turn them on from the tray\u2019s right-click menu; Notification sound is a separate switch. The app registers its notification identity, but delivery still depends on Windows notification settings and unpackaged-app support.',
       },
       {
         type: 'ul',

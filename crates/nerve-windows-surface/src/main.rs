@@ -69,10 +69,22 @@ fn main() {
     // outlives any window and is never tied to one.
     let _reader = store.clone().spawn_reader(home, stream_path(SURFACE));
 
+    let settings = nerve_windows_surface::settings::Settings::load(
+        &nerve_windows_surface::settings::settings_path(),
+    );
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_decorations(false)
             .with_resizable(true)
+            .with_inner_size([settings.panel_width, settings.panel_height])
+            .with_min_inner_size([
+                nerve_windows_surface::settings::WIDTH.0,
+                nerve_windows_surface::settings::HEIGHT.0,
+            ])
+            .with_max_inner_size([
+                nerve_windows_surface::settings::WIDTH.1,
+                nerve_windows_surface::settings::HEIGHT.1,
+            ])
             .with_always_on_top()
             // No taskbar button and no Alt-Tab entry: the flyout is a glance,
             // not a window to manage.

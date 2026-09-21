@@ -2,6 +2,7 @@
 
 pub mod bands;
 pub mod dpi;
+pub mod events;
 pub mod icon;
 pub mod signature;
 pub mod tooltip;

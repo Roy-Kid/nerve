@@ -100,3 +100,27 @@ fn the_tooltip_always_fits_what_windows_accepts() {
     let view = view(&snapshot(rows, false), true);
     assert!(view.tooltip.encode_utf16().count() <= 127);
 }
+
+#[test]
+fn new_activity_updates_the_tooltip_without_redrawing_identical_bands() {
+    let before = view(
+        &snapshot(
+            jobs(json!([
+                { "id": "j", "name": "project", "current": { "type": "tool", "summary": "Reading files" } }
+            ])),
+            false,
+        ),
+        true,
+    );
+    let after = view(
+        &snapshot(
+            jobs(json!([
+                { "id": "j", "name": "project", "current": { "type": "tool", "summary": "Running tests" } }
+            ])),
+            false,
+        ),
+        true,
+    );
+    assert_eq!(before.signature, after.signature);
+    assert_ne!(before.tooltip, after.tooltip);
+}

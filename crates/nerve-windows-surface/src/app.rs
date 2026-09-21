@@ -10,7 +10,7 @@
 //! drop the stream, or the hub would exit thirty seconds after the user looked
 //! away.
 
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
 
 use eframe::{App as EframeApp, CreationContext, Frame};
@@ -24,8 +24,9 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use crate::actions::clipboard::SystemClipboard;
 use crate::actions::shell::SystemOpener;
 use crate::actions::{self};
-use crate::flyout::anchor::{place, Anchor, Rect};
+use crate::flyout::anchor::{place_scaled, Rect};
 use crate::flyout::view::{PanelAction, PanelState};
+use crate::flyout::visibility::Visibility;
 use crate::flyout::{fonts, theme as panel_theme, view as panel};
 use crate::notify::policy::{AskPolicy, Settings as NotifySettings};
 use crate::notify::toast::{Toaster, WindowsToaster};
@@ -43,13 +44,6 @@ use crate::tray::view as tray_view;
 /// these into nothing at all.
 const POLL: Duration = Duration::from_millis(250);
 
-/// How long after hiding the flyout a tray click is ignored.
-///
-/// Clicking the icon while the panel is open takes focus away from it, which
-/// hides it — and then the click itself would reopen it. This is the classic
-/// tray-flyout bug, and this is the guard against it.
-const REOPEN_DEBOUNCE: Duration = Duration::from_millis(200);
-
 pub struct App {
     store: JobsStore,
     settings: Settings,
@@ -58,12 +52,15 @@ pub struct App {
 
     tray: Option<TrayIcon>,
     drawn: Option<Signature>,
+    tooltip: Option<String>,
     icon_px: u32,
     theme: crate::tray::icon::Theme,
 
     panel: PanelState,
-    visible: bool,
-    hidden_at: Option<Instant>,
+    visibility: Visibility,
+    quitting: bool,
+    tray_events: Receiver<TrayIconEvent>,
+    menu_events: Receiver<MenuEvent>,
     tray_rect: Option<Rect>,
 
     notifier: AskPolicy,
@@ -79,14 +76,16 @@ pub struct App {
 /// The context-menu items whose clicks mean something.
 struct MenuIds {
     open: tray_icon::menu::MenuId,
-    autostart: tray_icon::menu::MenuId,
+    autostart: CheckMenuItem,
     toasts: tray_icon::menu::MenuId,
+    sound: tray_icon::menu::MenuId,
     quit: tray_icon::menu::MenuId,
 }
 
 impl App {
     pub fn new(cc: &CreationContext<'_>, store: JobsStore, hub_installed: bool) -> Self {
-        let settings = Settings::load(&settings_path());
+        let mut settings = Settings::load(&settings_path());
+        settings.autostart = autostart::is_enabled();
         let theme = system_theme::current();
 
         let mut fonts = egui::FontDefinitions::default();
@@ -94,7 +93,21 @@ impl App {
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.set_visuals(panel_theme::visuals(theme));
 
-        let (toaster, toast_clicks) = WindowsToaster::new();
+        let (toaster, toast_clicks) = WindowsToaster::new(cc.egui_ctx.clone());
+        // Native events must wake even a hidden viewport. Once handlers are set,
+        // tray-icon no longer feeds its global receivers.
+        let (tray_sender, tray_events) = channel();
+        let wake = cc.egui_ctx.clone();
+        TrayIconEvent::set_event_handler(Some(move |event| {
+            let _ = tray_sender.send(event);
+            wake.request_repaint();
+        }));
+        let (menu_sender, menu_events) = channel();
+        let wake = cc.egui_ctx.clone();
+        MenuEvent::set_event_handler(Some(move |event| {
+            let _ = menu_sender.send(event);
+            wake.request_repaint();
+        }));
         let (tray, menu) = build_tray(&settings);
 
         Self {
@@ -104,11 +117,14 @@ impl App {
             local_alias: machine::local_alias().map(str::to_string),
             tray,
             drawn: None,
+            tooltip: None,
             icon_px: icon_px(cc.egui_ctx.pixels_per_point() as f64),
             theme,
             panel: PanelState::default(),
-            visible: false,
-            hidden_at: None,
+            visibility: Visibility::default(),
+            quitting: false,
+            tray_events,
+            menu_events,
             tray_rect: None,
             notifier: AskPolicy::new(),
             toaster,
@@ -128,33 +144,36 @@ impl App {
             self.icon_px,
             OffsetDateTime::now_utc(),
         );
-        if self.drawn == Some(view.signature) {
-            return;
-        }
         let Some(tray) = self.tray.as_mut() else {
             return;
         };
-        let rgba = render(&view.icon);
-        if let Ok(icon) = Icon::from_rgba(rgba, view.icon.size, view.icon.size) {
-            // A failed shell call is not fatal: the next poll tries again, and
-            // a stale icon beats a surface that gave up.
-            let _ = tray.set_icon(Some(icon));
+        if self.drawn != Some(view.signature) {
+            let rgba = render(&view.icon);
+            if let Ok(icon) = Icon::from_rgba(rgba, view.icon.size, view.icon.size) {
+                // Cache only successful shell updates, so failures retry.
+                if tray.set_icon(Some(icon)).is_ok() {
+                    self.drawn = Some(view.signature);
+                }
+            }
         }
-        let _ = tray.set_tooltip(Some(&view.tooltip));
-        self.drawn = Some(view.signature);
+        // Text can change while the status bands stay exactly the same.
+        if self.tooltip.as_ref() != Some(&view.tooltip)
+            && tray.set_tooltip(Some(&view.tooltip)).is_ok()
+        {
+            self.tooltip = Some(view.tooltip);
+        }
     }
 
     /// Ask the policy whether this frame is worth interrupting for.
     fn notify(&mut self) {
         let snapshot = self.store.snapshot();
         let settings = NotifySettings {
-            enabled: self.settings.toasts_enabled,
+            enabled: self.settings.toasts_enabled
+                && !snapshot.offline
+                && snapshot.notify.may_interrupt("windows"),
             sound: self.settings.toast_sound,
             floor: self.settings.toast_floor,
         };
-        if !snapshot.notify.may_interrupt("windows") {
-            return;
-        }
         for toast in self
             .notifier
             .evaluate(&snapshot.jobs, settings, Instant::now())
@@ -165,18 +184,13 @@ impl App {
 
     fn show_panel(&mut self, ctx: &Context) {
         if let (Some(tray), Some(monitor)) = (self.tray_rect, monitor_rect(ctx)) {
-            let anchor = Anchor {
+            let (x, y) = place_scaled(
                 tray,
                 monitor,
-                size: (
-                    self.settings.panel_width as i32,
-                    self.settings.panel_height as i32,
-                ),
-            };
-            let (x, y) = place(&anchor);
-            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(
-                x as f32, y as f32,
-            )));
+                (self.settings.panel_width, self.settings.panel_height),
+                ctx.pixels_per_point(),
+            );
+            ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(x, y)));
         }
         ctx.send_viewport_cmd(ViewportCommand::InnerSize(egui::vec2(
             self.settings.panel_width,
@@ -184,26 +198,23 @@ impl App {
         )));
         ctx.send_viewport_cmd(ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(ViewportCommand::Focus);
-        self.visible = true;
+        self.visibility.show();
     }
 
     fn hide_panel(&mut self, ctx: &Context) {
         ctx.send_viewport_cmd(ViewportCommand::Visible(false));
-        self.visible = false;
-        self.hidden_at = Some(Instant::now());
+        self.visibility.hide(Instant::now());
+        self.persist();
         self.panel.expanded = None;
     }
 
     fn toggle_panel(&mut self, ctx: &Context) {
-        if self.visible {
+        if self.visibility.visible {
             self.hide_panel(ctx);
             return;
         }
         // The click that closed the panel must not immediately reopen it.
-        if self
-            .hidden_at
-            .is_some_and(|at| at.elapsed() < REOPEN_DEBOUNCE)
-        {
+        if !self.visibility.can_reopen(Instant::now()) {
             return;
         }
         self.show_panel(ctx);
@@ -226,7 +237,7 @@ impl App {
                     );
                     self.note = Some((outcome.message, Instant::now()));
                     // Taking the user somewhere means getting out of the way.
-                    if outcome.succeeded {
+                    if outcome.opened {
                         self.hide_panel(ctx);
                     }
                 }
@@ -249,7 +260,8 @@ impl App {
     /// Tray clicks, menu clicks and toast clicks, all of which arrive out of
     /// band from other threads.
     fn drain_events(&mut self, ctx: &Context) {
-        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
+        while let Ok(event) = self.tray_events.try_recv() {
+            let toggle = crate::tray::events::toggles_panel(&event);
             if let TrayIconEvent::Click { rect, .. } = event {
                 self.tray_rect = Some(Rect::new(
                     rect.position.x as i32,
@@ -257,21 +269,29 @@ impl App {
                     rect.size.width as i32,
                     rect.size.height as i32,
                 ));
-                self.toggle_panel(ctx);
+                if toggle {
+                    self.toggle_panel(ctx);
+                }
             }
         }
 
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
+        while let Ok(event) = self.menu_events.try_recv() {
             if event.id == self.menu.open {
                 self.show_panel(ctx);
-            } else if event.id == self.menu.autostart {
-                let wanted = !self.settings.autostart;
+            } else if event.id == self.menu.autostart.id() {
+                let wanted = !autostart::is_enabled();
                 self.settings.autostart = autostart::set(wanted);
+                self.menu.autostart.set_checked(self.settings.autostart);
                 self.persist();
             } else if event.id == self.menu.toasts {
                 self.settings.toasts_enabled = !self.settings.toasts_enabled;
                 self.persist();
+            } else if event.id == self.menu.sound {
+                self.settings.toast_sound = !self.settings.toast_sound;
+                self.persist();
             } else if event.id == self.menu.quit {
+                self.persist();
+                self.quitting = true;
                 ctx.send_viewport_cmd(ViewportCommand::Close);
             }
         }
@@ -285,7 +305,16 @@ impl App {
 
 impl EframeApp for App {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        if self.visibility.visible {
+            if let Some(rect) = ctx.input(|input| input.viewport().inner_rect) {
+                self.settings.set_panel_size(rect.width(), rect.height());
+            }
+        }
         self.drain_events(ctx);
+        if ctx.input(|input| input.viewport().close_requested()) && !self.quitting {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.hide_panel(ctx);
+        }
 
         let theme = system_theme::current();
         if theme != self.theme {
@@ -298,11 +327,11 @@ impl EframeApp for App {
         self.refresh_tray();
         self.notify();
 
-        if self.visible {
+        if self.visibility.visible {
             // Focus loss dismisses. The panel is a glance, not a window to
             // manage, so it never competes for the taskbar or Alt-Tab.
-            let focused = ctx.input(|input| input.viewport().focused.unwrap_or(true));
-            if !focused {
+            let focused = ctx.input(|input| input.viewport().focused);
+            if self.visibility.lost_focus(focused) {
                 self.hide_panel(ctx);
             }
             if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
@@ -312,6 +341,12 @@ impl EframeApp for App {
 
         let mut action = None;
         egui::CentralPanel::default().show(ctx, |ui| {
+            if let Some((note, at)) = &self.note {
+                if at.elapsed() < Duration::from_secs(3) {
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(note).small());
+                }
+            }
             let snapshot = self.store.snapshot();
             action = panel::show(
                 ui,
@@ -322,12 +357,6 @@ impl EframeApp for App {
                 self.theme,
                 OffsetDateTime::now_utc(),
             );
-            if let Some((note, at)) = &self.note {
-                if at.elapsed() < Duration::from_secs(3) {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new(note).small());
-                }
-            }
         });
         if let Some(action) = action {
             self.act(action, ctx);
@@ -344,12 +373,14 @@ fn build_tray(settings: &Settings) -> (Option<TrayIcon>, MenuIds) {
     let open = MenuItem::new("Open Nerve", true, None);
     let start = CheckMenuItem::new("Start at login", true, settings.autostart, None);
     let toasts = CheckMenuItem::new("Ask notifications", true, settings.toasts_enabled, None);
+    let sound = CheckMenuItem::new("Notification sound", true, settings.toast_sound, None);
     let quit = MenuItem::new("Quit", true, None);
 
     let ids = MenuIds {
         open: open.id().clone(),
-        autostart: start.id().clone(),
+        autostart: start.clone(),
         toasts: toasts.id().clone(),
+        sound: sound.id().clone(),
         quit: quit.id().clone(),
     };
 
@@ -359,6 +390,7 @@ fn build_tray(settings: &Settings) -> (Option<TrayIcon>, MenuIds) {
         &PredefinedMenuItem::separator(),
         &start,
         &toasts,
+        &sound,
         &PredefinedMenuItem::separator(),
         &quit,
     ]);
@@ -366,6 +398,7 @@ fn build_tray(settings: &Settings) -> (Option<TrayIcon>, MenuIds) {
     let tray = TrayIconBuilder::new()
         .with_tooltip("Nerve")
         .with_menu(Box::new(menu))
+        .with_menu_on_left_click(false)
         .build()
         .ok();
     (tray, ids)
