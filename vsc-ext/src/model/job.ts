@@ -32,6 +32,7 @@ export type Status =
 export const PAINTED_STATUSES: readonly Status[] = [
   "problem",
   "attention",
+  "waiting",
   "running",
   "monitor",
   "success",
@@ -48,9 +49,10 @@ export const STATUS_PRIORITY: readonly Status[] = [
   "inactive",
 ] as const;
 
-export const STATUS_COLORS: Record<Exclude<Status, "waiting">, string> = {
+export const STATUS_COLORS: Record<Status, string> = {
   problem: "#ff3b30",
   attention: "#ff9f0a",
+  waiting: "#8e8e93",
   running: "#0a84ff",
   monitor: "#bf5af2",
   success: "#30d158",
@@ -58,7 +60,7 @@ export const STATUS_COLORS: Record<Exclude<Status, "waiting">, string> = {
 };
 
 export function paintedColor(status: Status): string {
-  return status === "waiting" ? STATUS_COLORS.attention : STATUS_COLORS[status];
+  return STATUS_COLORS[status];
 }
 
 export interface Current {

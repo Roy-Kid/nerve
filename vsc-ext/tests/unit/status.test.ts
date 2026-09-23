@@ -5,6 +5,7 @@
 
 import { strict as assert } from "node:assert";
 import { parseJob, type Job } from "../../src/model/job";
+import { matchesFilter } from "../../src/model/filter";
 import { statusOf, STATUS_PRIORITY } from "../../src/model/status";
 
 function job(value: Record<string, unknown>): Job {
@@ -87,7 +88,7 @@ suite("status :43 elevated attention", () => {
     );
   });
 
-  test("every wait reason at required is attention", () => {
+  test("every wait reason at required is waiting", () => {
     for (const reason of [
       "resource",
       "dependency",
@@ -104,7 +105,7 @@ suite("status :43 elevated attention", () => {
           lifecycle: "active",
           attention: { level: "required", reason },
         }),
-        "attention",
+        "waiting",
         reason,
       );
     }
@@ -116,7 +117,7 @@ suite("status :43 elevated attention", () => {
         lifecycle: "active",
         attention: { level: "required", reason: "Dependency" },
       }),
-      "attention",
+      "waiting",
     );
   });
 
@@ -126,7 +127,7 @@ suite("status :43 elevated attention", () => {
         lifecycle: "active",
         attention: { level: "urgent", reason: "failure" },
       }),
-      "attention",
+      "waiting",
     );
   });
 });
@@ -153,13 +154,13 @@ suite("status :56 informational attention", () => {
     }
   });
 
-  test("a wait reason at informational is attention", () => {
+  test("a wait reason at informational is waiting", () => {
     assert.equal(
       classOf({
         lifecycle: "active",
         attention: { level: "informational", reason: "queue" },
       }),
-      "attention",
+      "waiting",
     );
   });
 
@@ -209,18 +210,18 @@ suite("status :68 lifecycle", () => {
     assert.equal(classOf({ lifecycle: "unknown" }), "inactive");
   });
 
-  test("a pending job is attention", () => {
-    assert.equal(classOf({ lifecycle: "pending" }), "attention");
+  test("a pending job is waiting", () => {
+    assert.equal(classOf({ lifecycle: "pending" }), "waiting");
   });
 
-  test("a created job is attention", () => {
-    assert.equal(classOf({ lifecycle: "created" }), "attention");
+  test("a created job is waiting", () => {
+    assert.equal(classOf({ lifecycle: "created" }), "waiting");
   });
 
-  test("a degraded job is attention", () => {
+  test("a degraded job is a problem", () => {
     assert.equal(
       classOf({ lifecycle: "active", health: "degraded" }),
-      "attention",
+      "problem",
     );
   });
 
@@ -257,10 +258,10 @@ suite("status :81 current activity", () => {
     );
   });
 
-  test("a waiting activity is attention", () => {
+  test("a waiting activity is waiting", () => {
     assert.equal(
       classOf({ lifecycle: "active", current: { type: "waiting" } }),
-      "attention",
+      "waiting",
     );
   });
 
@@ -327,5 +328,19 @@ suite("status free text never classifies", () => {
       }),
       "problem",
     );
+  });
+});
+
+suite("turn completion", () => {
+  test("automatic waits stay out of the attention filter", () => {
+    assert.equal(matchesFilter(job({ lifecycle: "active", current: { type: "waiting" }, attention: { level: "suggested", reason: "queue" } }), "attention", []), false);
+    assert.equal(matchesFilter(job({ lifecycle: "active", current: { type: "waiting" }, attention: { level: "required", reason: "approval" } }), "attention", []), true);
+  });
+
+  test("completion stays visible, a new prompt runs, and explicit input needs attention", () => {
+    assert.equal(classOf({ lifecycle: "active", current: { type: "completed" } }), "success");
+    assert.equal(classOf({ lifecycle: "active", current: { type: "thinking" }, attention: { level: "suggested", reason: "input" } }), "running");
+    assert.equal(classOf({ lifecycle: "active", current: { type: "completed" }, attention: { level: "required", reason: "input" } }), "attention");
+    assert.equal(classOf({ lifecycle: "ended", outcome: "success", attention: { level: "required", reason: "approval" } }), "success");
   });
 });

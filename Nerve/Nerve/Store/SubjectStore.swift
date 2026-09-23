@@ -9,9 +9,9 @@ enum PanelGroup: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .attention: return "Attention"
+        case .attention: return "Needs you"
         case .active: return "Active"
-        case .recent: return "Recent"
+        case .recent: return "Turn complete"
         }
     }
 }
@@ -55,6 +55,21 @@ final class JobStore {
     var panelOpen: Bool = false
     var selectedJobId: String?
     var lastError: String?
+    var connectionAvailable = false
+    var lastReceivedAt: Date?
+    var hasSeenJobs = false
+
+    func receivedHubData() {
+        connectionAvailable = true
+        lastReceivedAt = clock()
+    }
+
+    func hubUnavailable() {
+        // A failed SSE attach does not invalidate a fresh successful poll.
+        if lastReceivedAt.map({ clock().timeIntervalSince($0) > 8 }) ?? true {
+            connectionAvailable = false
+        }
+    }
     /// Accessibility: focused row in status list (keyboard)
     var focusedListIndex: Int = 0
     /// Bumps on every subject mutation so the menu-bar ribbon can redraw immediately.
@@ -125,7 +140,7 @@ final class JobStore {
         case .attention:
             filtered = kids.filter { job in
                 let s = job.status
-                return s == .problem || s == .attention || s == .waiting
+                return s == .problem || s == .attention
             }
         case .all:
             filtered = kids
@@ -140,9 +155,9 @@ final class JobStore {
         countOpen(where: { $0.status == .running })
     }
 
-    /// Open jobs painted orange (attention, and waiting which shares that hue).
+    /// Open jobs needing human attention.
     var attentionCount: Int {
-        countOpen(where: { $0.status == .attention || $0.status == .waiting })
+        countOpen(where: { $0.status == .attention })
     }
 
     private func countOpen(where pred: (Job) -> Bool) -> Int {
@@ -152,12 +167,12 @@ final class JobStore {
     }
 
     /// Priority-mode bucket for a status (Attention / Active / Recent). View grouping only.
-    /// Open Monitor (watching a stream) stays Active — Recent is unused
-    /// because SessionEnd removes the row immediately.
+    /// Open completed turns go into Recent; SessionEnd still removes the row.
     private func priorityGroup(for status: Status) -> PanelGroup {
         switch status {
-        case .problem, .attention, .waiting: return .attention
-        case .running, .monitor, .inactive, .success: return .active
+        case .problem, .attention: return .attention
+        case .success: return .recent
+        case .running, .monitor, .inactive, .waiting: return .active
         }
     }
 
@@ -206,13 +221,7 @@ final class JobStore {
 
     /// Priority sections — bucketed only by `Job.status` (no second ruleset).
     func jobsInPriorityGroup(_ group: PanelGroup) -> [Job] {
-        switch group {
-        case .attention, .active:
-            return openJobs.filter { priorityGroup(for: $0.status) == group }
-        case .recent:
-            // Session close removes the job immediately — no Recent linger.
-            return []
-        }
+        panelListJobs().filter { priorityGroup(for: $0.status) == group }
     }
 
     /// Open jobs eligible for the status list (member visibility from Settings).
@@ -255,11 +264,12 @@ final class JobStore {
     }
 
 
-    /// Panel order: attention, then health, then failure, then recency.
+    /// Panel order: display status, severity, then stable creation order.
     ///
     /// Applied once, in ``rederive()``. Every section below inherits it by
     /// filtering rather than re-sorting.
     private func sortComparator(_ a: Job, _ b: Job) -> Bool {
+        if a.status != b.status { return a.status < b.status }
         if a.attention.level != b.attention.level {
             return a.attention.level > b.attention.level
         }
@@ -269,8 +279,9 @@ final class JobStore {
         let aFail = a.outcome == .failure
         let bFail = b.outcome == .failure
         if aFail != bFail { return aFail && !bFail }
-        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
-        return (a.startedAt ?? a.createdAt) > (b.startedAt ?? b.createdAt)
+        // Frequent tool events must not shuffle peers under the pointer.
+        if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+        return a.id < b.id
     }
 
     // MARK: - Ribbon segments

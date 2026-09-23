@@ -783,10 +783,11 @@ struct PreferencesView: View {
     private func statusColorHint(_ status: Status) -> String {
         switch status {
         case .problem: return "Failed or cannot continue"
-        case .attention, .waiting: return "Needs you, or blocked on the system"
+        case .attention: return "Needs your input, approval, or review"
+        case .waiting: return "Waiting on the system; no action needed"
         case .running: return "Actively working"
         case .monitor: return "Watching a background stream"
-        case .success: return "Finished successfully"
+        case .success: return "Turn complete, or finished successfully"
         case .inactive: return "Ready, paused, or unknown"
         }
     }
@@ -794,7 +795,8 @@ struct PreferencesView: View {
     private func statusSymbol(_ status: Status) -> String {
         switch status {
         case .problem: return "xmark.circle.fill"
-        case .attention, .waiting: return "exclamationmark.circle.fill"
+        case .attention: return "exclamationmark.circle.fill"
+        case .waiting: return "clock"
         case .running: return "play.circle.fill"
         case .monitor: return "dot.radiowaves.left.and.right"
         case .success: return "checkmark.circle.fill"

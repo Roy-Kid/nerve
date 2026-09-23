@@ -1,14 +1,5 @@
-//! Display derivation, mirrored from Swift. Six painted hues: waiting shares
-//! attention; monitor is purple (watching a stream, not executing).
-//!
-//! The hub deliberately publishes no derived `status`
-//! (`crates/nerve-hub/src/model/job.rs:4`) — it stores facets, surfaces paint
-//! them — so this transcription of `Nerve/Nerve/Models/Subject.swift:38-100` is
-//! the only path to a class, and `tests/status.rs` pins it line by line.
-//!
-//! Derivation reads structured facets only. No free text ever classifies
-//! (CLAUDE.md invariant 3): a `current.summary` of "build failed!!" on a
-//! healthy job is a running job with a dramatic summary.
+//! Shared structured display derivation. Completion, human attention and system waits
+//! are distinct; prose never determines status. Mirrored by Swift and TypeScript.
 
 use crate::frame::{AttentionLevel, Health, JobView, Lifecycle, Outcome};
 
@@ -51,9 +42,6 @@ const IDLE_KINDS: [&str; 3] = ["idle", "starting", "booting"];
 /// priority (`CoreTypes.swift:244-267`):
 /// problem > attention > waiting > running > monitor > success > inactive.
 ///
-/// `Waiting` stays in the enum for that order, the `{waiting}` summary token,
-/// and saved palettes. Derivation never returns it: those jobs are Attention
-/// so the user learns one “needs a look” color, not two.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StatusClass {
     Problem,
@@ -105,6 +93,13 @@ impl StatusClass {
             return Self::Problem;
         }
 
+        if job.lifecycle == Lifecycle::Ended {
+            return if matches!(job.outcome, Some(Outcome::Success | Outcome::Partial)) {
+                Self::Success
+            } else {
+                Self::Inactive
+            };
+        }
         if let Some(class) = Self::from_attention(job) {
             return class;
         }
@@ -125,24 +120,21 @@ impl StatusClass {
 
     /// `Subject.swift:43-66` — what the job is asking of a human.
     fn from_attention(job: &JobView) -> Option<Self> {
-        // :43 — elevated attention is attention, unless the agent is
-        // already executing. A stale Ask (Stop retry, permission prompt
-        // that already proceeded) must not stay orange over a live tool.
-        if job.attention.level >= AttentionLevel::Suggested {
-            if job
+        if job.lifecycle == Lifecycle::Active
+            && job
                 .current
                 .as_ref()
-                .is_some_and(|current| names(&current.kind, &BUSY_KINDS))
-            {
-                return None;
-            }
-            return Some(Self::Attention);
+                .is_some_and(|c| names(&c.kind, &BUSY_KINDS))
+        {
+            return None;
         }
-
-        // Informational needs a reason to say anything at all.
         if job.attention.level >= AttentionLevel::Informational {
-            let reason = Self::reason(job)?;
-            if names(reason, &ASK_REASONS) || names(reason, &WAIT_REASONS) {
+            if Self::reason(job).is_some_and(|r| names(r, &WAIT_REASONS)) {
+                return Some(Self::Waiting);
+            }
+            if Self::reason(job).is_some_and(|r| names(r, &ASK_REASONS))
+                || job.attention.level >= AttentionLevel::Suggested
+            {
                 return Some(Self::Attention);
             }
         }
@@ -167,10 +159,10 @@ impl StatusClass {
             return Some(Self::Inactive);
         }
         if matches!(job.lifecycle, Lifecycle::Pending | Lifecycle::Created) {
-            return Some(Self::Attention);
+            return Some(Self::Waiting);
         }
         if job.health == Health::Degraded {
-            return Some(Self::Attention);
+            return Some(Self::Problem);
         }
 
         // :77 — open session, partial outcome: a monitor holding the stream.
@@ -195,8 +187,11 @@ impl StatusClass {
         if names(kind, &["monitor"]) {
             return Some(Self::Monitor);
         }
+        if names(kind, &["completed"]) {
+            return Some(Self::Success);
+        }
         if names(kind, &["waiting"]) {
-            return Some(Self::Attention);
+            return Some(Self::Waiting);
         }
         // :92 — `starting` is Ready (open, no turn yet); never Running.
         if names(kind, &IDLE_KINDS) {

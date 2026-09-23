@@ -5,7 +5,7 @@ import { statusOf, statusRank } from "./status";
 
 export type JobFilter = "all" | "attention" | "running" | "folder";
 
-const ATTENTION_STATUSES = new Set<Status>(["problem", "attention", "waiting"]);
+const ATTENTION_STATUSES = new Set<Status>(["problem", "attention"]);
 const RUNNING_STATUSES = new Set<Status>(["running", "monitor"]);
 
 export function jobInFolder(job: Job, folders: readonly string[]): boolean {

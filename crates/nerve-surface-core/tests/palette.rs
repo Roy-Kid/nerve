@@ -16,10 +16,10 @@ fn the_documented_hex_values_are_what_ship() {
 }
 
 #[test]
-fn waiting_shares_attention_so_needs_a_look_is_one_colour() {
+fn waiting_is_neutral_and_distinct_from_human_attention() {
     assert_eq!(
         palette::color_of(StatusClass::Waiting),
-        palette::color_of(StatusClass::Attention)
+        palette::color_of(StatusClass::Inactive)
     );
 }
 

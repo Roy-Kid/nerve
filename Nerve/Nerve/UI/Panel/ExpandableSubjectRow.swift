@@ -51,14 +51,7 @@ struct ExpandableSubjectRow: View {
 
     private var hasSubtasks: Bool { !children.isEmpty || subject.isGroupJob }
 
-    /// Columns for this paint — hide `.updated` on hover so primary fields get the width.
-    private var visibleColumns: [PanelColumn] {
-        let cols = settings.panelColumns
-        if hovered {
-            return cols.filter { $0 != .updated }
-        }
-        return cols
-    }
+    private var visibleColumns: [PanelColumn] { settings.panelColumns }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -91,6 +84,12 @@ struct ExpandableSubjectRow: View {
                             columnCell(column)
                         }
 
+                        Text(subject.statusLabel)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(RibbonPalette.color(for: subject.status, scheme: colorScheme, map: settings.statusColors))
+                            .lineLimit(1)
+                            .fixedSize()
+
                         PanelChrome.symbol("chevron.right", weight: .semibold)
                             .foregroundStyle(.quaternary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
@@ -100,6 +99,12 @@ struct ExpandableSubjectRow: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                if subject.status == .attention,
+                   let action = subject.actions.first(where: { ActionService.isOpenKind($0.kind) }) {
+                    Button(action.title) { onAction(action.id) }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
             }
             .padding(.leading, 12 + indent)
             .padding(.trailing, 12)
@@ -228,8 +233,7 @@ struct ExpandableSubjectRow: View {
     }
 
     private var accessibilityRowLabel: String {
-        visibleColumns
-            .map { text(for: $0) }
+        ([subject.statusLabel] + visibleColumns.map { text(for: $0) })
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
     }

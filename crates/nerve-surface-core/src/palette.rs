@@ -2,8 +2,7 @@
 //!
 //! Five rainbow hues a person can name — red problem, orange attention, blue
 //! running, violet monitor, green success — plus a gray idle that is chrome
-//! rather than a status. Seven is the ceiling. Waiting shares attention on
-//! purpose, so "needs a look" is one colour.
+//! rather than a status. Seven is the ceiling. Waiting uses neutral gray; orange is reserved for human attention.
 //!
 //! This is the source every surface renders from: the tmux sidebar maps it to
 //! ANSI-256 (`nerve_tmux_surface::colors`), the macOS app to `NSColor`
@@ -48,7 +47,7 @@ impl Rgb {
 
 /// Problem — rainbow red.
 pub const PROBLEM: Rgb = Rgb::new(0xFF, 0x3B, 0x30);
-/// Attention, and waiting with it — rainbow orange.
+/// Human attention — rainbow orange.
 pub const ATTENTION: Rgb = Rgb::new(0xFF, 0x9F, 0x0A);
 /// Running — rainbow blue.
 pub const RUNNING: Rgb = Rgb::new(0x0A, 0x84, 0xFF);
@@ -63,8 +62,9 @@ pub const INACTIVE: Rgb = Rgb::new(0x8E, 0x8E, 0x93);
 pub fn color_of(class: StatusClass) -> Rgb {
     match class {
         StatusClass::Problem => PROBLEM,
-        // Waiting shares attention: one colour for "needs a look".
-        StatusClass::Attention | StatusClass::Waiting => ATTENTION,
+        // Only human attention gets orange.
+        StatusClass::Attention => ATTENTION,
+        StatusClass::Waiting => INACTIVE,
         StatusClass::Running => RUNNING,
         StatusClass::Monitor => MONITOR,
         StatusClass::Success => SUCCESS,

@@ -1,77 +1,5 @@
-//! `status.rs` — the six-state derivation, mirrored from Swift (spec T2 ·
-//! acceptance A1).
-//!
-//! ─────────────────────────────────────────────────────────────────────────
-//! API CONTRACT — the implementer fills `src/status.rs` to satisfy this file.
-//! Tests are never edited to fit an implementation.
-//! ─────────────────────────────────────────────────────────────────────────
-//!
-//! ```ignore
-//! // nerve_surface_core::status
-//!
-//! /// Derived display status. Variants are declared in priority order, so the
-//! /// derived `Ord` *is* the priority (`CoreTypes.swift:244-267`):
-//! /// problem > attention > waiting > running > monitor > success > inactive.
-//! #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-//! pub enum StatusClass { Problem, Attention, Waiting, Running, Monitor, Success, Inactive }
-//!
-//! impl StatusClass {
-//!     /// Every class, most urgent first.
-//!     pub const ALL: [StatusClass; 7];
-//!     /// The one derivation, ported line for line from `Subject.swift:38-100`.
-//!     pub fn of(job: &frame::JobView) -> StatusClass;
-//!     /// Lower-case spelling, equal to Swift's `Status.rawValue`.
-//!     pub fn label(self) -> &'static str;
-//! }
-//! ```
-//!
-//! ─────────────────────────────────────────────────────────────────────────
-//! THE TRUTH TABLE — transcribed from `Nerve/Nerve/Models/Subject.swift:38`
-//! ─────────────────────────────────────────────────────────────────────────
-//!
-//! The hub deliberately does not publish a derived `status`
-//! (`crates/nerve-hub/src/model/job.rs:4`), so this transcription is the only
-//! path and every line below is pinned by its own test. Line numbers are
-//! `Subject.swift`'s.
-//!
-//! ```text
-//! :39  outcome == failure                       -> problem
-//! :40  health  == unresponsive                  -> problem
-//! :43  attention.level >= suggested             -> attention
-//! :47  attention.level >= informational, reason
-//! :48      reason in ASK_REASONS or WAIT_REASONS -> attention
-//! :64      otherwise                            -> (fall through)
-//! :68  lifecycle == ended
-//! :69      outcome in {success, partial}        -> success
-//! :70      otherwise                            -> inactive
-//! :72  lifecycle in {suspended, unknown}        -> inactive
-//! :73  lifecycle in {pending, created}          -> attention
-//! :74  health == degraded                       -> attention
-//! :77  lifecycle == active && outcome == partial -> monitor
-//! :81  current.type (lower-cased)
-//! :82      subagent | tool | thinking | info
-//! :84          && lifecycle == active           -> running
-//! :86      monitor                              -> monitor
-//! :88      waiting                              -> attention
-//! :92      idle | starting | booting            -> inactive
-//! :94      otherwise                            -> (fall through)
-//! :98  lifecycle == active                      -> running
-//! :99  otherwise                                -> inactive
-//!
-//! WAIT_REASONS = resource dependency queue system lock throttle rate capacity failure
-//! ASK_REASONS  = input approval auth permission decision elicitation
-//! ```
-//!
-//! Waiting is not a painted class. ASK and WAIT reasons, pending/created,
-//! degraded health, and `current.type=waiting` all land on Attention — one
-//! orange “needs a look” hue. `attention.reason = "failure"` is still a WAIT
-//! reason (blocked on a failed dependency), not a problem; `outcome` is what
-//! says the job itself failed. That asymmetry is Swift's, and is pinned below.
-//!
-//! `:99` is unreachable: `:68`–`:73` already consume every lifecycle except
-//! `active`, which `:98` answers. It is transcribed for fidelity, untested.
-//!
-//! Determinism: literal jobs, no clock, no socket, no filesystem, no hub.
+//! Structured display contract: human requests, automatic waits, execution and
+//! turn completion stay distinct. No free-text inference.
 
 use serde_json::{json, Value};
 
@@ -218,7 +146,7 @@ fn test_line_49_an_unrecognised_reason_at_suggested_is_attention() {
 }
 
 #[test]
-fn test_line_43_every_wait_reason_at_required_is_attention() {
+fn test_line_43_every_wait_reason_at_required_is_waiting() {
     for reason in [
         "resource",
         "dependency",
@@ -236,7 +164,7 @@ fn test_line_43_every_wait_reason_at_required_is_attention() {
                 "lifecycle": "active",
                 "attention": { "level": "required", "reason": reason }
             })),
-            StatusClass::Attention,
+            StatusClass::Waiting,
             "attention.reason `{reason}` at required must be attention"
         );
     }
@@ -252,7 +180,7 @@ fn test_line_44_reason_matching_ignores_case() {
             "lifecycle": "active",
             "attention": { "level": "required", "reason": "Dependency" }
         })),
-        StatusClass::Attention
+        StatusClass::Waiting
     );
 }
 
@@ -267,7 +195,7 @@ fn test_line_47_an_attention_reason_of_failure_asks_rather_than_alarms() {
             "lifecycle": "active",
             "attention": { "level": "urgent", "reason": "failure" }
         })),
-        StatusClass::Attention
+        StatusClass::Waiting
     );
 }
 
@@ -297,14 +225,14 @@ fn test_line_58_every_ask_reason_at_informational_is_attention() {
 }
 
 #[test]
-fn test_line_48_a_wait_reason_at_informational_is_attention() {
+fn test_line_48_a_wait_reason_at_informational_is_waiting() {
     assert_eq!(
         class(json!({
             "id": "a",
             "lifecycle": "active",
             "attention": { "level": "informational", "reason": "queue" }
         })),
-        StatusClass::Attention
+        StatusClass::Waiting
     );
 }
 
@@ -386,26 +314,26 @@ fn test_line_72_an_unknown_lifecycle_is_inactive() {
 }
 
 #[test]
-fn test_line_73_a_pending_job_is_attention() {
+fn test_line_73_a_pending_job_is_waiting() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "pending" })),
-        StatusClass::Attention
+        StatusClass::Waiting
     );
 }
 
 #[test]
-fn test_line_73_a_created_job_is_attention() {
+fn test_line_73_a_created_job_is_waiting() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "created" })),
-        StatusClass::Attention
+        StatusClass::Waiting
     );
 }
 
 #[test]
-fn test_line_74_a_degraded_job_is_attention() {
+fn test_line_74_a_degraded_job_is_problem() {
     assert_eq!(
         class(json!({ "id": "a", "lifecycle": "active", "health": "degraded" })),
-        StatusClass::Attention
+        StatusClass::Problem
     );
 }
 
@@ -461,14 +389,14 @@ fn test_line_86_an_open_monitor_is_monitor() {
 }
 
 #[test]
-fn test_line_88_a_waiting_activity_is_attention() {
+fn test_line_88_a_waiting_activity_is_waiting() {
     assert_eq!(
         class(json!({
             "id": "a",
             "lifecycle": "active",
             "current": { "type": "waiting" }
         })),
-        StatusClass::Attention
+        StatusClass::Waiting
     );
 }
 
@@ -566,9 +494,9 @@ fn test_calm_prose_does_not_hide_a_structured_problem() {
 // ── The published frame, class by class ─────────────────────────────────────
 
 /// Each live row of `nerve_surface_core::testkit::SIX_STATE_FRAME` lands on a painted class.
-/// The `waiting` id is Attention: waiting shares that hue.
+/// The `waiting` id is neutral Waiting, not human Attention.
 #[test]
-fn test_the_six_state_frame_paints_waiting_as_attention() {
+fn test_the_six_state_frame_separates_waiting_from_attention() {
     let decoded = frame(SIX_STATE_FRAME);
 
     let classes: Vec<(&str, StatusClass)> = decoded
@@ -582,7 +510,7 @@ fn test_the_six_state_frame_paints_waiting_as_attention() {
         vec![
             ("claude-code:problem", StatusClass::Problem),
             ("claude-code:attention", StatusClass::Attention),
-            ("claude-code:waiting", StatusClass::Attention),
+            ("claude-code:waiting", StatusClass::Waiting),
             ("claude-code:running", StatusClass::Running),
             ("claude-code:success", StatusClass::Monitor),
             ("claude-code:inactive", StatusClass::Inactive),
@@ -601,5 +529,34 @@ fn test_the_demo_fixture_rows_are_both_running() {
             "job {}",
             job.id
         );
+    }
+}
+
+#[test]
+fn completed_turn_and_real_ask_remain_distinct() {
+    for (facets, expected) in [
+        (
+            json!({"current": {"type": "completed"}}),
+            StatusClass::Success,
+        ),
+        (
+            json!({"current": {"type": "completed"}, "attention": {"level": "required", "reason": "input"}}),
+            StatusClass::Attention,
+        ),
+        (
+            json!({"current": {"type": "thinking"}, "attention": {"level": "suggested", "reason": "input"}}),
+            StatusClass::Running,
+        ),
+        (
+            json!({"lifecycle": "ended", "outcome": "success", "attention": {"level": "required", "reason": "approval"}}),
+            StatusClass::Success,
+        ),
+    ] {
+        let mut value = json!({"id": "a", "lifecycle": "active"});
+        value
+            .as_object_mut()
+            .unwrap()
+            .extend(facets.as_object().unwrap().clone());
+        assert_eq!(class(value), expected);
     }
 }

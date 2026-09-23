@@ -68,10 +68,14 @@ enum ActionService {
     /// and must not be labelled the same way.
     static func focusActionTitle(for subject: Job) -> String {
         if let alias = RemoteMachine.foreignAlias(of: subject.alias) {
-            return "Open on \(alias)"
+            if ideDeepLink(subject) != nil { return "Open on \(alias)" }
+            return remoteSSHHost(for: alias) != nil ? "Connect to \(alias)" : "Copy location"
         }
-        if let url = subject.location?.openURL, !url.isEmpty { return "Open" }
-        return "Focus"
+        if let url = subject.location?.openURL, !url.isEmpty {
+            return url.hasPrefix("file:") || url.hasPrefix("/") ? "Open workspace" : "Open agent"
+        }
+        if let path = focusPath(subject), FileManager.default.fileExists(atPath: path) { return "Open workspace" }
+        return "Copy location"
     }
 
     @MainActor
@@ -130,6 +134,13 @@ enum ActionService {
         }
     }
 
+    private static func focusPath(_ subject: Job) -> String? {
+        guard let hint = subject.location?.focusHint?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        if hint.hasPrefix("/") { return hint }
+        if let range = hint.range(of: " · /") { return String(hint[range.lowerBound...].dropFirst(3)) }
+        return nil
+    }
+
     /// Open workspace / IDE deep link, else copy focus breadcrumb for the user.
     ///
     /// A job on another machine is answered by [`openRemote`] instead: its
@@ -158,15 +169,7 @@ enum ActionService {
         if let hint = subject.location?.focusHint?.trimmingCharacters(in: .whitespacesAndNewlines),
            !hint.isEmpty {
             // If the hint is (or ends with) an absolute path, open that folder.
-            let pathCandidate: String? = {
-                if hint.hasPrefix("/") { return hint }
-                // "Claude Code · nerve · Terminal · /Users/…/nerve"
-                if let range = hint.range(of: " · /") {
-                    let path = String(hint[range.lowerBound...].dropFirst(3)) // drop " · "
-                    if path.hasPrefix("/") { return path }
-                }
-                return nil
-            }()
+            let pathCandidate = focusPath(subject)
             if let path = pathCandidate, FileManager.default.fileExists(atPath: path) {
                 let ok = NSWorkspace.shared.open(URL(fileURLWithPath: path))
                 if ok { return .succeeded("Opened workspace") }
@@ -216,7 +219,6 @@ enum ActionService {
 
     /// ssh `Host` that reaches `alias`, from the user's own config — the same
     /// file Settings sources its Machines list from (CLAUDE.md invariant 5).
-    @MainActor
     private static func remoteSSHHost(for alias: String) -> String? {
         let hosts = SSHConfigWriter.loadLocalHosts().map {
             (alias: $0.alias, hostName: $0.hostName)

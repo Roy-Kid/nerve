@@ -31,7 +31,7 @@ struct FirstRunCoachView: View {
         ),
         (
             "Connect a local source",
-            "Send snapshots or events to 127.0.0.1:17890. Runtime state stays in memory and disappears when Nerve quits.",
+            "Connect your agent, then start a conversation. Live status will appear automatically.",
             "point.3.connected.trianglepath.dotted"
         ),
     ]
@@ -73,6 +73,9 @@ struct FirstRunCoachView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
 
+            if page == pages.count - 1 {
+                AgentSetupGuide().padding(.horizontal, 20).padding(.bottom, 12)
+            }
             pageIndicator
                 .padding(.bottom, 18)
 
@@ -83,7 +86,7 @@ struct FirstRunCoachView: View {
                 .padding(.vertical, 16)
                 .background(.ultraThinMaterial)
         }
-        .frame(width: 480, height: 410)
+        .frame(width: 480, height: 590)
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityElement(children: .contain)
     }
@@ -162,12 +165,12 @@ struct FirstRunCoachView: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
             } else {
-                Button("Start Empty") {
+                Button("Done") {
                     onFinish(false)
                 }
                 .buttonStyle(.bordered)
 
-                Button("Load Demo") {
+                Button("Try Demo") {
                     onFinish(true)
                 }
                 .keyboardShortcut(.defaultAction)
@@ -196,7 +199,7 @@ final class FirstRunCoachController {
         }
         let hosting = NSHostingController(rootView: root)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 410),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 590),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -214,5 +217,38 @@ final class FirstRunCoachController {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+}
+
+/// Uses the same installation commands as the product handbook.
+struct AgentSetupGuide: View {
+    @State private var agent = "Claude Code"
+    @State private var copied = false
+
+    private var commands: String {
+        agent == "Claude Code"
+            ? "/plugin marketplace add Roy-Kid/nerve\n/plugin install nerve@nerve"
+            : "codex plugin marketplace add Roy-Kid/nerve\ncodex plugin add nerve@nerve"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Agent", selection: $agent) {
+                Text("Claude Code").tag("Claude Code")
+                Text("Codex").tag("Codex")
+            }
+            Text(agent == "Claude Code" ? "Run these commands in Claude Code:" : "Run these commands in your terminal:")
+                .font(.caption)
+            Text(commands).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+            Button(copied ? "Copied" : "Copy commands") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(commands, forType: .string)
+                copied = true
+            }
+            Text("Restart your agent after installation, then send a prompt. The first conversation appears automatically.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(width: 380)
+        .onChange(of: agent) { _, _ in copied = false }
     }
 }

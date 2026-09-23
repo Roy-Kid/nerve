@@ -51,7 +51,7 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     static let `default` = StatusColorMap(
         problem: RGBColor(r: 1.000, g: 0.231, b: 0.188),   // #FF3B30 rainbow red
         attention: RGBColor(r: 1.000, g: 0.624, b: 0.039), // #FF9F0A rainbow orange
-        waiting: RGBColor(r: 1.000, g: 0.624, b: 0.039),   // same as attention
+        waiting: RGBColor(r: 0.557, g: 0.557, b: 0.576),   // automatic wait, no human action
         running: RGBColor(r: 0.039, g: 0.518, b: 1.000),   // #0A84FF rainbow blue
         monitor: monitorDefault,                           // #BF5AF2 rainbow violet
         success: RGBColor(r: 0.188, g: 0.820, b: 0.345),   // #30D158 rainbow green
@@ -91,6 +91,7 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     /// sitting on one of these never customized its colors, so it is safe to
     /// move forward — add a row here when `default` changes, nothing else.
     static let retiredDefaults: [StatusColorMap] = [
+        StatusColorMap(problem: .init(r: 1, g: 0.231, b: 0.188), attention: .init(r: 1, g: 0.624, b: 0.039), waiting: .init(r: 1, g: 0.624, b: 0.039), running: .init(r: 0.039, g: 0.518, b: 1), success: .init(r: 0.188, g: 0.820, b: 0.345), inactive: .init(r: 0.557, g: 0.557, b: 0.576)),
         // Six distinct hues, waiting was purple.
         StatusColorMap(
             problem: RGBColor(r: 1.000, g: 0.271, b: 0.227),
@@ -123,7 +124,8 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     func color(for status: Status) -> RGBColor {
         switch status {
         case .problem: return problem
-        case .attention, .waiting: return attention
+        case .attention: return attention
+        case .waiting: return waiting
         case .running: return running
         case .monitor: return monitor
         case .success: return success
@@ -134,7 +136,8 @@ struct StatusColorMap: Codable, Equatable, Sendable {
     mutating func set(_ color: RGBColor, for status: Status) {
         switch status {
         case .problem: problem = color
-        case .attention, .waiting: attention = color
+        case .attention: attention = color
+        case .waiting: waiting = color
         case .running: running = color
         case .monitor: monitor = color
         case .success: success = color
@@ -403,7 +406,7 @@ final class SettingsStore {
         dndEndMinutes = 8 * 60
         hasCompletedFirstRun = false
         hasSeenCoachMarks = false
-        panelGroupMode = .machine
+        panelGroupMode = .priority
         panelMemberVisibility = .attention
         ribbonRootsOnly = true
         panelColumns = PanelColumn.defaultColumns
@@ -457,7 +460,7 @@ final class SettingsStore {
         if let mode = p.panelGroupMode {
             panelGroupMode = mode
         } else {
-            panelGroupMode = .machine
+            panelGroupMode = .priority
         }
         panelMemberVisibility = p.panelMemberVisibility ?? .attention
         ribbonRootsOnly = p.ribbonRootsOnly ?? true
@@ -490,7 +493,7 @@ final class SettingsStore {
         dndEndMinutes = p.dndEndMinutes
         hasCompletedFirstRun = p.hasCompletedFirstRun
         hasSeenCoachMarks = p.hasSeenCoachMarks
-        panelGroupMode = p.panelGroupMode ?? .machine
+        panelGroupMode = p.panelGroupMode ?? .priority
         panelMemberVisibility = .attention
         ribbonRootsOnly = true
         panelColumns = PanelColumn.defaultColumns

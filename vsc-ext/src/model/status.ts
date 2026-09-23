@@ -50,15 +50,10 @@ function names(value: string | undefined, set: readonly string[]): boolean {
 }
 
 function fromAttention(job: Job): Status | undefined {
-  if (ATTENTION_RANK[job.attention.level] >= ATTENTION_RANK.suggested) {
-    return "attention";
-  }
+  if (job.lifecycle === "active" && names(job.current?.type, BUSY_KINDS)) return undefined;
   if (ATTENTION_RANK[job.attention.level] >= ATTENTION_RANK.informational) {
-    const reason = job.attention.reason;
-    if (!reason) return undefined;
-    if (names(reason, ASK_REASONS) || names(reason, WAIT_REASONS)) {
-      return "attention";
-    }
+    if (names(job.attention.reason, WAIT_REASONS)) return "waiting";
+    if (names(job.attention.reason, ASK_REASONS) || ATTENTION_RANK[job.attention.level] >= ATTENTION_RANK.suggested) return "attention";
   }
   return undefined;
 }
@@ -72,9 +67,9 @@ function fromStage(job: Job): Status | undefined {
     return "inactive";
   }
   if (job.lifecycle === "pending" || job.lifecycle === "created") {
-    return "attention";
+    return "waiting";
   }
-  if (job.health === "degraded") return "attention";
+  if (job.health === "degraded") return "problem";
   if (job.lifecycle === "active" && job.outcome === "partial") return "monitor";
   return undefined;
 }
@@ -86,7 +81,8 @@ function fromActivity(job: Job): Status | undefined {
     return job.lifecycle === "active" ? "running" : undefined;
   }
   if (names(kind, ["monitor"])) return "monitor";
-  if (names(kind, ["waiting"])) return "attention";
+  if (names(kind, ["completed"])) return "success";
+  if (names(kind, ["waiting"])) return "waiting";
   if (names(kind, IDLE_KINDS)) return "inactive";
   return undefined;
 }
@@ -95,6 +91,7 @@ export function statusOf(job: Job): Status {
   if (job.outcome === "failure") return "problem";
   if (job.health === "unresponsive") return "problem";
 
+  if (job.lifecycle === "ended") return fromStage(job)!;
   const attention = fromAttention(job);
   if (attention) return attention;
   const stage = fromStage(job);

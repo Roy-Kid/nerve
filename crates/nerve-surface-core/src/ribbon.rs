@@ -28,12 +28,9 @@ pub struct Run {
 
 /// Does this status get the high-priority floor?
 ///
-/// Problem, attention and waiting: the three a person is meant to act on.
+/// Problem and attention are emphasized; automatic waits are neutral.
 fn is_high_priority(class: StatusClass) -> bool {
-    matches!(
-        class,
-        StatusClass::Problem | StatusClass::Attention | StatusClass::Waiting
-    )
+    matches!(class, StatusClass::Problem | StatusClass::Attention)
 }
 
 /// Turn `(class, count)` pairs into weights that sum to 1.

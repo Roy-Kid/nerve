@@ -666,7 +666,7 @@ private func test_openTitleNamesTheOtherMachine(_ t: TestRun) throws {
         alias: "arrhenius1",
         producer: ProducerInfo(id: "claude-code")
     )
-    remote.location = LocationInfo(openURL: "file:///nobackup/proj/molcrafts")
+    remote.location = LocationInfo(openURL: "vscode://vscode-remote/ssh-remote+arrhenius1/nobackup/proj/molcrafts")
     t.equal(ActionService.focusActionTitle(for: remote), "Open on arrhenius1",
             "a job elsewhere is not labelled `Open`")
 
@@ -677,7 +677,24 @@ private func test_openTitleNamesTheOtherMachine(_ t: TestRun) throws {
         producer: ProducerInfo(id: "claude-code")
     )
     here.location = LocationInfo(openURL: "file:///Users/me/nerve")
-    t.equal(ActionService.focusActionTitle(for: here), "Open", "a local workspace still opens")
+    t.equal(ActionService.focusActionTitle(for: here), "Open workspace", "a local workspace still opens")
+}
+
+private func test_statusSeparatesCompletionFromHumanAction(_ t: TestRun) throws {
+    var job = Job.make(id: "codex:s1", name: "test", alias: "local", producer: ProducerInfo(id: "codex"))
+    job.current = Current(type: "completed")
+    t.equal(job.status, .success, "an open completed turn is green")
+    t.equal(job.statusLabel, "Turn complete", "completion does not promise the whole task is done")
+    job.attention = Attention(level: .required, reason: "approval")
+    t.equal(job.status, .attention, "an explicit approval still needs the human")
+    job.current = Current(type: "thinking")
+    t.equal(job.status, .running, "resumed work clears stale Ask paint")
+    job.current = Current(type: "waiting")
+    job.attention = Attention(level: .informational, reason: "queue")
+    t.equal(job.status, .waiting, "automatic waits are not human requests")
+    job.lifecycle = .ended
+    job.outcome = .success
+    t.equal(job.status, .success, "terminal outcomes beat old attention")
 }
 
 // MARK: - Minimal assertion harness (no XCTest / swift-testing in this repo)
@@ -723,6 +740,7 @@ private final class TestRun {
 @main
 enum FrameDifferTestMain {
     private static let tests: [(name: String, body: (TestRun) throws -> Void)] = [
+        ("test_statusSeparatesCompletionFromHumanAction", test_statusSeparatesCompletionFromHumanAction),
         // A1 — in-frame pairing
         ("test_pairsEmitsOnePairForAttentionEscalation", test_pairsEmitsOnePairForAttentionEscalation),
         ("test_pairsEmitsNothingForIdenticalFrames", test_pairsEmitsNothingForIdenticalFrames),

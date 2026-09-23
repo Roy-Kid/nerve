@@ -48,15 +48,15 @@ use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
 // ── Basics ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn test_the_six_state_frame_folds_waiting_into_attention() {
+fn test_the_six_state_frame_separates_waiting_from_attention() {
     let decoded = frame(SIX_STATE_FRAME);
 
     assert_eq!(
         Tally::of(&decoded.jobs),
         Tally {
             problem: 1,
-            attention: 2,
-            waiting: 0,
+            attention: 1,
+            waiting: 1,
             running: 1,
             monitor: 1,
             success: 0,
@@ -79,8 +79,8 @@ fn test_count_reads_the_same_numbers_as_the_fields() {
     let tally = Tally::of(&decoded.jobs);
 
     assert_eq!(tally.count(StatusClass::Problem), 1);
-    assert_eq!(tally.count(StatusClass::Attention), 2);
-    assert_eq!(tally.count(StatusClass::Waiting), 0);
+    assert_eq!(tally.count(StatusClass::Attention), 1);
+    assert_eq!(tally.count(StatusClass::Waiting), 1);
     assert_eq!(tally.count(StatusClass::Running), 1);
     assert_eq!(tally.count(StatusClass::Monitor), 1);
     assert_eq!(tally.count(StatusClass::Success), 0);
@@ -176,7 +176,8 @@ fn test_ask_counts_only_elevated_ask_reasons() {
     ];
 
     let tally = Tally::of(&jobs);
-    assert_eq!(tally.attention, 3);
+    assert_eq!(tally.attention, 2);
+    assert_eq!(tally.waiting, 1);
     assert_eq!(tally.ask, 2);
 }
 

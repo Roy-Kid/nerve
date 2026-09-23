@@ -358,3 +358,10 @@ had been stripping all along.
 Three `App.test.tsx` assertions keyed on class names (`.home-hero-tagline`,
 `a.docs-card`, `is-active`); they assert structure and `aria-current` now — the
 nav marks its active link for assistive tech either way, which it did not before.
+
+
+## 2026-09-22 — Separate turn completion from human attention
+
+Supersedes the earlier Stop/idle_prompt → Ask and Wait → orange rules. A normal Stop with no structured background tasks reports `current.type=completed`, `attention.level=none`, lifecycle active, no session outcome. Surfaces paint green and macOS says “Turn complete”; only SessionEnd removes the row. Explicit input/approval/review still requests attention. An idle_prompt without structured background work is ignored, preserving completion or a pending Ask; PostCompact stays thinking. Background shell/subagent/monitor rules remain unchanged.
+
+System waits derive Waiting (neutral gray), not human Attention (orange). Resumed execution suppresses stale attention paint; terminal success outranks old attention. macOS adds persistent status words, a Needs you / Active / Turn complete priority grouping, visible grouping menu, connection/empty-state guidance, and accurate local-action labels and results. Custom palettes are preserved; the former default palette migrates.

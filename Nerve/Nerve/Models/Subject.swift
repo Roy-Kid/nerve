@@ -39,35 +39,20 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         if outcome == .failure { return .problem }
         if health == .unresponsive { return .problem }
 
-        // Elevated attention → needs a look, unless the agent is already
-        // executing. A stale Ask must not stay orange over a live tool.
-        if attention.level >= .suggested {
-            switch current?.type.lowercased() {
-            case "subagent", "tool", "thinking", "info":
-                break
-            default:
-                return .attention
-            }
-        }
-
-        if attention.level >= .informational, let reason = attention.reason?.lowercased() {
-            switch reason {
-            case "input", "approval", "auth", "permission", "decision", "elicitation", "review",
-                 "resource", "dependency", "queue", "system", "lock",
-                 "throttle", "rate", "capacity", "failure":
-                return .attention
-            default:
-                break
-            }
-        }
-
         if lifecycle == .ended {
-            if outcome == .success || outcome == .partial { return .success }
-            return .inactive
+            return outcome == .success || outcome == .partial ? .success : .inactive
         }
+        let kind = current?.type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let reason = attention.reason?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let busy = lifecycle == .active && ["subagent", "tool", "thinking", "info"].contains(kind ?? "")
+        if !busy, attention.level >= .informational {
+            if Self.waitReasons.contains(reason ?? "") { return .waiting }
+            if isAskReason || attention.level >= .suggested { return .attention }
+        }
+
         if lifecycle == .suspended || lifecycle == .unknown { return .inactive }
-        if lifecycle == .pending || lifecycle == .created { return .attention }
-        if health == .degraded { return .attention }
+        if lifecycle == .pending || lifecycle == .created { return .waiting }
+        if health == .degraded { return .problem }
 
         // Open session, partial outcome: a monitor holding the stream.
         if lifecycle == .active, outcome == .partial {
@@ -81,8 +66,10 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
         case "monitor":
             // Watching a background stream — not executing, not done.
             return .monitor
+        case "completed":
+            return .success
         case "waiting":
-            return .attention
+            return .waiting
         // starting = Ready (session open, no turn yet). idle = your_turn facet
         // without elevated attention (rare). Never paint Running for these.
         case "idle", "starting", "booting":
@@ -93,6 +80,23 @@ struct Job: Identifiable, Codable, Sendable, Hashable {
 
         if lifecycle == .active { return .running }
         return .inactive
+    }
+
+    static let waitReasons: Set<String> = ["resource", "dependency", "queue", "system", "lock", "throttle", "rate", "capacity", "failure"]
+
+    /// Visible words alongside color; never infer a status from the summary.
+    var statusLabel: String {
+        if status == .attention {
+            switch attention.reason?.lowercased() {
+            case "approval", "permission", "auth": return "Approval needed"
+            case "input", "elicitation": return "Input needed"
+            case "review": return "Review needed"
+            case "decision": return "Decision needed"
+            default: return "Needs attention"
+            }
+        }
+        if status == .success, lifecycle == .active { return "Turn complete" }
+        return status.title
     }
 
     // MARK: Role / visibility (panel / ribbon)

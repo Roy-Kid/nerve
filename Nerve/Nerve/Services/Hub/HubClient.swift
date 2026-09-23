@@ -161,6 +161,7 @@ final class HubClient {
             }
             guard !Task.isCancelled else { return }
             // After the cancellation guard, so `disconnect()` never fires it.
+            store.hubUnavailable()
             onStreamEnded?()
 
             let delay = retryDelay
@@ -275,6 +276,7 @@ final class HubClient {
             let (data, response) = try await shortSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
+                store.hubUnavailable()
                 return
             }
             var frame = try HubFrame(jobsListJSON: data, decoder: decoder)
@@ -287,11 +289,14 @@ final class HubClient {
             }
             applyFrame(frame)
         } catch {
+            store.hubUnavailable()
             NerveLog.record("hub jobs fetch failed: \(error)")
         }
     }
 
     private func applyFrame(_ frame: HubFrame) {
+        store.receivedHubData()
+        if !frame.jobs.isEmpty { store.hasSeenJobs = true }
         let pairs = differ.pairs(for: frame)
         store.applyFrame(jobs: frame.jobs, timelines: frame.timelines, notify: frame.notify)
         guard frame.notify.mayInterrupt(surface: "macos") else { return }

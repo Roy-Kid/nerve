@@ -142,7 +142,7 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(job["attention"]["level"], "required")
         self.assertEqual(job["attention"]["reason"], "approval")
 
-    def test_stop_marks_waiting_for_input_attention(self):
+    def test_stop_completes_turn_without_requesting_input(self):
         base = {"session_id": "s2", "cwd": "/tmp/y"}
         self.mod.process(
             {
@@ -160,13 +160,10 @@ class NerveHookTests(unittest.TestCase):
             }
         )
         assert job is not None
-        self.assertEqual(job["current"]["type"], "idle")
-        self.assertEqual(job["attention"]["level"], "suggested")
-        self.assertEqual(job["attention"]["reason"], "input")
-        # Honest copy: go back to agent UI — not "Type here" / "Waiting for input".
-        self.assertIn("agent", job["attention"]["title"].lower())
-        self.assertIn("agent", job["attention"]["summary"].lower())
-        self.assertNotIn("type here", job["attention"]["summary"].lower())
+        self.assertEqual(job["current"]["type"], "completed")
+        self.assertEqual(job["attention"]["level"], "none")
+        self.assertEqual(job["lifecycle"], "active")
+        self.assertIsNone(job.get("outcome"))
 
     def test_stop_with_background_tasks_is_running(self):
         """Claude Code Stop payload: non-empty background_tasks ⇒ still Running."""
@@ -215,9 +212,7 @@ class NerveHookTests(unittest.TestCase):
                 "message": "anything here is ignored for status",
             }
         )
-        assert idle is not None
-        self.assertEqual(idle["attention"]["reason"], "input")
-        self.assertEqual(idle["current"]["type"], "idle")
+        self.assertIsNone(idle)
 
         perm = self.mod.process(
             {
@@ -233,7 +228,6 @@ class NerveHookTests(unittest.TestCase):
         self.assertIn("agent", perm["attention"]["title"].lower())
 
         # idle_prompt honest copy
-        self.assertIn("agent", idle["attention"]["title"].lower())
 
     def test_location_ide_scheme_when_cursor_host(self):
         prev = os.environ.get("CURSOR_TRACE_ID")
@@ -273,8 +267,8 @@ class NerveHookTests(unittest.TestCase):
         # Not a control affordance ("Approve Bash" implies in-app approve).
         self.assertFalse(title.startswith("approve "))
 
-    def test_idle_prompt_background_wait_is_running_not_attention(self):
-        """Claude often fires idle_prompt + bg-wait toast without background_tasks."""
+    def test_idle_prompt_background_prose_preserves_last_state(self):
+        """Without structured background work, reminder prose cannot change status."""
         for msg in (
             "Waiting for 1 background agent to finish",
             "Waiting for 2 background agents to finish",
@@ -294,14 +288,10 @@ class NerveHookTests(unittest.TestCase):
                         "background_tasks": [],
                     }
                 )
-                assert job is not None
-                self.assertEqual(job["lifecycle"], "active")
-                self.assertEqual(job["attention"]["level"], "none")
-                self.assertNotEqual(job["attention"].get("reason"), "input")
-                self.assertEqual(job["current"]["type"], "subagent")
+                self.assertIsNone(job)
 
-    def test_idle_prompt_monitor_wait_is_success_not_attention(self):
-        """Monitor-only toast → current.type=monitor, not Attention or Running."""
+    def test_idle_prompt_monitor_prose_preserves_last_state(self):
+        """Monitor prose cannot overwrite the last structured state."""
         for msg in (
             "1 monitor still running",
             "Waiting for monitor",
@@ -318,12 +308,7 @@ class NerveHookTests(unittest.TestCase):
                         "background_tasks": [],
                     }
                 )
-                assert job is not None
-                self.assertEqual(job["lifecycle"], "active")
-                self.assertEqual(job["attention"]["level"], "none")
-                self.assertNotEqual(job["attention"].get("reason"), "input")
-                self.assertEqual(job["current"]["type"], "monitor")
-                self.assertEqual(job["outcome"], "partial")
+                self.assertIsNone(job)
 
     def test_stop_with_shell_background_is_running(self):
         job = self.mod.process(
@@ -380,7 +365,7 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(job["current"]["summary"], "Compacting context")
         self.assertEqual(job["attention"]["level"], "none")
 
-    def test_postcompact_without_background_is_your_turn(self):
+    def test_postcompact_without_background_keeps_working(self):
         job = self.mod.process(
             {
                 "hook_event_name": "PostCompact",
@@ -389,8 +374,8 @@ class NerveHookTests(unittest.TestCase):
             }
         )
         assert job is not None
-        self.assertEqual(job["current"]["type"], "idle")
-        self.assertEqual(job["attention"]["reason"], "input")
+        self.assertEqual(job["current"]["type"], "thinking")
+        self.assertEqual(job["attention"]["level"], "none")
 
     def test_postcompact_with_monitor_stays_monitor(self):
         job = self.mod.process(

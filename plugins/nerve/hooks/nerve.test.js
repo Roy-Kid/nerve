@@ -10,11 +10,12 @@ test("SessionStart is Ready, not Running", () => {
   assert.equal(f.attention.level, "none");
 });
 
-test("Stop without background is your turn", () => {
+test("Stop completes the turn without asking for input", () => {
   const f = mapEvent("stop", { hookEventName: "Stop" });
-  assert.equal(f.current.type, "idle");
-  assert.equal(f.attention.reason, "input");
-  assert.equal(f.attention.title, "Your turn in agent");
+  assert.equal(f.current.type, "completed");
+  assert.equal(f.attention.level, "none");
+  assert.equal(f.lifecycle, "active");
+  assert.equal(f.outcome, undefined);
 });
 
 test("Stop while the gate is retrying stays running", () => {
@@ -52,10 +53,10 @@ test("PreCompact without background is thinking", () => {
   assert.equal(f.attention.level, "none");
 });
 
-test("PostCompact without background is your turn", () => {
+test("PostCompact continues working", () => {
   const f = mapEvent("postcompact", { hook_event_name: "PostCompact" });
-  assert.equal(f.current.type, "idle");
-  assert.equal(f.attention.reason, "input");
+  assert.equal(f.current.type, "thinking");
+  assert.equal(f.attention.level, "none");
 });
 
 test("PostCompact with monitor stays monitor", () => {
@@ -229,3 +230,14 @@ test("grok-post.js exits 0 with empty stdin", async () => {
   const code = await new Promise((resolve) => child.on("close", resolve));
   assert.equal(code, 0);
 });
+
+for (const notification_type of ["agent_needs_input", "elicitation_dialog", "permission_prompt"]) {
+  test(`${notification_type} still requires the human after completion`, () => {
+    const done = mapEvent("stop", {});
+    assert.equal(done.current.type, "completed");
+    const ask = mapEvent("notification", { notification_type });
+    assert.notEqual(ask.attention.level, "none");
+    assert.equal(mapEvent("notification", { notification_type: "idle_prompt", message: "Needs approval" }), null);
+    assert.equal(mapEvent("userpromptsubmit", { prompt: "Continue" }).attention.level, "none");
+  });
+}

@@ -66,6 +66,7 @@ GROK = {
     "PostToolUseFailure",
     "PermissionDenied",
     "Stop",
+    "StopCancelled",
     "StopFailure",
     "Notification",
     "SubagentStart",

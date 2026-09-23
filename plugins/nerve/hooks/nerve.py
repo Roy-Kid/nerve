@@ -33,7 +33,7 @@ Orthogonal event → facet map (no free-text status inference)
 | SubagentStop no bg   | active           | thinking         | none          |
 | Stop + shell/subagent bg | active      | subagent         | none (Running)|
 | Stop + monitor-only bg   | active      | monitor + partial| none (Monitor)|
-| Stop empty bg        | active           | idle             | input         |
+| Stop empty bg        | active           | completed        | none          |
 | idle_prompt (no bg)  | active           | idle             | input         |
 | idle_prompt + shell/agent toast | active | subagent     | none (Running)|
 | idle_prompt + monitor toast     | active | monitor      | none (Monitor)|
@@ -743,8 +743,8 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
                 return _background_work_facets(payload, bg)
             # agent_needs_input: a (background) agent needs the human → Attention.
             # idle_prompt + bg-wait toast: shell/subagent → Running; monitor → Monitor.
-            if ntype == "idle_prompt" and _is_harness_background_wait_toast(summary):
-                return _facets_for_bg_wait_toast(summary)
+            if ntype == "idle_prompt":
+                return None  # Preserve the last real state.
             # Honest copy: Nerve signals “go back to agent UI”, never “type here”.
             return {
                 "lifecycle": "active",
@@ -785,23 +785,17 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "stop":
-        # Non-empty background_tasks ⇒ still in flight (Running or Monitor),
-        # never Attention. Empty queue ⇒ human’s turn in the agent UI (not in Nerve).
+        if str(payload.get("reason", "")).strip() in ("channel_closed", "shutdown"):
+            return None
+        if str(payload.get("stopHookActive", payload.get("stop_hook_active", False))).lower() == "true":
+            return {"lifecycle": "active", "current": {"type": "thinking", "summary": "Continuing"}, "attention": {"level": "none"}, "health": "ok"}
         bg = _background_tasks(payload)
         if bg:
             return _background_work_facets(payload, bg)
         return {
             "lifecycle": "active",
-            "current": {
-                "type": "idle",
-                "summary": "Your turn — continue in the agent UI",
-            },
-            "attention": {
-                "level": "suggested",
-                "reason": "input",
-                "title": "Your turn in agent",
-                "summary": "Return to the agent to continue",
-            },
+            "current": {"type": "completed", "summary": "Turn complete"},
+            "attention": {"level": "none"},
             "health": "ok",
         }
 
@@ -822,24 +816,10 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         }
 
     if event == "postcompact":
-        # Same as Stop: remaining bg work keeps Running/Monitor; otherwise your turn.
         bg = _background_tasks(payload)
         if bg:
             return _background_work_facets(payload, bg)
-        return {
-            "lifecycle": "active",
-            "current": {
-                "type": "idle",
-                "summary": "Your turn — continue in the agent UI",
-            },
-            "attention": {
-                "level": "suggested",
-                "reason": "input",
-                "title": "Your turn in agent",
-                "summary": "Return to the agent to continue",
-            },
-            "health": "ok",
-        }
+        return {"lifecycle": "active", "current": {"type": "thinking", "summary": "Context compacted — continuing"}, "attention": {"level": "none"}, "health": "ok"}
 
     return None
 

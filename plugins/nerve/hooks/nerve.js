@@ -209,7 +209,7 @@ function stopFacets(payload) {
   }
   const bg = bgTasks(payload);
   if (bg.length) return backgroundWork(bg);
-  return yourTurn("Return to the agent to continue");
+  return { lifecycle: "active", current: { type: "completed", summary: "Turn complete" }, attention: { level: "none" }, health: "ok" };
 }
 
 function yourTurn(summary) {
@@ -306,10 +306,8 @@ function mapEvent(event, payload) {
     }
     if (ntype === "idle_prompt" || ntype === "agent_needs_input" || ntype === "elicitation_dialog") {
       if (bg.length) return backgroundWork(bg);
-      if (ntype === "idle_prompt" && classifyToast(summary)) {
-        return classifyToast(summary) === "monitor" ? monitorWait(summary, "monitor") : runningBg(summary, "background");
-      }
-      return yourTurn(summary && ntype !== "idle_prompt" ? summary : "Return to the agent to continue");
+      if (ntype === "idle_prompt") return null; // Preserve the last real state.
+      return yourTurn(summary || "Return to the agent to continue");
     }
     if (["agent_completed", "elicitation_complete", "elicitation_response", "auth_success"].includes(ntype)) {
       return { lifecycle: "active", current: { type: "info", summary }, attention: { level: "none" }, health: "ok" };
@@ -331,7 +329,8 @@ function mapEvent(event, payload) {
     return { lifecycle: "active", current: { type: "thinking", summary: "Compacting context", startedAt: nowIso() }, attention: { level: "none" }, health: "ok" };
   }
   if (event === "postcompact") {
-    return stopFacets(payload) || yourTurn("Return to the agent to continue");
+    const bg = bgTasks(payload);
+    return bg.length ? backgroundWork(bg) : { lifecycle: "active", current: { type: "thinking", summary: "Context compacted — continuing" }, attention: { level: "none" }, health: "ok" };
   }
   return null;
 }

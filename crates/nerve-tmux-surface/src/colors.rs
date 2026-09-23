@@ -3,18 +3,17 @@
 //!
 //! Shared job statuses (the ribbon, dots, filter chips): five rainbow hues a
 //! person can name — red problem, orange attention, blue running, violet
-//! monitor, green success — plus gray idle. Seven is the ceiling. Waiting
-//! shares attention so “needs a look” is one color.
+//! monitor, green success — plus gray idle. Seven is the ceiling. Waiting is neutral gray; human attention is orange.
 //!
 //! Chrome (borders, text, git, selection) stays on a muted gray/slate
 //! 256-color scale. It must not grow its own rainbow.
 
 /// Problem — rainbow red `#FF3B30`
 pub const PROBLEM: u8 = 196;
-/// Attention (and waiting) — rainbow orange `#FF9F0A`
+/// Human attention — rainbow orange `#FF9F0A`
 pub const ATTENTION: u8 = 214;
-/// Waiting shares attention. Kept as a name so call sites do not fork.
-pub const WAITING: u8 = ATTENTION;
+/// Automatic waiting is neutral gray.
+pub const WAITING: u8 = IDLE;
 /// Running — rainbow blue `#0A84FF`
 pub const RUNNING: u8 = 33;
 /// Monitor — rainbow violet `#BF5AF2`

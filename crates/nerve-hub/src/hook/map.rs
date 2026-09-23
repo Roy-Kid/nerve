@@ -84,13 +84,17 @@ pub fn map_event(payload: &Value) -> Option<Facets> {
         "subagentstop" => Some(subagent_stop(payload)),
         "posttoolusefailure" | "stopfailure" => Some(failure(&event, payload)),
         "permissionrequest" | "permissiondenied" => Some(permission(payload)),
+        "notification"
+            if notification_type(payload) == "idle_prompt"
+                && background_tasks(payload).is_empty() =>
+        {
+            None
+        }
         "notification" => Some(notification(payload)),
         "stop" => stop(payload),
         "stopcancelled" => Some(your_turn("Return to the agent to continue".into())),
         "precompact" => Some(precompact(payload)),
-        "postcompact" => {
-            stop(payload).or_else(|| Some(your_turn("Return to the agent to continue".into())))
-        }
+        "postcompact" => Some(precompact(payload)),
         _ => None,
     }
 }
@@ -351,7 +355,11 @@ fn stop(payload: &Value) -> Option<Facets> {
     if !bg.is_empty() {
         return Some(background_work(bg));
     }
-    Some(your_turn("Return to the agent to continue".into()))
+    Some(Facets::active(
+        "completed",
+        Some("Turn complete".into()),
+        None,
+    ))
 }
 
 fn precompact(payload: &Value) -> Facets {
@@ -527,11 +535,12 @@ mod tests {
     }
 
     #[test]
-    fn stop_without_background_is_your_turn() {
+    fn stop_without_background_completes_turn() {
         let f = map_event(&json!({"hookEventName": "Stop"})).unwrap();
-        assert_eq!(f.current_type, "idle");
-        assert_eq!(f.attention_reason, Some("input"));
-        assert_eq!(f.attention_title, Some("Your turn in agent"));
+        assert_eq!(f.current_type, "completed");
+        assert_eq!(f.attention_level, "none");
+        assert_eq!(f.lifecycle, "active");
+        assert_eq!(f.outcome, None);
     }
 
     #[test]
@@ -589,27 +598,23 @@ mod tests {
     }
 
     #[test]
-    fn idle_prompt_bg_wait_toast_is_running() {
+    fn idle_prompt_background_prose_preserves_state() {
         let f = map_event(&json!({
             "hook_event_name": "Notification",
             "notification_type": "idle_prompt",
             "title": "1 shell still running"
-        }))
-        .unwrap();
-        assert_eq!(f.current_type, "subagent");
-        assert_eq!(f.attention_level, "none");
+        }));
+        assert!(f.is_none());
     }
 
     #[test]
-    fn idle_prompt_monitor_toast_is_success() {
+    fn idle_prompt_monitor_prose_preserves_state() {
         let f = map_event(&json!({
             "hook_event_name": "Notification",
             "notification_type": "idle_prompt",
             "title": "Waiting for monitor"
-        }))
-        .unwrap();
-        assert_eq!(f.current_type, "monitor");
-        assert_eq!(f.outcome, Some("partial"));
+        }));
+        assert!(f.is_none());
     }
 
     #[test]
@@ -632,10 +637,10 @@ mod tests {
     }
 
     #[test]
-    fn postcompact_without_background_is_your_turn() {
+    fn postcompact_without_background_keeps_working() {
         let f = map_event(&json!({"hook_event_name": "PostCompact"})).unwrap();
-        assert_eq!(f.current_type, "idle");
-        assert_eq!(f.attention_reason, Some("input"));
+        assert_eq!(f.current_type, "thinking");
+        assert_eq!(f.attention_level, "none");
     }
 
     #[test]

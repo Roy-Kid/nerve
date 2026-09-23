@@ -99,7 +99,7 @@ fn the_quieter_of_a_pair_names_it_when_alone() {
     );
     // Waiting shares attention's colour and its slot is the running one.
     let waiting = stack(&tally(0, 0, 2, 0, 0, 0, 0));
-    assert_eq!(waiting[0].color, palette::ATTENTION);
+    assert_eq!(waiting[0].color, palette::INACTIVE);
 }
 
 #[test]

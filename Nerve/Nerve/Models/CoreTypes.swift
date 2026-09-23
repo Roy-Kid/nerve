@@ -244,22 +244,21 @@ struct JobAction: Codable, Sendable, Hashable, Identifiable {
 enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
     /// Red — failed or cannot continue.
     case problem
-    /// Orange — needs a look: you (input/approval) or the system (queue/deps).
+    /// Orange — needs human input, approval, or review.
     case attention
-    /// Merged into `attention`. Kept so saved palettes and grouping keys still decode.
+    /// Gray — automatic wait on the system; no human action needed.
     case waiting
     /// Blue — actively executing (main thread, or a background shell/subagent).
     case running
     /// Purple — watching a background stream; phase done, not executing.
     case monitor
-    /// Green — ended success.
+    /// Green — completed turn or ended success.
     case success
     /// Gray — ready (no turn yet), paused, or unknown. Not “dead”.
     case inactive
 
-    /// Statuses the ribbon, panel and Settings actually paint. `waiting` shares
-    /// attention so the user learns six hues, not seven.
-    static let painted: [Status] = [.problem, .attention, .running, .monitor, .success, .inactive]
+    /// Statuses the ribbon, panel and Settings paint. Waiting is neutral gray.
+    static let painted: [Status] = [.problem, .attention, .waiting, .running, .monitor, .success, .inactive]
 
     private var order: Int {
         switch self {
@@ -281,18 +280,18 @@ enum Status: String, Sendable, Hashable, CaseIterable, Comparable {
         switch self {
         case .running: return "Running"
         case .waiting: return "Waiting"
-        case .attention: return "Attention"
+        case .attention: return "Needs you"
         case .problem: return "Problem"
         case .monitor: return "Monitor"
-        case .success: return "Success"
-        case .inactive: return "Inactive"
+        case .success: return "Completed"
+        case .inactive: return "Ready / idle"
         }
     }
 
     /// problem / attention get a minimum segment weight when painting the ribbon.
     var isHighPriority: Bool {
         switch self {
-        case .problem, .attention, .waiting: return true
+        case .problem, .attention: return true
         default: return false
         }
     }
@@ -329,7 +328,7 @@ enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashabl
         case .producer: return "Who reported it (Claude Code, Grok, …)"
         case .machine: return "Machine alias from the snapshot"
         case .status: return "Derived status label"
-        case .updated: return "Relative time (hidden on hover)"
+        case .updated: return "Time of last update"
         }
     }
 

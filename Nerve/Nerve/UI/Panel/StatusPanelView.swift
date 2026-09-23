@@ -61,6 +61,8 @@ struct StatusPanelView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @FocusState private var listFocused: Bool
+    @State private var showingSetup = false
+    @State private var actionFeedback: String?
     @State private var expandedId: String?
     @State private var confirmation: PanelConfirmation?
     @State private var resizeOrigin: CGSize?
@@ -75,6 +77,15 @@ struct StatusPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if !store.connectionAvailable, !store.activeJobs.isEmpty {
+                Label("Connection interrupted · showing last received status", systemImage: "wifi.slash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+            }
+            if let actionFeedback {
+                Text(actionFeedback).font(.caption).padding(.horizontal, 12).padding(.bottom, 6)
+            }
             if let confirmation {
                 confirmationBar(confirmation)
             }
@@ -133,6 +144,7 @@ struct StatusPanelView: View {
         .onDisappear {
             store.panelOpen = false
             confirmation = nil
+            actionFeedback = nil
             resizeAnchor.endResize()
             resizeOrigin = nil
             livePanelSize = nil
@@ -200,15 +212,16 @@ struct StatusPanelView: View {
     private func moveFocus(_ delta: Int) {
         let list = listedSubjects
         guard !list.isEmpty else { return }
-        let next = min(max(0, store.focusedListIndex + delta), list.count - 1)
+        let current = list.firstIndex(where: { $0.id == store.selectedJobId }) ?? (delta > 0 ? -1 : list.count)
+        let next = min(max(0, current + delta), list.count - 1)
         store.focusedListIndex = next
         store.selectedJobId = list[next].id
     }
 
     private func toggleFocused() {
         let list = listedSubjects
-        guard list.indices.contains(store.focusedListIndex) else { return }
-        let id = list[store.focusedListIndex].id
+        guard let job = list.first(where: { $0.id == store.selectedJobId }) ?? list.first else { return }
+        let id = job.id
         withAnimation(animate ? .easeInOut(duration: 0.14) : nil) {
             if expandedId == id { expandedId = nil }
             else {
@@ -218,16 +231,21 @@ struct StatusPanelView: View {
         }
     }
 
-    /// Cycles Machine → Priority → Status. Icon-only (`arrow.up.arrow.down`).
     private var groupModeButton: some View {
-        headerIconButton(
-            systemName: "arrow.up.arrow.down",
-            help: "Group by \(settings.panelGroupMode.title). Click to cycle: Machine → Priority → Status",
-            accessibilityLabel: "Group by \(settings.panelGroupMode.title)",
-            accessibilityHint: "Cycles grouping mode"
-        ) {
-            cycleGroupMode()
+        @Bindable var settings = settings
+        return Menu {
+            Picker("Group by", selection: $settings.panelGroupMode) {
+                ForEach(PanelGroupMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+        } label: {
+            Label(settings.panelGroupMode.title, systemImage: "line.3.horizontal.decrease")
+                .font(.caption)
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Choose how to group conversations")
     }
 
     private var refreshButton: some View {
@@ -278,19 +296,6 @@ struct StatusPanelView: View {
             emphasized: emphasized,
             action: action
         )
-    }
-
-    private func cycleGroupMode() {
-        let all = PanelGroupMode.allCases
-        guard let idx = all.firstIndex(of: settings.panelGroupMode) else {
-            settings.panelGroupMode = .machine
-            return
-        }
-        let next = all[(idx + 1) % all.count]
-        withAnimation(animate ? .easeInOut(duration: 0.12) : nil) {
-            settings.panelGroupMode = next
-            store.focusedListIndex = 0
-        }
     }
 
     private func refreshPresentation() {
@@ -532,9 +537,25 @@ struct StatusPanelView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView("No jobs", systemImage: "waveform.path.ecg")
-            .symbolRenderingMode(.hierarchical)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 12) {
+            Image(systemName: store.connectionAvailable ? "waveform.path.ecg" : "wifi.slash")
+                .font(.largeTitle).foregroundStyle(.secondary)
+            Text(store.connectionAvailable ? (store.hasSeenJobs ? "No active conversations" : "Connect your first agent")
+                 : (store.lastReceivedAt == nil ? "Connecting to Nerve…" : "Connection interrupted"))
+                .font(.headline)
+            Text(store.connectionAvailable
+                 ? (store.hasSeenJobs ? "New conversations will appear here automatically." : "Connect your agent, then start a conversation to see its status here.")
+                 : "Reconnecting automatically. Your agents can keep working.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if store.connectionAvailable {
+                Button("Connect an agent") { showingSetup = true }
+                    .popover(isPresented: $showingSetup) { AgentSetupGuide().padding(20) }
+            } else {
+                Button("Retry now") { store.refreshRequestSink?() }
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -564,7 +585,12 @@ struct StatusPanelView: View {
                 producer: subject.producer.name ?? subject.producer.id
             )
         } else {
-            _ = store.performAction(actionId: actionId, jobId: subject.id, confirmed: true)
+            let result = store.performAction(actionId: actionId, jobId: subject.id, confirmed: true)
+            switch result {
+            case .succeeded(let message), .failed(let message), .denied(let message), .pending(let message):
+                actionFeedback = message
+            case .unsupported: actionFeedback = "This action is unavailable."
+            }
         }
     }
 }
