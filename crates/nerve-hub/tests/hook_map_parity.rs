@@ -79,10 +79,16 @@ fn normalize(raw: &Value) -> Value {
 }
 
 fn run_mapper(cmd: &str, script: &Path, fixture: &Path) -> Value {
-    let out = Command::new(cmd)
-        .arg(script)
-        .arg("--map")
-        .arg(fixture)
+    let mut command = Command::new(cmd);
+    command.arg(script).arg("--map").arg(fixture);
+    // Python on Windows encodes text stdout as the ANSI code page unless told
+    // otherwise. The fixture JSON is UTF-8; keep the child on that encoding
+    // even if a future print goes through the text wrapper.
+    if cmd == "python3" || cmd == "python" {
+        command.env("PYTHONUTF8", "1");
+        command.env("PYTHONIOENCODING", "utf-8");
+    }
+    let out = command
         .output()
         .unwrap_or_else(|e| panic!("spawn {cmd}: {e}"));
     let stdout = String::from_utf8_lossy(&out.stdout);

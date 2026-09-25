@@ -1662,7 +1662,11 @@ def _map_fixture(path: str) -> int:
     except Exception:
         out = "null"
     try:
-        sys.stdout.write(out + "\n")
+        # Windows text stdout uses the ANSI code page even on a pipe, so an em
+        # dash becomes a single byte the parity harness cannot read as UTF-8.
+        # The adapter's contract is UTF-8 JSON, same as nerve.js and the hub.
+        sys.stdout.buffer.write((out + "\n").encode("utf-8"))
+        sys.stdout.buffer.flush()
     except Exception:
         pass
     return 0
