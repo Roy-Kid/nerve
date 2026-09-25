@@ -14,7 +14,7 @@ use std::task::{Context, Poll};
 use axum::extract::{Query, State};
 use axum::response::sse::{Event, KeepAlive, KeepAliveStream, Sse};
 use axum::routing::get;
-use axum::{middleware, Router};
+use axum::{Router, middleware};
 use futures_core::Stream;
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;

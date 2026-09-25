@@ -17,10 +17,10 @@ use crate::frame::JobView;
 /// `openURL` first because a producer that emitted one meant it; then the
 /// workspace it named; then the tail of the focus breadcrumb.
 pub fn job_path(job: &JobView) -> Option<PathBuf> {
-    if let Some(url) = job.location.as_ref().and_then(|l| l.open_url.as_deref()) {
-        if let Some(path) = workspace_path_from_url(url) {
-            return Some(path);
-        }
+    if let Some(url) = job.location.as_ref().and_then(|l| l.open_url.as_deref())
+        && let Some(path) = workspace_path_from_url(url)
+    {
+        return Some(path);
     }
     if let Some(path) = job
         .context
@@ -74,10 +74,10 @@ pub fn workspace_path_from_url(url: &str) -> Option<PathBuf> {
             continue;
         };
         let decoded = path::percent_decode(rest);
-        if let Some(after_slash) = decoded.strip_prefix('/') {
-            if path::is_absolute(after_slash) {
-                return Some(PathBuf::from(after_slash));
-            }
+        if let Some(after_slash) = decoded.strip_prefix('/')
+            && path::is_absolute(after_slash)
+        {
+            return Some(PathBuf::from(after_slash));
         }
         if path::is_absolute(&decoded) {
             return Some(PathBuf::from(decoded));

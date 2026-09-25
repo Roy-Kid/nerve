@@ -19,7 +19,7 @@ use nerve_surface_core::locate::{FileProbe, HubLocator};
 use nerve_surface_core::store::JobsStore;
 use nerve_surface_core::stream::stream_path;
 use nerve_windows_surface::app::App;
-use nerve_windows_surface::platform::instance::{claim, Claim, LOCK_PORT};
+use nerve_windows_surface::platform::instance::{Claim, LOCK_PORT, claim};
 use nerve_windows_surface::platform::{aumid, paths};
 
 /// The label this surface attaches under. The hub treats it as a log tag.

@@ -1,0 +1,18 @@
+{
+  "lifecycle": "active",
+  "current": {
+    "type": "monitor",
+    "name": "monitor",
+    "summary": "1 background task(s): monitor"
+  },
+  "attention": {
+    "level": "none",
+    "reason": null,
+    "title": null,
+    "summary": null
+  },
+  "health": "ok",
+  "outcome": "partial",
+  "ended": false,
+  "end_reason": null
+}

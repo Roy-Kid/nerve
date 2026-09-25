@@ -1,7 +1,7 @@
 //! Host event + facets → one Nerve job snapshot.
 
 use nerve_platform::path;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::clock::Clock;
 use crate::model::{
@@ -9,11 +9,11 @@ use crate::model::{
     Lifecycle, LocationInfo, Outcome, ProducerInfo, Progress, ProgressKind, WireTime,
 };
 
+use super::Producer;
 use super::map::{Facets, PROMPT_MAX};
 use super::payload::{
     agent_id, agent_type, cwd, event_name, get_str, get_text, project_name, truncate,
 };
-use super::Producer;
 
 pub fn build_job(
     payload: &Value,
@@ -37,25 +37,36 @@ pub fn build_job(
     if let Some(at) = agent_type(payload) {
         extensions.insert("agentType".into(), json!(at));
     }
-    let event = event_name(payload);
-    if event == "subagentstart" || event == "subagentstop" {
-        if let Some(aid) = agent_id(payload) {
-            extensions.insert("agentId".into(), json!(aid));
+    // UI slot + agent PID so surfaces can supersede ghosts and reap dead locals.
+    // `grok-post.js` computes both with the same algorithm as `nerve.js` and
+    // injects them; the hub falls back to a workspace slot when absent.
+    for key in ["agentPid", "agent_pid", "pid"] {
+        if let Some(pid) = payload.get(key).and_then(Value::as_u64) {
+            extensions.insert("pid".into(), json!(pid));
+            break;
         }
+    }
+    let slot = get_text(payload, &["slotId", "slot"]).unwrap_or_else(|| slot_id(producer, payload));
+    extensions.insert("slot".into(), json!(slot));
+    let event = event_name(payload);
+    if (event == "subagentstart" || event == "subagentstop")
+        && let Some(aid) = agent_id(payload)
+    {
+        extensions.insert("agentId".into(), json!(aid));
     }
     if let Some(reason) = &facets.end_reason {
         extensions.insert("endReason".into(), json!(reason));
     }
-    if event == "userpromptsubmit" {
-        if let Some(prompt) = get_text(payload, &["prompt", "user_prompt"]) {
-            let prompt = truncate(&prompt, PROMPT_MAX);
-            if !prompt.is_empty() {
-                extensions.insert("lastPrompt".into(), json!(prompt));
-                extensions.insert(
-                    "lastPromptAt".into(),
-                    serde_json::to_value(now).unwrap_or(Value::Null),
-                );
-            }
+    if event == "userpromptsubmit"
+        && let Some(prompt) = get_text(payload, &["prompt", "user_prompt"])
+    {
+        let prompt = truncate(&prompt, PROMPT_MAX);
+        if !prompt.is_empty() {
+            extensions.insert("lastPrompt".into(), json!(prompt));
+            extensions.insert(
+                "lastPromptAt".into(),
+                serde_json::to_value(now).unwrap_or(Value::Null),
+            );
         }
     }
 
@@ -66,6 +77,7 @@ pub fn build_job(
         detail: None,
         started_at: if facets.ended { None } else { Some(now) },
     };
+    let actions = local_actions(&location);
 
     Job {
         id: format!("{}:{session}", producer.id()),
@@ -87,7 +99,7 @@ pub fn build_job(
                 _ => AttentionLevel::None,
             },
             reason: facets.attention_reason.map(str::to_string),
-            title: facets.attention_title.map(str::to_string),
+            title: facets.attention_title.clone(),
             summary: facets.attention_summary.clone(),
             deferrable: None,
             deadline: None,
@@ -122,7 +134,7 @@ pub fn build_job(
         }),
         location: Some(location),
         capabilities: Vec::new(),
-        actions: local_actions(),
+        actions,
         created_at: now,
         started_at: Some(now),
         ended_at: facets.ended.then_some(now),
@@ -146,25 +158,50 @@ fn location(payload: &Value, producer: Producer, cwd: &str, project: &str) -> Lo
     }
 }
 
-fn local_actions() -> Vec<JobAction> {
-    vec![
-        JobAction {
+/// Display-only actions: Open/Focus first, then Copy, then Open logs.
+/// Never approve/submit — Nerve does not reverse-control (invariant 6).
+fn local_actions(location: &LocationInfo) -> Vec<JobAction> {
+    let has_url = location.open_url.as_deref().is_some_and(|u| !u.is_empty());
+    let has_hint = location
+        .focus_hint
+        .as_deref()
+        .is_some_and(|h| !h.is_empty());
+    let mut actions = Vec::new();
+    if has_url || has_hint {
+        let (title, kind) = if has_url {
+            ("Open", "open")
+        } else {
+            ("Focus", "focus")
+        };
+        actions.push(JobAction {
             id: "open".into(),
-            title: "Open".into(),
-            kind: "open".into(),
+            title: title.into(),
+            kind: kind.into(),
             state: ActionState::Available,
             destructive: false,
             confirmation_required: false,
-        },
-        JobAction {
-            id: "copy".into(),
-            title: "Copy".into(),
-            kind: "copy_summary".into(),
+        });
+    }
+    actions.push(JobAction {
+        id: "copy".into(),
+        title: "Copy".into(),
+        kind: "copy_summary".into(),
+        state: ActionState::Available,
+        destructive: false,
+        confirmation_required: false,
+    });
+    // macOS ActionService already reveals `location.logPath` on this action id.
+    if location.log_path.as_deref().is_some_and(|p| !p.is_empty()) {
+        actions.push(JobAction {
+            id: "open_logs".into(),
+            title: "Open logs".into(),
+            kind: "open_logs".into(),
             state: ActionState::Available,
             destructive: false,
             confirmation_required: false,
-        },
-    ]
+        });
+    }
+    actions
 }
 
 /// Slot key: producer + workspace. HTTP hooks have no terminal env; Codex

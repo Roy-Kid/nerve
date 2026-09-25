@@ -1,6 +1,6 @@
 //! Where the flyout opens, for every taskbar a person might have.
 
-use nerve_windows_surface::flyout::anchor::{edge_of, place, Anchor, Edge, Rect};
+use nerve_windows_surface::flyout::anchor::{Anchor, Edge, Rect, edge_of, place};
 
 /// A 1920×1080 primary monitor.
 const SCREEN: Rect = Rect::new(0, 0, 1920, 1080);

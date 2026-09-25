@@ -77,10 +77,10 @@ impl StatusFilter {
 
 /// Background-style work: monitor phase or long-running current summary.
 fn is_background(job: &JobView) -> bool {
-    if let Some(current) = &job.current {
-        if current.kind.eq_ignore_ascii_case("monitor") {
-            return true;
-        }
+    if let Some(current) = &job.current
+        && current.kind.eq_ignore_ascii_case("monitor")
+    {
+        return true;
     }
     false
 }

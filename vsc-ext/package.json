@@ -225,16 +225,17 @@
     "test": "npm run test:unit"
   },
   "devDependencies": {
-    "@rslib/core": "^0.23.2",
+    "@rslib/core": "^1.0.2",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^22.15.0",
-    "@types/vscode": "^1.90.0",
-    "@vscode/vsce": "^3.9.1",
+    "@types/node": "^26.6.2",
+    "@types/vscode": "^1.138.0",
+    "@vscode/vsce": "^4.0.0",
     "cross-env": "^10.1.0",
-    "mocha": "^11.8.0",
+    "mocha": "^12.0.2",
     "npm-run-all": "^4.1.5",
-    "typescript": "^5.8.3"
+    "typescript": "^7.0.2"
   },
   "private": true,
-  "packageManager": "npm@11.17.0+sha512.3eeaf18997b11070d313849268b23766b9db0068997dec9471073170fe43fa17f2b4d0337bf0f52330ee2274e7f5754b21b01052742e48f5c9c74d8b1e32ef43"
+  "packageManager": "npm@12.1.0",
+  "engines": { "node": ">=26" }
 }

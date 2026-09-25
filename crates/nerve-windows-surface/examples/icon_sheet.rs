@@ -9,7 +9,7 @@
 use nerve_surface_core::status::StatusClass;
 use nerve_surface_core::tally::Tally;
 use nerve_windows_surface::tray::bands::stack;
-use nerve_windows_surface::tray::icon::{render, IconSpec, Theme};
+use nerve_windows_surface::tray::icon::{IconSpec, Theme, render};
 use tiny_skia::Pixmap;
 
 const RUNGS: [u32; 5] = [16, 20, 24, 28, 32];

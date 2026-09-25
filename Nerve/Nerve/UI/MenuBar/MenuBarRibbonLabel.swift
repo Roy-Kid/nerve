@@ -27,7 +27,7 @@ final class RibbonAmbientClock: ObservableObject {
         }
     }
 
-    deinit {
+    isolated deinit {
         timer?.invalidate()
     }
 }
@@ -64,7 +64,9 @@ struct MenuBarRibbonLabel: View {
         let _ = store.revision
         ribbonImage
             // Explicit frame keeps MenuBarExtra from collapsing a zero-size label.
-            .frame(width: preferredWidth, height: 22)
+            // Reserve a stable slot while visible and pin the ribbon to its
+            // right edge, so it expands left without moving its menu-bar anchor.
+            .frame(width: slotWidth, height: 22, alignment: .trailing)
             .animation(animate ? .easeInOut(duration: 0.28) : nil, value: visualSignature)
             .contentShape(Rectangle())
             .accessibilityLabel("Nerve")
@@ -148,7 +150,13 @@ struct MenuBarRibbonLabel: View {
             return max(14, (22 * CGFloat(settings.ribbonLengthScale)).rounded())
         }
         let base = 28 + (100 - 28) * store.ribbonLengthFactor()
-        return min(400, max(16, base * CGFloat(settings.ribbonLengthScale))).rounded()
+        // Match the AppKit renderer's cap so the menu-bar slot stays compact
+        // even when users choose the largest ribbon scale.
+        return min(120, max(16, base * CGFloat(settings.ribbonLengthScale))).rounded()
+    }
+
+    private var slotWidth: CGFloat {
+        store.activeCount == 0 ? preferredWidth : 120
     }
 
     private var visualSignature: String {

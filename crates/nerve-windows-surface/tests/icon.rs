@@ -7,7 +7,7 @@
 use nerve_surface_core::palette::{self, Rgb};
 use nerve_surface_core::tally::Tally;
 use nerve_windows_surface::tray::bands::stack;
-use nerve_windows_surface::tray::icon::{render, IconSpec, Theme};
+use nerve_windows_surface::tray::icon::{IconSpec, Theme, render};
 
 /// Every rung Windows asks for: 100%, 125%, 150%, 175%, 200%.
 const RUNGS: [u32; 5] = [16, 20, 24, 28, 32];
@@ -58,7 +58,7 @@ fn an_idle_icon_still_shows_something() {
     // A tray icon cannot be zero-width the way the menu-bar ribbon can, and an
     // invisible one leaves the user no way back to the flyout.
     let rgba = render(&spec(&Tally::default(), 16));
-    let painted = rgba.chunks_exact(4).filter(|p| p[3] > 0).count();
+    let painted = rgba.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count();
     assert!(painted > 0, "idle drew nothing");
 }
 
@@ -201,6 +201,6 @@ fn a_light_taskbar_darkens_and_a_dark_one_lifts() {
 #[test]
 fn three_bands_still_fit_at_the_smallest_rung() {
     let rgba = render(&spec(&tally(1, 3, 2), 16));
-    let painted = rgba.chunks_exact(4).filter(|p| p[3] > 0).count();
+    let painted = rgba.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count();
     assert!(painted > 16, "only {painted} pixels survived 16px");
 }

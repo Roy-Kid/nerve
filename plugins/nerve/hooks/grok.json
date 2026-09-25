@@ -15,6 +15,12 @@
     "SubagentStart": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
     "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
     "PreCompact": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
-    "PostCompact": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }]
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "TaskCreated": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "TaskCompleted": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "TeammateIdle": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "CwdChanged": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "Elicitation": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }],
+    "ElicitationResult": [{ "hooks": [{ "type": "command", "command": "node \"${GROK_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/hooks/grok-post.js\"", "timeout": 2 }] }]
   }
 }

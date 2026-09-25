@@ -1,11 +1,11 @@
 //! Structured display contract: human requests, automatic waits, execution and
 //! turn completion stay distinct. No free-text inference.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use nerve_surface_core::status::StatusClass;
 
-use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
+use nerve_surface_core::testkit::{SIX_STATE_FRAME, frame, job};
 
 /// The class of one literal job.
 fn class(value: Value) -> StatusClass {

@@ -98,29 +98,29 @@ fn detail(
     let mut action = None;
     let muted = secondary(theme);
 
-    if let Some(prompt) = job.extensions.last_prompt.as_deref().map(str::trim) {
-        if !prompt.is_empty() {
-            ui.add_space(4.0);
-            ui.label(RichText::new("Prompt").color(muted).small());
-            ui.label(RichText::new(truncate(prompt, 240)).small());
-        }
+    if let Some(prompt) = job.extensions.last_prompt.as_deref().map(str::trim)
+        && !prompt.is_empty()
+    {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Prompt").color(muted).small());
+        ui.label(RichText::new(truncate(prompt, 240)).small());
     }
 
     field(ui, "Machine", job.alias.trim(), muted);
-    if let Some(workspace) = job.context.workspace.as_deref().map(str::trim) {
-        if !workspace.is_empty() && workspace != job.name.trim() {
-            field(ui, "Project", workspace, muted);
-        }
+    if let Some(workspace) = job.context.workspace.as_deref().map(str::trim)
+        && !workspace.is_empty()
+        && workspace != job.name.trim()
+    {
+        field(ui, "Project", workspace, muted);
     }
 
-    if let Some(location) = &job.location {
-        if let Some(value) = location
+    if let Some(location) = &job.location
+        && let Some(value) = location
             .focus_hint
             .as_deref()
             .or(location.open_url.as_deref())
-        {
-            field(ui, "Location", value.trim(), muted);
-        }
+    {
+        field(ui, "Location", value.trim(), muted);
     }
 
     ui.add_space(6.0);

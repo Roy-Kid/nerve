@@ -5,7 +5,7 @@
 
 use std::process::Command;
 
-use nerve_platform::pid::{is_alive, state, PidState};
+use nerve_platform::pid::{PidState, is_alive, state};
 
 /// A child that has been waited on. On Windows the handle is only released by
 /// the `wait`, which is the one place the two OSes differ in observable timing

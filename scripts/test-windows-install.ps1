@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $env:LOCALAPPDATA) { $env:LOCALAPPDATA = [IO.Path]::GetTempPath() }
 if (-not $env:APPDATA) { $env:APPDATA = [IO.Path]::GetTempPath() }
-. (Join-Path (Split-Path $PSScriptRoot -Parent) 'nerve.ps1') -Help
+. (Join-Path $PSScriptRoot 'nerve.ps1') -Help
 
 function Assert-True($condition, $message) {
     if (-not $condition) { throw $message }

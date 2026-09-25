@@ -155,6 +155,7 @@ struct StatusColorMap: Codable, Equatable, Sendable {
 
 // MARK: - Settings
 
+@MainActor
 @Observable
 final class SettingsStore {
     /// Fired after any preference that affects the menu-bar ribbon image/length.
@@ -322,13 +323,7 @@ final class SettingsStore {
 
     private func notifyRibbonAppearance() {
         guard !isLoading else { return }
-        if Thread.isMainThread {
-            ribbonAppearanceSink?()
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.ribbonAppearanceSink?()
-            }
-        }
+        ribbonAppearanceSink?()
     }
 
     static let defaultRibbonLengthScale: Double = 1.0

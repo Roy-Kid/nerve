@@ -51,10 +51,11 @@ cargo test --workspace                              # hub (incl. hook mapper) + 
 ./scripts/nerve.sh --verify-tmux                    # tmux surface E2E (isolated tmux)
 ./scripts/nerve.sh --verify-vscode                  # VS Code surface unit tests
 ./scripts/nerve.sh --check-windows                  # compile portable crates for Windows (no linker)
-pwsh scripts/nerve.ps1 -Help                        # Windows launcher (install / verify / run)
+./scripts/nerve.ps1 -Help                           # Windows launcher (install / verify / run)
 ./scripts/nerve.sh --test-swift                     # Swift value-type unit harness
 cd vsc-ext && npm test                              # extension host unit tests
 cd index && npm test && npm run build               # site tests + static build
+node scripts/capture-vscode-surface.mjs             # capture the VS Code surface screenshot
 ```
 
 ## Invariants (do not break casually)

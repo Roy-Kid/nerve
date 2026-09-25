@@ -1,0 +1,12 @@
+{
+  "hook_event_name": "Stop",
+  "background_tasks": [
+    {
+      "type": "shell",
+      "description": "npm test"
+    },
+    {
+      "type": "monitor"
+    }
+  ]
+}

@@ -147,7 +147,7 @@ final class HubProcessManager {
     private static func searchDirectories() -> [URL] {
         var directories: [URL] = []
 
-        // `Contents/MacOS` — where `scripts/run.sh` embeds it.
+        // `Contents/MacOS` — where `./scripts/nerve.sh --app` embeds it.
         if let executables = Bundle.main.executableURL?.deletingLastPathComponent() {
             directories.append(executables)
         }

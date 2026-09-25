@@ -1,0 +1,18 @@
+{
+  "lifecycle": "active",
+  "current": {
+    "type": "subagent",
+    "name": "shell",
+    "summary": "1 background task(s): npm test"
+  },
+  "attention": {
+    "level": "none",
+    "reason": null,
+    "title": null,
+    "summary": null
+  },
+  "health": "ok",
+  "outcome": null,
+  "ended": false,
+  "end_reason": null
+}

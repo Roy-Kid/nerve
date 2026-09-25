@@ -10,7 +10,7 @@
 //! drop the stream, or the hub would exit thirty seconds after the user looked
 //! away.
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use eframe::{App as EframeApp, CreationContext, Frame};
@@ -24,14 +24,14 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use crate::actions::clipboard::SystemClipboard;
 use crate::actions::shell::SystemOpener;
 use crate::actions::{self};
-use crate::flyout::anchor::{place_scaled, Rect};
+use crate::flyout::anchor::{Rect, place_scaled};
 use crate::flyout::view::{PanelAction, PanelState};
 use crate::flyout::visibility::Visibility;
 use crate::flyout::{fonts, theme as panel_theme, view as panel};
 use crate::notify::policy::{AskPolicy, Settings as NotifySettings};
 use crate::notify::toast::{Toaster, WindowsToaster};
 use crate::platform::{autostart, theme as system_theme};
-use crate::settings::{settings_path, Settings};
+use crate::settings::{Settings, settings_path};
 use crate::tray::dpi::icon_px;
 use crate::tray::icon::render;
 use crate::tray::signature::Signature;
@@ -304,11 +304,13 @@ impl App {
 }
 
 impl EframeApp for App {
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        if self.visibility.visible {
-            if let Some(rect) = ctx.input(|input| input.viewport().inner_rect) {
-                self.settings.set_panel_size(rect.width(), rect.height());
-            }
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
+        let context = ui.ctx().clone();
+        let ctx = &context;
+        if self.visibility.visible
+            && let Some(rect) = ctx.input(|input| input.viewport().inner_rect)
+        {
+            self.settings.set_panel_size(rect.width(), rect.height());
         }
         self.drain_events(ctx);
         if ctx.input(|input| input.viewport().close_requested()) && !self.quitting {
@@ -339,16 +341,15 @@ impl EframeApp for App {
             }
         }
 
-        let mut action = None;
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some((note, at)) = &self.note {
-                if at.elapsed() < Duration::from_secs(3) {
-                    ui.add_space(4.0);
-                    ui.label(egui::RichText::new(note).small());
-                }
+        let action = {
+            if let Some((note, at)) = &self.note
+                && at.elapsed() < Duration::from_secs(3)
+            {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(note).small());
             }
             let snapshot = self.store.snapshot();
-            action = panel::show(
+            panel::show(
                 ui,
                 &snapshot,
                 &mut self.panel,
@@ -356,8 +357,8 @@ impl EframeApp for App {
                 self.hub_installed,
                 self.theme,
                 OffsetDateTime::now_utc(),
-            );
-        });
+            )
+        };
         if let Some(action) = action {
             self.act(action, ctx);
         }

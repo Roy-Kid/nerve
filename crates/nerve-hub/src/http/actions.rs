@@ -5,12 +5,12 @@
 //! The routes exist so a producer polling them keeps getting the honest answer
 //! it always got — an empty array and a miss — rather than a surprise 404.
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::model::ActionState;
 
@@ -73,7 +73,7 @@ pub(super) async fn result(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(json!({ "error": error.to_string() })),
-            )
+            );
         }
     };
 
@@ -91,7 +91,7 @@ pub(super) async fn result(
     }
     (
         StatusCode::NOT_FOUND,
-        // `IngestServer.swift:198` — matched verbatim by `verify_loop.sh`.
+        // `IngestServer.swift:198` — matched verbatim by `./scripts/nerve.sh --verify-loop`.
         Json(json!({ "error": "pending action not found or producer mismatch" })),
     )
 }

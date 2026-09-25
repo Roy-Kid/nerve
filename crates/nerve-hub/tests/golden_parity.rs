@@ -2,7 +2,7 @@
 //!
 //! Two goldens, both transplanted rather than invented:
 //!
-//! 1. **`scripts/verify_loop.sh`** — the closed-loop check that has guarded the
+//! 1. **`./scripts/nerve.sh --verify-loop`** — the closed-loop check that has guarded the
 //!    Swift ingest server. Every one of its assertions lands here as its own
 //!    test, driving the hub's `Router` in-process instead of `curl`, so the
 //!    suite needs no port and cannot collide with a running Nerve.app on 17890.
@@ -11,7 +11,7 @@
 //!    interpolates).
 //!
 //! 2. **`fixtures/demo_snapshot.json`** — a file that used to be an orphan and
-//!    is now golden input: `scripts/inject_demo.sh` POSTs it, and this file
+//!    is now golden input: `./scripts/nerve.sh --demo` POSTs it, and this file
 //!    pins what `GET /v1/jobs` must answer afterwards, field by field.
 //!
 //! ─────────────────────────────────────────────────────────────────────────
@@ -20,12 +20,12 @@
 //!
 //! Both were zombies — they encoded behaviour the product never had:
 //!
-//! * `verify_loop.sh:53` asserted `len(jobs) == 5`. `a5` is
+//! * `./scripts/nerve.sh --verify-loop` asserted `len(jobs) == 5`. `a5` is
 //!   `lifecycle:"ended"`, and an ended row is evicted on arrival
 //!   (`SubjectStore.swift:530`, ported at `state/store.rs:133`), so it never
 //!   enters the store. The truth is **4** — which the script's own
 //!   `active == 4` check three lines later already said.
-//! * `verify_loop.sh:74-77` asserted an "unknown" alias is rejected with
+//! * `./scripts/nerve.sh --verify-loop` asserted an "unknown" alias is rejected with
 //!   403/400. There is no allow-list: open alias ingest is a product invariant
 //!   (CLAUDE.md #5), and any non-empty alias is accepted with **200**.
 //!
@@ -39,22 +39,22 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use axum::Router;
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::macros::datetime;
 use tower::ServiceExt;
 
 use nerve_hub::clock::FakeClock;
-use nerve_hub::http::{router, HubState};
+use nerve_hub::http::{HubState, router};
 use nerve_hub::state::{JobStore, PidProbe, PidState};
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-/// The alias `verify_loop.sh` derives from the hostname, pinned to a literal.
+/// The alias `./scripts/nerve.sh --verify-loop` derives from the hostname, pinned to a literal.
 ///
 /// Deliberately **not** equal to [`MACHINE_ALIAS`]: the hub keeps no allow-list,
 /// so a literal both keeps the test deterministic and proves the posted alias is
@@ -64,7 +64,7 @@ const SCRIPT_ALIAS: &str = "verify-loop-host";
 /// The alias injected into `JobStore::new` — "this machine" for the hub.
 const MACHINE_ALIAS: &str = "test-mac";
 
-/// `scripts/verify_loop.sh:22-32` — five jobs, one of them already ended.
+/// `./scripts/nerve.sh --verify-loop` — five jobs, one of them already ended.
 const VERIFY_LOOP_SNAPSHOT: &str = r#"{
   "alias": "$ALIAS",
   "machineKind": "darwin",
@@ -77,23 +77,23 @@ const VERIFY_LOOP_SNAPSHOT: &str = r#"{
   ]
 }"#;
 
-/// `scripts/verify_loop.sh:35-38` — raises `a1` to `urgent` at version 2.
+/// `./scripts/nerve.sh --verify-loop` — raises `a1` to `urgent` at version 2.
 const VERIFY_LOOP_EVENT: &str = r#"{
   "alias": "$ALIAS",
   "events":[{"id":"ev1","jobId":"a1","kind":"attention.changed","timestamp":"2026-07-19T00:02:00Z","producerId":"t","version":2,"attention":{"level":"urgent","reason":"input","title":"Need input"}}]
 }"#;
 
-/// `scripts/verify_loop.sh:47-50` — a *new* event id carrying an *older*
+/// `./scripts/nerve.sh --verify-loop` — a *new* event id carrying an *older*
 /// version, so only the version rule can reject it.
 const VERIFY_LOOP_STALE_EVENT: &str = r#"{
   "alias": "$ALIAS",
   "events":[{"id":"ev2","jobId":"a1","kind":"attention.changed","timestamp":"2026-07-19T00:02:00Z","producerId":"t","version":1,"attention":{"level":"none"}}]
 }"#;
 
-/// `scripts/verify_loop.sh:75-76` — an alias no machine list ever knew.
+/// `./scripts/nerve.sh --verify-loop` — an alias no machine list ever knew.
 const VERIFY_LOOP_UNKNOWN_ALIAS: &str = r#"{"alias":"__not_configured__","jobs":[]}"#;
 
-/// `scripts/verify_loop.sh:70-71` — a result for a request nobody is waiting on.
+/// `./scripts/nerve.sh --verify-loop` — a result for a request nobody is waiting on.
 const VERIFY_LOOP_ACTION_RESULT: &str = r#"{"id":"nope","state":"succeeded","message":"x"}"#;
 
 /// `fixtures/demo_snapshot.json`, embedded at compile time.
@@ -198,7 +198,7 @@ impl Reply {
 
 // ── Script steps, replayed ──────────────────────────────────────────────────
 
-/// `verify_loop.sh:15-32`: health, clear, then the five-job snapshot.
+/// `./scripts/nerve.sh --verify-loop`: health, clear, then the five-job snapshot.
 async fn seeded() -> Router {
     let hub = hub();
     call(&hub, get("/v1/health")).await.ok();
@@ -212,7 +212,7 @@ async fn seeded() -> Router {
     hub
 }
 
-/// `verify_loop.sh:34-38`: the attention event on top of the seeded store.
+/// `./scripts/nerve.sh --verify-loop`: the attention event on top of the seeded store.
 async fn patched() -> Router {
     let hub = seeded().await;
     call(&hub, post("/v1/events", &script_body(VERIFY_LOOP_EVENT)))
@@ -273,10 +273,10 @@ fn is_wire_date(raw: &str) -> bool {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// 1. verify_loop.sh, assertion by assertion (acceptance A9)
+// 1. ./scripts/nerve.sh --verify-loop, assertion by assertion (acceptance A9)
 // ════════════════════════════════════════════════════════════════════════════
 
-/// `verify_loop.sh:15-16` — `curl -sf … | grep -q '"ok":true'`.
+/// `./scripts/nerve.sh --verify-loop` — `curl -sf … | grep -q '"ok":true'`.
 #[tokio::test]
 async fn test_health_answers_the_literal_the_script_greps() {
     let reply = call(&hub(), get("/v1/health")).await.ok();
@@ -290,7 +290,7 @@ async fn test_health_answers_the_literal_the_script_greps() {
     assert_eq!(body["notify"]["policy"], "single");
 }
 
-/// `verify_loop.sh:18-19` — `curl -sf -X POST …/v1/clear`.
+/// `./scripts/nerve.sh --verify-loop` — `curl -sf -X POST …/v1/clear`.
 #[tokio::test]
 async fn test_clear_answers_ok() {
     let reply = call(&hub(), post("/v1/clear", "")).await.ok();
@@ -298,7 +298,7 @@ async fn test_clear_answers_ok() {
     assert_eq!(reply.json(), json!({ "ok": true }));
 }
 
-/// `verify_loop.sh:21-32` — `grep -q '"applied":5'`.
+/// `./scripts/nerve.sh --verify-loop` — `grep -q '"applied":5'`.
 ///
 /// Five is what the producer *sent*, including the ended `a5`: `applied`
 /// answers "how much of your batch did I read", not "how many rows do I hold".
@@ -317,7 +317,7 @@ async fn test_snapshot_of_five_jobs_reports_applied_five() {
     assert_eq!(reply.json(), json!({ "applied": 5 }));
 }
 
-/// `verify_loop.sh:34-38` — `grep -q '"applied":1'`.
+/// `./scripts/nerve.sh --verify-loop` — `grep -q '"applied":1'`.
 #[tokio::test]
 async fn test_event_patch_reports_applied_one() {
     let hub = seeded().await;
@@ -329,7 +329,7 @@ async fn test_event_patch_reports_applied_one() {
     assert_eq!(reply.json(), json!({ "applied": 1 }));
 }
 
-/// `verify_loop.sh:40-44` — the same event id again, `grep -q '"applied":0'`.
+/// `./scripts/nerve.sh --verify-loop` — the same event id again, `grep -q '"applied":0'`.
 #[tokio::test]
 async fn test_resending_the_same_event_id_reports_applied_zero() {
     let hub = patched().await;
@@ -341,7 +341,7 @@ async fn test_resending_the_same_event_id_reports_applied_zero() {
     assert_eq!(reply.json(), json!({ "applied": 0 }));
 }
 
-/// `verify_loop.sh:46-50` — a fresh event id at an older version,
+/// `./scripts/nerve.sh --verify-loop` — a fresh event id at an older version,
 /// `grep -q '"applied":0'`.
 #[tokio::test]
 async fn test_stale_version_event_reports_applied_zero() {
@@ -357,7 +357,7 @@ async fn test_stale_version_event_reports_applied_zero() {
     assert_eq!(reply.json(), json!({ "applied": 0 }));
 }
 
-/// `verify_loop.sh:52-53`, **corrected from 5 to 4**.
+/// `./scripts/nerve.sh --verify-loop`, **corrected from 5 to 4**.
 ///
 /// `a5` arrives `lifecycle:"ended"` and is evicted on arrival, so the store
 /// holds the four open rows. See this file's header for why the 5 was a zombie.
@@ -377,7 +377,7 @@ async fn test_the_ended_job_is_absent_from_the_job_list() {
     assert_eq!(ids, vec!["a1", "a2", "a3", "a4"]);
 }
 
-/// `verify_loop.sh:60` — `by_id["a1"]["attention"]["level"] == "urgent"`.
+/// `./scripts/nerve.sh --verify-loop` — `by_id["a1"]["attention"]["level"] == "urgent"`.
 #[tokio::test]
 async fn test_a1_attention_is_urgent_after_the_event() {
     let jobs = jobs_of(&patched().await).await;
@@ -385,7 +385,7 @@ async fn test_a1_attention_is_urgent_after_the_event() {
     assert_eq!(text(&job_in(&jobs, "a1"), "/attention/level"), "urgent");
 }
 
-/// `verify_loop.sh:61` — `by_id["a2"]["kind"] == "custom.foo"`.
+/// `./scripts/nerve.sh --verify-loop` — `by_id["a2"]["kind"] == "custom.foo"`.
 ///
 /// An unknown `kind` is carried through untouched: kinds are producer
 /// vocabulary, not a hub enum.
@@ -396,7 +396,7 @@ async fn test_a2_keeps_its_custom_kind() {
     assert_eq!(text(&job_in(&jobs, "a2"), "/kind"), "custom.foo");
 }
 
-/// `verify_loop.sh:62` — `assert by_id["a1"]["alias"]` (non-empty).
+/// `./scripts/nerve.sh --verify-loop` — `assert by_id["a1"]["alias"]` (non-empty).
 ///
 /// Stronger here: the posted alias survives verbatim rather than being replaced
 /// by this machine's, which the script could not see (its `$ALIAS` and the
@@ -411,7 +411,7 @@ async fn test_a1_keeps_the_alias_it_was_posted_with() {
     assert_ne!(alias, MACHINE_ALIAS);
 }
 
-/// `verify_loop.sh:63-64` — `len([s for s in data if s["lifecycle"] != "ended"]) == 4`.
+/// `./scripts/nerve.sh --verify-loop` — `len([s for s in data if s["lifecycle"] != "ended"]) == 4`.
 #[tokio::test]
 async fn test_every_published_job_is_still_open() {
     let jobs = jobs_of(&patched().await).await;
@@ -423,7 +423,7 @@ async fn test_every_published_job_is_still_open() {
     assert_eq!(active.len(), 4);
 }
 
-/// `verify_loop.sh:68` — `assert isinstance(d, list)`.
+/// `./scripts/nerve.sh --verify-loop` — `assert isinstance(d, list)`.
 ///
 /// The queue is ported but dormant (spec D6): the shape is the contract, the
 /// emptiness is the current truth.
@@ -436,7 +436,7 @@ async fn test_pending_answers_a_bare_array() {
     assert_eq!(reply.json(), json!([]));
 }
 
-/// `verify_loop.sh:70-72` — a result for an unknown request is `404`.
+/// `./scripts/nerve.sh --verify-loop` — a result for an unknown request is `404`.
 #[tokio::test]
 async fn test_action_result_for_an_unknown_request_is_404() {
     let reply = call(
@@ -455,7 +455,7 @@ async fn test_action_result_for_an_unknown_request_is_404() {
     );
 }
 
-/// `verify_loop.sh:74-77`, **corrected from 403/400 to 200**.
+/// `./scripts/nerve.sh --verify-loop`, **corrected from 403/400 to 200**.
 ///
 /// Open alias ingest is a product invariant (CLAUDE.md #5): there is no
 /// allow-list, so `__not_configured__` is as valid as any hostname. Only an
@@ -472,7 +472,7 @@ async fn test_any_non_empty_alias_is_accepted() {
 // 2. fixtures/demo_snapshot.json replayed (acceptance A10)
 // ════════════════════════════════════════════════════════════════════════════
 
-/// The fixture posted to a fresh hub, as `scripts/inject_demo.sh` does.
+/// The fixture posted to a fresh hub, as `./scripts/nerve.sh --demo` does.
 async fn demo_loaded() -> Router {
     let hub = hub();
     call(&hub, post("/v1/snapshot", DEMO_SNAPSHOT)).await.ok();

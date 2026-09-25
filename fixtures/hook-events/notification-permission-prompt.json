@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "Notification",
+  "notification_type": "permission_prompt",
+  "title": "Allow Bash?"
+}

@@ -27,20 +27,25 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func requestAuthorizationIfNeeded() {
-        center.getNotificationSettings { settings in
-            switch settings.authorizationStatus {
-            case .notDetermined:
-                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                    if let error {
+        center.getNotificationSettings { [weak self] settings in
+            let authorizationStatus = settings.authorizationStatus
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch authorizationStatus {
+                case .notDetermined:
+                    do {
+                        let granted = try await self.center.requestAuthorization(options: [.alert, .sound, .badge])
+                        if !granted {
+                            NerveLog.notify.error("notification auth: user denied")
+                        }
+                    } catch {
                         NerveLog.notify.error("notification auth: \(String(describing: error), privacy: .public)")
-                    } else if !granted {
-                        NerveLog.notify.error("notification auth: user denied")
                     }
+                case .denied:
+                    NerveLog.notify.error("notifications denied — enable in System Settings → Notifications → Nerve")
+                default:
+                    break
                 }
-            case .denied:
-                NerveLog.notify.error("notifications denied — enable in System Settings → Notifications → Nerve")
-            default:
-                break
             }
         }
     }
@@ -210,7 +215,9 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 guard let kind = info["kind"] as? String, kinds.contains(kind) else { return nil }
                 return note.request.identifier
             }
-            self.center.removeDeliveredNotifications(withIdentifiers: ids)
+            Task { @MainActor in
+                self.center.removeDeliveredNotifications(withIdentifiers: ids)
+            }
         }
     }
 
@@ -227,8 +234,8 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             } else {
                 self.onRevealPanel?()
             }
-            completionHandler()
         }
+        completionHandler()
     }
 
     nonisolated func userNotificationCenter(

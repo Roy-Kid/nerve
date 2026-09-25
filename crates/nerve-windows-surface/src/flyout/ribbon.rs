@@ -8,7 +8,7 @@
 
 use egui::{Color32, Rect, Response, Sense, Ui, Vec2};
 use nerve_surface_core::palette;
-use nerve_surface_core::ribbon::{length_factor, weighted_runs, Run};
+use nerve_surface_core::ribbon::{Run, length_factor, weighted_runs};
 use nerve_surface_core::status::StatusClass;
 use nerve_surface_core::tally::Tally;
 

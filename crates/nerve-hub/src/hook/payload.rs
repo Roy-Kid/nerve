@@ -86,10 +86,9 @@ pub fn cwd(payload: &Value) -> String {
         .get("workspace_roots")
         .or_else(|| payload.get("workspaceRoots"))
         .and_then(Value::as_array)
+        && let Some(Value::String(first)) = roots.first()
     {
-        if let Some(Value::String(first)) = roots.first() {
-            return first.clone();
-        }
+        return first.clone();
     }
     String::new()
 }

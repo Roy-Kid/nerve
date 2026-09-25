@@ -1,12 +1,12 @@
 //! `POST /v1/hook` — native host events from Claude / Grok HTTP hooks
 //! and from `nerve-hub hook` (Codex).
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::hook::{self, Producer};
 

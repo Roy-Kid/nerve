@@ -26,11 +26,7 @@ pub fn current() -> Theme {
         // Windows ships dark, and an icon lifted for dark is still readable on
         // light — the other way round is not.
         .unwrap_or(false);
-    if light {
-        Theme::Light
-    } else {
-        Theme::Dark
-    }
+    if light { Theme::Light } else { Theme::Dark }
 }
 
 /// Off Windows there is no taskbar to follow; dark is what the preview tools

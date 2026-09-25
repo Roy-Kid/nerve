@@ -1,0 +1,18 @@
+{
+  "lifecycle": "active",
+  "current": {
+    "type": "info",
+    "name": null,
+    "summary": "Answered"
+  },
+  "attention": {
+    "level": "none",
+    "reason": null,
+    "title": null,
+    "summary": null
+  },
+  "health": "ok",
+  "outcome": null,
+  "ended": false,
+  "end_reason": null
+}

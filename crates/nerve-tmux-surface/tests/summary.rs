@@ -54,7 +54,7 @@
 //! filesystem, no hub.
 
 use nerve_surface_core::tally::Tally;
-use nerve_tmux_surface::summary::{escape_dynamic, SummaryRenderer};
+use nerve_tmux_surface::summary::{SummaryRenderer, escape_dynamic};
 
 /// The tally acceptance A2 names: two running, one ask, no problems.
 fn a2_tally() -> Tally {

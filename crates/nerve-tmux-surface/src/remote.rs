@@ -206,10 +206,10 @@ pub fn select_job(host: &str, pid: u32) -> RemoteJump {
         Err(_) => return RemoteJump::Unreachable,
     };
 
-    if let Some(stdin) = child.stdin.as_mut() {
-        if stdin.write_all(script(pid).as_bytes()).is_err() {
-            return RemoteJump::Unreachable;
-        }
+    if let Some(stdin) = child.stdin.as_mut()
+        && stdin.write_all(script(pid).as_bytes()).is_err()
+    {
+        return RemoteJump::Unreachable;
     }
     // Dropping stdin is what tells `sh -s` the script is finished.
     drop(child.stdin.take());
@@ -339,9 +339,11 @@ mod tests {
             clients: 3,
         };
         assert!(shared.message("Arrhenius").is_some_and(|m| m.contains("3")));
-        assert!(RemoteJump::NotInTmux
-            .message("Arrhenius")
-            .is_some_and(|m| m.contains("Arrhenius")));
+        assert!(
+            RemoteJump::NotInTmux
+                .message("Arrhenius")
+                .is_some_and(|m| m.contains("Arrhenius"))
+        );
     }
 
     #[test]

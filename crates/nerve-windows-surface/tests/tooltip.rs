@@ -2,7 +2,7 @@
 
 use nerve_surface_core::frame::JobView;
 use nerve_surface_core::tally::Tally;
-use nerve_windows_surface::tray::tooltip::{render, Offline, MAX_UTF16_UNITS};
+use nerve_windows_surface::tray::tooltip::{MAX_UTF16_UNITS, Offline, render};
 use serde_json::json;
 
 fn job(value: serde_json::Value) -> JobView {

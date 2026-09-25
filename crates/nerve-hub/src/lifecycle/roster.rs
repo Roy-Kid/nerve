@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use crate::sse::ChangeSignal;
 
-use super::notify::{surface_label, NotifyLease, NotifyPolicy};
+use super::notify::{NotifyLease, NotifyPolicy, surface_label};
 use super::refcount::{Presence, Subscription, Watchers};
 
 /// Live surface connections plus the notify policy.

@@ -13,7 +13,7 @@
 
 #[cfg(windows)]
 use std::sync::mpsc::Sender;
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 use super::policy::Toast;
 

@@ -2,11 +2,11 @@
 
 use nerve_surface_core::filter::StatusFilter;
 use nerve_surface_core::frame::JobView;
-use nerve_windows_surface::flyout::sections::{of, painted_order, Section};
+use nerve_windows_surface::flyout::sections::{Section, of, painted_order};
 use nerve_windows_surface::settings::GroupMode;
 use serde_json::json;
-use time::macros::datetime;
 use time::OffsetDateTime;
+use time::macros::datetime;
 
 const NOW: OffsetDateTime = datetime!(2026-07-19 12:00:00 UTC);
 

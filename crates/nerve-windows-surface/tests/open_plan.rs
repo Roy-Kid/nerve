@@ -1,7 +1,7 @@
 //! Where "Open" goes — the whole decision table, on any OS.
 
 use nerve_surface_core::frame::JobView;
-use nerve_windows_surface::actions::open::{copy_text, plan, OpenPlan};
+use nerve_windows_surface::actions::open::{OpenPlan, copy_text, plan};
 use serde_json::json;
 
 const LOCAL: Option<&str> = Some("thinkpad");

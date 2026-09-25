@@ -25,6 +25,7 @@ enum PanelGroup: String, CaseIterable, Identifiable {
 /// which overwrites wholesale because a hub frame is the full truth, not a delta.
 /// Commands the user triggers (Clear, Load demo) leave through the request sinks
 /// so the hub stays the single writer.
+@MainActor
 @Observable
 final class JobStore {
     private(set) var jobs: [String: Job] = [:]

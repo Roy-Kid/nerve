@@ -5,8 +5,8 @@ use nerve_surface_core::store::JobsSnapshot;
 use nerve_windows_surface::tray::icon::Theme;
 use nerve_windows_surface::tray::view;
 use serde_json::json;
-use time::macros::datetime;
 use time::OffsetDateTime;
+use time::macros::datetime;
 
 const NOW: OffsetDateTime = datetime!(2026-07-19 12:00:00 UTC);
 

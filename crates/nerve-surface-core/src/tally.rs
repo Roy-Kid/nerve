@@ -6,7 +6,7 @@
 //! a count by accident.
 
 use crate::frame::JobView;
-use crate::status::{is_ask_elevated, StatusClass};
+use crate::status::{StatusClass, is_ask_elevated};
 
 /// One count per [`StatusClass`], plus `{ask}` for interruptible human asks.
 ///

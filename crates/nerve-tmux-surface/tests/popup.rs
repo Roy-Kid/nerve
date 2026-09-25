@@ -54,11 +54,11 @@
 //! clock, no socket, no filesystem at run time, no hub.
 
 use serde_json::json;
-use time::macros::datetime;
 use time::OffsetDateTime;
+use time::macros::datetime;
 
 use nerve_surface_core::frame::JobView;
-use nerve_tmux_surface::popup::{PopupRenderer, EMPTY};
+use nerve_tmux_surface::popup::{EMPTY, PopupRenderer};
 
 use nerve_surface_core::testkit::job;
 

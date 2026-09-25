@@ -1,0 +1,18 @@
+{
+  "lifecycle": "active",
+  "current": {
+    "type": "waiting",
+    "name": null,
+    "summary": "Permission: Bash"
+  },
+  "attention": {
+    "level": "required",
+    "reason": "approval",
+    "title": "Approval needed in agent",
+    "summary": "Bash: {\"command\":\"ls\"}"
+  },
+  "health": "ok",
+  "outcome": null,
+  "ended": false,
+  "end_reason": null
+}

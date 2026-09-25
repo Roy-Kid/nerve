@@ -118,10 +118,10 @@ impl Job {
 
     /// Whether this row is a leftover child of `parent_id` (`SubjectStore.swift:730`).
     pub fn has_legacy_parent(&self, parent_id: &str) -> bool {
-        if let Some(Value::String(parent)) = self.extensions.get("parentJobId") {
-            if parent == parent_id {
-                return true;
-            }
+        if let Some(Value::String(parent)) = self.extensions.get("parentJobId")
+            && parent == parent_id
+        {
+            return true;
         }
         // Legacy id shape: `{parentId}:{agentId}`.
         self.id

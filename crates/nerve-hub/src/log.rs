@@ -6,7 +6,7 @@
 
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// Install the global subscriber. Safe to skip in tests (events become no-ops).
 pub fn init(verbose: bool) {

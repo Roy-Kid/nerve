@@ -18,6 +18,7 @@
     "TaskCreated": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],
     "TaskCompleted": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],
+    "StopCancelled": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],
     "StopFailure": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],
     "TeammateIdle": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],
     "InstructionsLoaded": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/hooks/nerve.js\"", "timeout": 5 }] }],

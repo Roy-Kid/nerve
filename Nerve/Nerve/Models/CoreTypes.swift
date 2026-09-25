@@ -358,7 +358,7 @@ enum PanelColumn: String, Codable, CaseIterable, Identifiable, Sendable, Hashabl
         case .producer: return 72
         case .machine: return 72
         case .status: return 72
-        case .updated: return 56
+        case .updated: return 72
         }
     }
 

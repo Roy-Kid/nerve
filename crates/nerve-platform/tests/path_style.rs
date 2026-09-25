@@ -1,6 +1,6 @@
 //! What counts as an absolute path, and whose rules it is written in.
 
-use nerve_platform::path::{basename, is_absolute, style_of, PathStyle};
+use nerve_platform::path::{PathStyle, basename, is_absolute, style_of};
 
 #[test]
 fn a_leading_slash_is_posix() {

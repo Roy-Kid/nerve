@@ -14,11 +14,44 @@ public final class NervePlugin: TetherPlugin {
     id: "app.nerve.tether",
     name: "Nerve",
     symbol: "waveform.path.ecg",
-    summary: "Jobs from the local hub."
+    summary: "Live job status from the local hub."
   )
 
   let session = HubSession()
   private let banners = AskBanners()
+
+  public var isStatusBarOnly: Bool { true }
+
+  /// Tether renders this compact lamp beside its host selector. Read the
+  /// observed session directly so job updates repaint the status bar.
+  public var statusBarItem: PluginStatusBarItem? {
+    let jobs = session.jobs.filter { $0.lifecycle != "ended" }
+    var runs: [(status: NerveStatus, count: Int)] = []
+    for job in jobs {
+      if let last = runs.last, last.status == job.status {
+        runs[runs.count - 1].count += 1
+      } else {
+        runs.append((job.status, 1))
+      }
+    }
+    let total = max(1, jobs.count)
+    let segments = runs.isEmpty
+      ? [PluginStatusSegment(id: "inactive", color: NervePalette.inactive, weight: 1)]
+      : runs.enumerated().map { index, run in
+        PluginStatusSegment(
+          id: "\(index)-\(run.status.rawValue)",
+          color: NervePalette.hex(for: run.status),
+          weight: Double(run.count) / Double(total))
+      }
+    return PluginStatusBarItem(
+      id: metadata.id,
+      label: "Nerve status · click to view jobs",
+      segments: segments)
+  }
+
+  public func statusBarWorkspace() -> (any PluginWorkspace)? {
+    NerveWorkspace(session: session, hostLabel: "Local")
+  }
 
   public init() {}
 
@@ -39,10 +72,8 @@ public final class NervePlugin: TetherPlugin {
   public var needsRemoteConnection: Bool { false }
 
   public func launch(in context: PluginContext) {
-    // Toolbar click is "start the plugin". Hub comes up here even when
-    // Nerve.app is not running; activate() already tried at Tether launch.
+    // Nerve is represented by the live status lamp, not a separate workspace.
     session.start()
-    context.openWorkspace(NerveWorkspace(session: session, hostLabel: context.hostLabel))
   }
 
   public func settings() -> AnyView {

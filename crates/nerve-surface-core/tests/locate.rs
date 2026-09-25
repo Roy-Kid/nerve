@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use nerve_surface_core::locate::{platform_fixed_directories, BinaryProbe, HubLocator, BINARY};
+use nerve_surface_core::locate::{BINARY, BinaryProbe, HubLocator, platform_fixed_directories};
 
 const HOME: &str = "/Users/tester";
 
@@ -89,8 +89,8 @@ fn locate(executable: &[PathBuf], on_path: Option<PathBuf>) -> Option<PathBuf> {
 fn probed(executable: &[PathBuf], on_path: Option<PathBuf>) -> Vec<PathBuf> {
     let (probe, asked) = FakeProbe::new(executable, on_path);
     let _ = HubLocator::with_fixed_directories(probe, HOME, install_dirs()).locate();
-    let paths = asked.borrow().clone();
-    paths
+
+    asked.borrow().clone()
 }
 
 // ── Discovery order ─────────────────────────────────────────────────────────

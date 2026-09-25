@@ -8,7 +8,7 @@ use time::OffsetDateTime;
 
 use nerve_surface_core::filter::StatusFilter;
 use nerve_surface_core::frame::JobView;
-use nerve_surface_core::group::{group_by_machine, MachineSection};
+use nerve_surface_core::group::{MachineSection, group_by_machine};
 use nerve_surface_core::jobpath::job_path;
 
 use crate::git::GitSnapshot;

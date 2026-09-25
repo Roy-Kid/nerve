@@ -16,9 +16,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 use tower::ServiceExt;
 
+use nerve_hub::HubRuntime;
 use nerve_hub::clock::FakeClock;
 use nerve_hub::state::{JobStore, PidProbe, PidState};
-use nerve_hub::HubRuntime;
 
 const MACHINE_ALIAS: &str = "test-mac";
 const LONG_GRACE: Duration = Duration::from_secs(3_600);

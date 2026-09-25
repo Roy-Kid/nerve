@@ -82,10 +82,11 @@ impl<S: LockStore, P: PidProbe> InstanceGuard<S, P> {
         let stored = self.store.get(SURFACE_PID_KEY)?;
         let owner = stored.as_deref().and_then(Self::pid);
 
-        if let Some(pid) = owner {
-            if pid != self.me && self.probe.is_alive(pid) {
-                return Ok(Claim::Yield { pid });
-            }
+        if let Some(pid) = owner
+            && pid != self.me
+            && self.probe.is_alive(pid)
+        {
+            return Ok(Claim::Yield { pid });
         }
         self.store.set(SURFACE_PID_KEY, &self.me.to_string())?;
         Ok(Claim::Owned)

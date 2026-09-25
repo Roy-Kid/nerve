@@ -99,10 +99,10 @@ impl AskPolicy {
         // `wire()` is the level's one spelling; a second mapping here would be
         // a second thing to keep in step.
         let tag = format!("{}|{}", job.id, job.attention.level.wire());
-        if let Some(last) = self.last_fired.get(&tag) {
-            if now.duration_since(*last) < DEDUPE {
-                return None;
-            }
+        if let Some(last) = self.last_fired.get(&tag)
+            && now.duration_since(*last) < DEDUPE
+        {
+            return None;
         }
         self.last_fired.insert(tag.clone(), now);
 

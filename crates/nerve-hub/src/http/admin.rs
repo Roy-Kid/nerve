@@ -1,17 +1,17 @@
 //! Reading the hub and resetting it: health, the job list, refresh, demo, clear.
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::lifecycle::NotifyPolicy;
 
 use super::HubState;
 
 /// Pinned by the contract, not by the crate version: producers, the site
-/// handbook and `verify_loop.sh` all match this exact literal
+/// handbook and `./scripts/nerve.sh --verify-loop` all match this exact literal
 /// (`IngestServer.swift:168`).
 const SERVICE_VERSION: &str = "0.1.0";
 

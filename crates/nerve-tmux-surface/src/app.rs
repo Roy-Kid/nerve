@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 type Tui = Terminal<CrosstermBackend<std::io::Stdout>>;
 
@@ -179,7 +179,7 @@ fn handle_mouse(
         MouseEventKind::ScrollDown => state.move_selection(1),
         MouseEventKind::ScrollUp => state.move_selection(-1),
         MouseEventKind::Down(MouseButton::Left) => {
-            return click(state, terminal, event, last_click, job_list_end)
+            return click(state, terminal, event, last_click, job_list_end);
         }
         _ => {}
     }
@@ -221,10 +221,8 @@ fn click(
     });
     *last_click = Some((global_idx, now));
 
-    if double {
-        if let Some(job) = state.selected_job().cloned() {
-            jump_to_job(state, terminal, &job)?;
-        }
+    if double && let Some(job) = state.selected_job().cloned() {
+        jump_to_job(state, terminal, &job)?;
     }
     Ok(())
 }

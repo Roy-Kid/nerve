@@ -55,7 +55,7 @@ final class MenuBarRibbonNSView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    deinit {
+    isolated deinit {
         tickTimer?.invalidate()
     }
 

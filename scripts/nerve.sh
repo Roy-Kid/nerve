@@ -67,6 +67,8 @@ Verify / test (each is standalone):
   --test-swift         swiftc unit harness for Hub frame types
   --check-windows      compile the portable crates for Windows (no linker needed)
 
+  node scripts/capture-vscode-surface.mjs  capture the VS Code surface screenshot
+
   -h, --help           show this help
 
 Examples:

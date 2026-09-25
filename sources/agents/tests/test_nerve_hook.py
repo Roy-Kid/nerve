@@ -61,11 +61,14 @@ class NerveHookTests(unittest.TestCase):
         self._prev_term_program = os.environ.get("TERM_PROGRAM")
         os.environ["TERM_PROGRAM"] = "Apple_Terminal"
 
-        def capture(alias, machine_kind, job):
-            self._posted.append({"alias": alias, "machineKind": machine_kind, "jobs": [job]})
+        def capture(alias, machine_kind, jobs):
+            # `_post_jobs` is the seam: one call is one envelope, one round trip.
+            if isinstance(jobs, dict):
+                jobs = [jobs]
+            self._posted.append({"alias": alias, "machineKind": machine_kind, "jobs": list(jobs)})
             return True
 
-        self.mod._post_snapshot = capture
+        self.mod._post_jobs = capture
 
     def tearDown(self):
         import shutil
@@ -566,13 +569,15 @@ class NerveHookTests(unittest.TestCase):
         self.assertEqual(second["id"], "claude-code:sess-new")
         self.assertEqual(second["lifecycle"], "active")
 
-        # First POST of the second turn is the superseded end for the old session.
-        self.assertEqual(len(self._posted), 3)
-        ended = self._posted[1]["jobs"][0]
-        started = self._posted[2]["jobs"][0]
+        # One envelope carries the superseded end and the new row (Phase 4).
+        self.assertEqual(len(self._posted), 2)
+        batch = self._posted[1]["jobs"]
+        self.assertEqual(len(batch), 2)
+        ended, started = batch[0], batch[1]
         self.assertEqual(ended["id"], "claude-code:sess-old")
         self.assertEqual(ended["lifecycle"], "ended")
         self.assertEqual(ended["extensions"].get("endReason"), "superseded")
+        self.assertEqual(ended["current"]["summary"], "Session ended (superseded)")
         self.assertEqual(started["id"], "claude-code:sess-new")
         self.assertEqual(started["lifecycle"], "active")
 
@@ -688,8 +693,10 @@ class NerveHookTests(unittest.TestCase):
                 "source": "startup",
             }
         )
-        ids = [p["jobs"][0]["id"] for p in self._posted]
-        lifecycles = [p["jobs"][0]["lifecycle"] for p in self._posted]
+        # One envelope carries both rows: the superseded end and the new start.
+        rows = [job for p in self._posted for job in p["jobs"]]
+        ids = [r["id"] for r in rows]
+        lifecycles = [r["lifecycle"] for r in rows]
         self.assertEqual(ids, ["claude-code:live-1", "claude-code:live-2"])
         self.assertEqual(lifecycles, ["ended", "active"])
 
@@ -832,7 +839,7 @@ class IngestTransportTests(unittest.TestCase):
         self.thread.join(timeout=2)
         # A closed port must reach the caller as an exception it can swallow,
         # never as a hook that blocks or dies.
-        posted = self.mod._post_snapshot("box", "darwin", {"id": "claude-code:s1"})
+        posted = self.mod._post_jobs("box", "darwin", [{"id": "claude-code:s1"}])
         self.assertFalse(posted)
 
 
@@ -877,6 +884,182 @@ class ProcessProbeTests(unittest.TestCase):
         finally:
             subprocess.check_output = real
         self.assertEqual(calls["n"], 0, "the pid climb must not re-spawn `ps`")
+
+
+class ParityShapeTests(unittest.TestCase):
+    """The strings and shapes all three mappers must agree on (see hook_map_parity)."""
+
+    def setUp(self):
+        self.mod = load_hook()
+
+    def test_permission_denied_is_the_same_ask_as_request(self):
+        payload = {
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+        }
+        denied = self.mod._map_event("permissiondenied", dict(payload))
+        asked = self.mod._map_event("permissionrequest", dict(payload))
+        self.assertEqual(denied, asked)
+        self.assertEqual(denied["current"]["type"], "waiting")
+        self.assertEqual(denied["attention"]["level"], "required")
+        self.assertEqual(denied["attention"]["reason"], "approval")
+        self.assertEqual(denied["attention"]["title"], "Approval needed in agent")
+        # Compact JSON — same separators as JS `JSON.stringify` and serde_json.
+        self.assertEqual(denied["attention"]["summary"], 'Bash: {"command":"ls"}')
+
+    def test_stopcancelled_and_elicitation_both_ask_for_the_human(self):
+        for event in ("stopcancelled", "elicitation"):
+            f = self.mod._map_event(event, {})
+            assert f is not None
+            self.assertEqual(f["current"]["type"], "idle", event)
+            self.assertEqual(f["attention"]["level"], "suggested", event)
+            self.assertEqual(f["attention"]["reason"], "input", event)
+            self.assertEqual(f["attention"]["title"], "Your turn in agent", event)
+
+    def test_postcompact_keeps_working_on_its_own_copy(self):
+        self.assertEqual(
+            self.mod._map_event("postcompact", {})["current"]["summary"],
+            "Context compacted — continuing",
+        )
+        self.assertEqual(
+            self.mod._map_event("precompact", {})["current"]["summary"],
+            "Compacting context",
+        )
+
+    def test_posttoolusefailure_titles_the_tool(self):
+        f = self.mod._map_event("posttoolusefailure", {"tool_name": "Bash"})
+        self.assertEqual(f["attention"]["title"], "Bash failed")
+        s = self.mod._map_event("stopfailure", {"error": "boom"})
+        self.assertEqual(s["attention"]["title"], "Turn failed")
+        self.assertEqual(s["current"]["summary"], "boom")
+
+    def test_all_four_subagent_tools_report_background(self):
+        for tool in self.mod._SUBAGENT_TOOLS:
+            f = self.mod._map_event(
+                "posttooluse",
+                {
+                    "tool_name": tool,
+                    "tool_response": {"status": "async_launched", "description": "explore"},
+                },
+            )
+            assert f is not None
+            self.assertEqual(f["current"]["type"], "subagent", tool)
+            self.assertEqual(f["current"]["summary"], "Background: explore", tool)
+
+    def test_background_summary_lists_every_task_and_labels_the_mix(self):
+        mixed = self.mod._map_event(
+            "stop",
+            {
+                "background_tasks": [
+                    {"type": "shell", "description": "npm test"},
+                    {"type": "monitor"},
+                ]
+            },
+        )
+        self.assertEqual(mixed["current"]["name"], "mixed")
+        self.assertEqual(
+            mixed["current"]["summary"], "2 background task(s): npm test, monitor"
+        )
+
+        only = self.mod._map_event(
+            "stop", {"background_tasks": [{"type": "monitor"}]}
+        )
+        self.assertEqual(only["current"]["name"], "monitor")
+        self.assertEqual(only["current"]["summary"], "1 background task(s): monitor")
+
+    def test_task_and_teammate_events_are_info_never_attention(self):
+        created = self.mod._map_event("taskcreated", {"title": "write tests"})
+        self.assertEqual(created["current"]["type"], "info")
+        self.assertEqual(created["current"]["name"], "write tests")
+        self.assertEqual(
+            created["current"]["summary"], "Task created: write tests"
+        )
+        self.assertEqual(created["attention"]["level"], "none")
+
+        idle = self.mod._map_event("teammateidle", {"agent_type": "Explore"})
+        self.assertEqual(idle["current"]["summary"], "Teammate idle: Explore")
+        self.assertEqual(idle["attention"]["level"], "none")
+
+        self.assertEqual(
+            self.mod._map_event("cwdchanged", {})["current"]["summary"],
+            "Workspace changed",
+        )
+        self.assertEqual(
+            self.mod._map_event("elicitationresult", {"title": "Answered"})["current"][
+                "summary"
+            ],
+            "Answered",
+        )
+
+    def test_silent_noop_events_never_paint_a_facet(self):
+        for event in self.mod._SILENT_NOOP:
+            self.assertIsNone(
+                self.mod._map_event(event, {}), f"{event} must stay silent"
+            )
+
+    def test_actions_fall_back_to_focus_and_carry_open_logs(self):
+        with_url = self.mod._local_actions(
+            {"openURL": "file:///tmp/p", "focusHint": "x", "logPath": "/tmp/t.jsonl"}
+        )
+        self.assertEqual(
+            [a["kind"] for a in with_url], ["open", "copy_summary", "open_logs"]
+        )
+        self.assertEqual(with_url[0]["title"], "Open")
+
+        hint_only = self.mod._local_actions({"focusHint": "x"})
+        self.assertEqual(hint_only[0]["kind"], "focus")
+        self.assertEqual(hint_only[0]["title"], "Focus")
+
+        neither = self.mod._local_actions({})
+        self.assertEqual([a["kind"] for a in neither], ["copy_summary"])
+
+    def test_extensions_drop_empty_strings_not_just_none(self):
+        job = self.mod._build_job(
+            {
+                "hook_event_name": "",
+                "session_id": "e-1",
+                "cwd": "/tmp/p",
+                "model": "",
+            },
+            "claude",
+            "e-1",
+            {
+                "lifecycle": "active",
+                "current": {"type": "starting", "summary": "Ready"},
+                "attention": {"level": "none"},
+                "health": "ok",
+            },
+        )
+        self.assertNotIn("hookEvent", job["extensions"])
+        self.assertNotIn("model", job["extensions"])
+
+    def test_started_at_is_present_on_every_non_ended_job(self):
+        job = self.mod._build_job(
+            {"hook_event_name": "Stop", "session_id": "s-1", "cwd": "/tmp/p"},
+            "claude",
+            "s-1",
+            {
+                "lifecycle": "active",
+                "current": {"type": "completed", "summary": "Turn complete"},
+                "attention": {"level": "none"},
+                "health": "ok",
+            },
+        )
+        self.assertTrue(job["current"].get("startedAt"))
+
+        ended = self.mod._build_job(
+            {"hook_event_name": "SessionEnd", "session_id": "s-2", "cwd": "/tmp/p"},
+            "claude",
+            "s-2",
+            {
+                "lifecycle": "ended",
+                "current": {"type": "idle", "summary": "Session ended"},
+                "attention": {"level": "none"},
+                "health": "ok",
+                "ended": True,
+            },
+        )
+        self.assertIsNone(ended["current"].get("startedAt"))
 
 
 if __name__ == "__main__":

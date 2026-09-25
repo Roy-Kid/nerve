@@ -2,7 +2,7 @@
 
 use nerve_surface_core::palette;
 use nerve_surface_core::tally::Tally;
-use nerve_windows_surface::tray::bands::{stack, Band};
+use nerve_windows_surface::tray::bands::{Band, stack};
 use nerve_windows_surface::tray::icon::Theme;
 use nerve_windows_surface::tray::signature::of;
 

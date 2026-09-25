@@ -2,7 +2,7 @@
 
 use std::process::ExitCode;
 
-use nerve_hub::cli::{Command, ServeArgs, EXIT_FAILURE, EXIT_OK, EXIT_USAGE, USAGE};
+use nerve_hub::cli::{Command, EXIT_FAILURE, EXIT_OK, EXIT_USAGE, ServeArgs, USAGE};
 use nerve_hub::{Hub, ServeError};
 
 fn main() -> ExitCode {

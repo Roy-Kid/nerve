@@ -1,0 +1,18 @@
+{
+  "lifecycle": "active",
+  "current": {
+    "type": "idle",
+    "name": null,
+    "summary": "Your turn — continue in the agent UI"
+  },
+  "attention": {
+    "level": "suggested",
+    "reason": "input",
+    "title": "Your turn in agent",
+    "summary": "Return to the agent to continue"
+  },
+  "health": "ok",
+  "outcome": null,
+  "ended": false,
+  "end_reason": null
+}

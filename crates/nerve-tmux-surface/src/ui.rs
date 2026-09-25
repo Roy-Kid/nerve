@@ -1,10 +1,10 @@
 //! Sidebar rendering.
 
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui::Frame;
 
 use crate::colors;
 use nerve_surface_core::display::{activity_text, age_label, cell_text};

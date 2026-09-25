@@ -1,6 +1,6 @@
 //! Ribbon weights — the reason one problem among forty is still visible.
 
-use nerve_surface_core::ribbon::{weighted_runs, Run};
+use nerve_surface_core::ribbon::{Run, weighted_runs};
 use nerve_surface_core::status::StatusClass::{
     Attention, Inactive, Monitor, Problem, Running, Success,
 };

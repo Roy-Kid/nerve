@@ -16,7 +16,7 @@ mod build;
 mod map;
 mod payload;
 
-pub use map::map_event;
+pub use map::{Facets, map_event};
 pub use payload::event_name;
 
 /// Who reported this event. Query `?producer=` on `/v1/hook`, or Codex CLI env.

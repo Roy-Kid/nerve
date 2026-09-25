@@ -22,7 +22,7 @@ use nerve_surface_core::tally::Tally;
 // `nerve_tmux_surface::stream::FrameSource` keep resolving in `store.rs` and
 // `tests/stream.rs`. Removed with the rest of the facade.
 pub use nerve_surface_core::stream::{
-    Backoff, FrameSource, HubFrameSource, StreamError, JOBS_PATH,
+    Backoff, FrameSource, HubFrameSource, JOBS_PATH, StreamError,
 };
 
 use crate::summary::SummaryRenderer;

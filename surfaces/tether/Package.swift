@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
@@ -9,7 +9,8 @@ let package = Package(
     .library(name: "NervePlugin", targets: ["NervePlugin"]),
   ],
   dependencies: [
-    .package(path: "../../../Tether/app/Packages/TetherFrontend")
+    .package(path: "../../../Tether/app/Packages/TetherFrontend"),
+    .package(path: "../ribbon"),
   ],
   targets: [
     .target(name: "NerveHubClient"),
@@ -18,6 +19,7 @@ let package = Package(
       dependencies: [
         "NerveHubClient",
         .product(name: "TetherPluginKit", package: "TetherFrontend"),
+        .product(name: "NerveRibbonUI", package: "ribbon"),
       ]
     ),
     .testTarget(name: "NerveHubClientTests", dependencies: ["NerveHubClient"]),

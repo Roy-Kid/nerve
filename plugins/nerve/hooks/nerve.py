@@ -69,6 +69,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import socket
 import sys
 import time
@@ -106,6 +107,31 @@ _SUBAGENT_INTERNAL_NOISE = frozenset(
     }
 )
 
+#: Tools that mean the main session is driving a subagent (pre- and post-use).
+_SUBAGENT_TOOLS = frozenset(
+    {
+        "spawn_subagent",
+        "get_command_or_subagent_output",
+        "Task",
+        "Agent",
+    }
+)
+
+#: Events the hosts register that must never paint a facet. Fire-and-drop —
+#: a facet here would invent status from events that carry none (invariant 3).
+_SILENT_NOOP = frozenset(
+    {
+        "setup",
+        "userpromptexpansion",
+        "posttoolbatch",
+        "messagedisplay",
+        "instructionsloaded",
+        "configchange",
+        "directoryadded",
+        "filechanged",
+    }
+)
+
 # Ephemeral per-slot memory (temp dir only). Hosts often fire SessionStart for
 # /new · /clear · fork without SessionEnd for the previous conversation id.
 # We remember the last session_id per UI/process slot and emit an ended job for
@@ -126,14 +152,16 @@ def _machine_alias() -> str:
     """Prefer stable Bonjour LocalHostName on macOS; fall back to gethostname short.
 
     Campus / DHCP networks often rewrite DNS hostnames (e.g. RoydeAir.kemi…,
-    emp-181-64.eduroam…), while Nerve Settings “This Mac” uses the Bonjour
+    emp-181-64.eduroam…), while Nerve Settings "This Mac" uses the Bonjour
     LocalHostName (e.g. RoydeMacBook-Air). Mismatch → 403 and silent drop.
 
-    Cached for the life of the hook process: the answer is a `scutil` spawn and
-    a machine does not rename itself between the slot id, the job body and the
-    ingest envelope of one event. One process is one event, so nothing here
-    outlives what it describes.
+    Cached in-process *and* on disk (see `_identity_load`): one process is one
+    event, so a per-process memo alone would pay the `scutil` spawn every time.
     """
+    cached = _identity_load()
+    if cached and cached.get("alias"):
+        return str(cached["alias"])
+    alias = None
     if sys.platform == "darwin":
         try:
             import subprocess
@@ -145,12 +173,14 @@ def _machine_alias() -> str:
                 timeout=1.0,
             ).strip()
             if out:
-                return out
+                alias = out
         except Exception:
             pass
-    host = socket.gethostname() or "local"
-    short = host.split(".")[0].strip() or host
-    return short
+    if alias is None:
+        host = socket.gethostname() or "local"
+        alias = host.split(".")[0].strip() or host
+    _identity_save(alias, None)
+    return alias
 
 
 @functools.lru_cache(maxsize=1)
@@ -449,6 +479,16 @@ def _facets_for_bg_wait_toast(summary: str) -> dict[str, Any]:
     return _running_background_facets(summary)
 
 
+def _bg_kind_label(kinds: set[str]) -> str:
+    """Compact kind label for the row: one work kind, or ``mixed`` when they differ."""
+    uniq = sorted(kinds)
+    if not uniq:
+        return "subagent"
+    if len(uniq) > 1:
+        return "mixed"
+    return uniq[0] if uniq[0] in ("monitor", "shell") else "subagent"
+
+
 def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[str, Any]:
     """Structured facets while background_tasks is non-empty.
 
@@ -457,27 +497,50 @@ def _background_work_facets(payload: dict[str, Any], tasks: list[Any]) -> dict[s
     """
     n = len(tasks)
     kinds = {_task_work_kind(t) for t in tasks}
-    label = "subagent"
-    desc = None
-    first = tasks[0] if tasks else None
-    if isinstance(first, dict):
-        label = str(first.get("type") or first.get("kind") or "subagent")
-        desc = (
-            first.get("description")
-            or first.get("name")
-            or first.get("agent_type")
-            or first.get("agentType")
+    name = _bg_kind_label(kinds)
+    # List every task, not just the first: one summary is all a row has.
+    descs: list[str] = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        d = (
+            t.get("description")
+            or t.get("name")
+            or t.get("agent_type")
+            or t.get("agentType")
+            or t.get("type")
+            or t.get("kind")
+            or ""
         )
+        if d:
+            cut = _truncate(str(d), 40)
+            if cut:
+                descs.append(cut)
     summary = f"{n} background task(s)"
-    if desc:
-        summary = f"{summary}: {_truncate(str(desc), 100)}"
+    if descs:
+        summary = f"{summary}: {_truncate(', '.join(descs), 120)}"
 
     # Pure monitor queue → Monitor (purple); mix with shell/subagent → Running.
     if kinds and kinds <= {"monitor"}:
-        return _monitor_wait_facets(summary, name=str(label or "monitor"))
-    if "shell" in kinds and "subagent" not in kinds:
-        return _running_background_facets(summary, name=str(label or "shell"))
-    return _running_background_facets(summary, name=label)
+        return _monitor_wait_facets(summary, name=name)
+    return _running_background_facets(summary, name=name)
+
+
+def _your_turn(attention_summary: str) -> dict[str, Any]:
+    return {
+        "lifecycle": "active",
+        "current": {
+            "type": "idle",
+            "summary": "Your turn — continue in the agent UI",
+        },
+        "attention": {
+            "level": "suggested",
+            "reason": "input",
+            "title": "Your turn in agent",
+            "summary": attention_summary,
+        },
+        "health": "ok",
+    }
 
 
 def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -547,12 +610,7 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     if event == "pretooluse":
         tool = str(_get(payload, "tool_name", "toolName", default="tool"))
         # Main agent spawning / waiting on a subagent tool → Running (subagent).
-        if tool in (
-            "spawn_subagent",
-            "get_command_or_subagent_output",
-            "Task",
-            "Agent",
-        ):
+        if tool in _SUBAGENT_TOOLS:
             tool_input = payload.get("tool_input") or payload.get("toolInput") or {}
             if not isinstance(tool_input, dict):
                 tool_input = {}
@@ -593,7 +651,7 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     if event == "posttooluse":
         tool = str(_get(payload, "tool_name", "toolName", default="tool"))
         # Background Agent launch returns early; keep main session as subagent work.
-        if tool in ("Agent", "Task", "spawn_subagent"):
+        if tool in _SUBAGENT_TOOLS:
             tool_response = payload.get("tool_response") or payload.get("toolResponse") or {}
             if not isinstance(tool_response, dict):
                 tool_response = {}
@@ -690,7 +748,7 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             "health": "degraded",
         }
 
-    if event == "permissionrequest":
+    if event in ("permissionrequest", "permissiondenied"):
         tool = str(_get(payload, "tool_name", "toolName", default="tool"))
         return {
             "lifecycle": "active",
@@ -708,6 +766,7 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
                     + json.dumps(
                         _get(payload, "tool_input", "toolInput", default={}),
                         default=str,
+                        separators=(",", ":"),
                     ),
                     140,
                 ),
@@ -745,23 +804,12 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
             # idle_prompt + bg-wait toast: shell/subagent → Running; monitor → Monitor.
             if ntype == "idle_prompt":
                 return None  # Preserve the last real state.
-            # Honest copy: Nerve signals “go back to agent UI”, never “type here”.
-            return {
-                "lifecycle": "active",
-                "current": {
-                    "type": "idle",
-                    "summary": "Your turn — continue in the agent UI",
-                },
-                "attention": {
-                    "level": "suggested",
-                    "reason": "input",
-                    "title": "Your turn in agent",
-                    "summary": summary
-                    if summary and ntype != "idle_prompt"
-                    else "Return to the agent to continue",
-                },
-                "health": "ok",
-            }
+            # Honest copy: Nerve signals "go back to agent UI", never "type here".
+            return _your_turn(
+                summary
+                if summary and ntype != "idle_prompt"
+                else "Return to the agent to continue"
+            )
 
         if ntype in ("agent_completed", "elicitation_complete", "elicitation_response", "auth_success"):
             return {
@@ -795,6 +843,59 @@ def _map_event(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         return {
             "lifecycle": "active",
             "current": {"type": "completed", "summary": "Turn complete"},
+            "attention": {"level": "none"},
+            "health": "ok",
+        }
+
+    if event in ("stopcancelled", "elicitation"):
+        return _your_turn("Return to the agent to continue")
+
+    if event == "cwdchanged":
+        return {
+            "lifecycle": "active",
+            "current": {"type": "info", "summary": "Workspace changed"},
+            "attention": {"level": "none"},
+            "health": "ok",
+        }
+
+    if event == "elicitationresult":
+        text = _truncate(_get(payload, "summary", "title", default=""), 120)
+        return {
+            "lifecycle": "active",
+            "current": {"type": "info", "summary": text or "Elicitation result"},
+            "attention": {"level": "none"},
+            "health": "ok",
+        }
+
+    if event in ("taskcreated", "taskcompleted"):
+        label = "Task completed" if event == "taskcompleted" else "Task created"
+        name = _get(payload, "title", "name")
+        text = _get(payload, "title", "name", "description", default="")
+        current: dict[str, Any] = {
+            "type": "info",
+            "summary": f"{label}: {text}" if text else label,
+        }
+        if name:
+            current["name"] = str(name)
+        return {
+            "lifecycle": "active",
+            "current": current,
+            "attention": {"level": "none"},
+            "health": "ok",
+        }
+
+    if event == "teammateidle":
+        # A teammate going idle is not a human Ask.
+        name = _get(payload, "name", "agent_type", "agentType", "description")
+        current = {
+            "type": "info",
+            "summary": f"Teammate idle: {name}" if name else "Teammate idle",
+        }
+        if name:
+            current["name"] = str(name)
+        return {
+            "lifecycle": "active",
+            "current": current,
             "attention": {"level": "none"},
             "health": "ok",
         }
@@ -938,7 +1039,10 @@ def _build_location(
 
 
 def _local_actions(location: dict[str, Any]) -> list[dict[str, Any]]:
-    """Display-only actions: Open/Focus first, then Copy. Never approve/submit."""
+    """Display-only actions: Open/Focus first, then Copy, then Open logs.
+
+    Never approve/submit — Nerve does not reverse-control (invariant 6).
+    """
     actions: list[dict[str, Any]] = []
     has_url = bool(location.get("openURL"))
     has_hint = bool(location.get("focusHint"))
@@ -963,6 +1067,18 @@ def _local_actions(location: dict[str, Any]) -> list[dict[str, Any]]:
             "confirmationRequired": False,
         }
     )
+    # macOS ActionService already reveals `location.logPath` on this action id.
+    if location.get("logPath"):
+        actions.append(
+            {
+                "id": "open_logs",
+                "title": "Open logs",
+                "kind": "open_logs",
+                "state": "available",
+                "destructive": False,
+                "confirmationRequired": False,
+            }
+        )
     return actions
 
 
@@ -1042,7 +1158,9 @@ def _build_job(
         "startedAt": now,
         "updatedAt": now,
         "version": _version_ms(),
-        "extensions": {k: v for k, v in extensions.items() if v is not None},
+        "extensions": {
+            k: v for k, v in extensions.items() if v is not None and v != ""
+        },
     }
 
     if facets.get("outcome"):
@@ -1050,6 +1168,10 @@ def _build_job(
     if facets.get("ended"):
         job["endedAt"] = now
         job["lifecycle"] = "ended"
+    # current.startedAt is present on every non-ended job (decision 7) — the hub
+    # already does this, and a missing stamp is three silent schemas.
+    if not facets.get("ended") and job.get("current") is not None:
+        job["current"].setdefault("startedAt", now)
 
     if not job.get("location"):
         job.pop("location", None)
@@ -1104,10 +1226,23 @@ def _post_json(path: str, payload: dict[str, Any]) -> tuple[int, str]:
 
 
 def _post_snapshot(alias: str, machine_kind: str, job: dict[str, Any]) -> bool:
+    """POST one conversation row. Thin wrapper over [_post_jobs]."""
+    return _post_jobs(alias, machine_kind, [job])
+
+
+def _post_jobs(alias: str, machine_kind: str, jobs: list[dict[str, Any]]) -> bool:
+    """POST one or more conversation rows in a single envelope.
+
+    A SessionStart that supersedes a ghost closes the old conversation and opens
+    the new one in one round trip — two conversations, not two jobs per
+    conversation (invariant 1). Fail-open: a bad response is logged and dropped.
+    """
+    if not jobs:
+        return True
     payload = {
         "alias": alias,
         "machineKind": machine_kind,
-        "jobs": [job],
+        "jobs": jobs,
     }
     try:
         status, detail = _post_json("/v1/snapshot", payload)
@@ -1160,6 +1295,65 @@ def _state_dir() -> Path:
     return d
 
 
+# ---------------------------------------------------------------------------
+# Identity cache — alias + agent pid survive the one-process-per-event shape
+# ---------------------------------------------------------------------------
+
+#: How long a cached alias/pid stays good. SessionStart invalidates it early.
+_IDENTITY_TTL = 24 * 60 * 60
+
+
+def _terminal_token() -> str:
+    for key in (
+        "TERM_SESSION_ID",
+        "ITERM_SESSION_ID",
+        "WEZTERM_PANE",
+        "KITTY_WINDOW_ID",
+        "TMUX_PANE",
+        "WT_SESSION",
+        "ConEmuPID",
+    ):
+        val = os.environ.get(key)
+        if val:
+            return f"{key}:{val}"
+    return "default"
+
+
+def _identity_path() -> Path:
+    token = re.sub(r"[^\w.-]", "_", _terminal_token())
+    return _state_dir() / f"identity-{token}.json"
+
+
+def _identity_load() -> dict[str, Any] | None:
+    try:
+        data = json.loads(_identity_path().read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None
+        ts = data.get("ts")
+        if not isinstance(ts, (int, float)) or (time.time() - float(ts)) > _IDENTITY_TTL:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _identity_save(alias: str, pid: int | None) -> None:
+    try:
+        _identity_path().write_text(
+            json.dumps({"alias": alias, "pid": pid, "ts": time.time()}),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _identity_invalidate() -> None:
+    try:
+        _identity_path().unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 @functools.lru_cache(maxsize=32)
 def _proc_ppid_and_name(pid: int) -> tuple[int | None, str | None]:
     """Best-effort parent pid + command name (macOS / Linux).
@@ -1194,9 +1388,20 @@ def _agent_process_pid() -> int | None:
 
     The single most expensive thing the hook does — up to six `ps` spawns — and
     four callers want it (the job body, the slot id, twice more when a
-    SessionStart supersedes the previous conversation). The tree above this
-    process cannot change while this process runs, so it is walked once.
+    SessionStart supersedes the previous conversation). Cached in-process *and*
+    on disk keyed by the terminal token, so only the first event per UI slot
+    pays the climb.
     """
+    cached = _identity_load()
+    if cached and "pid" in cached:
+        pid_val = cached.get("pid")
+        return pid_val if isinstance(pid_val, int) and pid_val > 1 else None
+    result = _climb_agent_pid()
+    _identity_save(_machine_alias(), result)
+    return result
+
+
+def _climb_agent_pid() -> int | None:
     try:
         pid = os.getppid()
     except Exception:
@@ -1304,7 +1509,7 @@ def _ended_facets(
     return facets
 
 
-def _post_ended_session(
+def _ended_job(
     payload: dict[str, Any],
     producer_key: str,
     session_id: str,
@@ -1318,27 +1523,27 @@ def _post_ended_session(
         return None
     ext = job.setdefault("extensions", {})
     ext["endReason"] = reason
-    _post_snapshot(job["alias"], _machine_kind(), job)
     return job
 
 
-def _supersede_previous_if_needed(
+def _supersede_ghost(
     payload: dict[str, Any],
     producer_key: str,
     session_id: str,
 ) -> dict[str, Any] | None:
-    """If this UI slot already had a different session, close it.
+    """Build (but do not POST) the ended row for a session this slot replaced.
 
-    Covers /new, /clear, fork, and hosts that omit SessionEnd.
+    Covers /new, /clear, fork, and hosts that omit SessionEnd. The caller
+    batches it with the new row into a single snapshot.
     """
     slot = _slot_id(producer_key, payload)
     previous = _slot_read(slot)
     if previous and previous != session_id:
-        return _post_ended_session(
+        return _ended_job(
             payload,
             producer_key,
             previous,
-            summary="Session replaced",
+            summary="Session ended (superseded)",
             reason="superseded",
         )
     return None
@@ -1353,6 +1558,10 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
     """
     event = _event_name(payload)
     if not event:
+        return None
+
+    # Silent-noop events exit before alias / slot / ps / HTTP / disk (Phase 4).
+    if event in _SILENT_NOOP:
         return None
 
     if event not in {
@@ -1371,6 +1580,7 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
         "messagedisplay",
         "stop",
         "stopfailure",
+        "stopcancelled",
         "subagentstart",
         "subagentstop",
         "taskcreated",
@@ -1400,11 +1610,18 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
 
     producer_key = _detect_producer(payload)
     session_id = _session_id(payload)
+    # A new conversation is the moment a stale identity is most wrong (renamed
+    # machine, restarted host) — drop the cache so the climb runs once here.
+    if event == "sessionstart":
+        _identity_invalidate()
     slot = _slot_id(producer_key, payload)
 
+    pending: list[dict[str, Any]] = []
     # /new · /clear · fork: new SessionStart often arrives without SessionEnd.
     if event == "sessionstart":
-        _supersede_previous_if_needed(payload, producer_key, session_id)
+        ghost = _supersede_ghost(payload, producer_key, session_id)
+        if ghost is not None:
+            pending.append(ghost)
 
     # Guard: session_id must never be the subagent id alone when both exist.
     # Job id is always {producer}:{session_id} with exactly one colon separator
@@ -1416,7 +1633,10 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
     if "parentJobId" in (job.get("extensions") or {}):
         return None
 
-    _post_snapshot(job["alias"], _machine_kind(), job)
+    pending.append(job)
+    # One POST carries the ghost and the new row: two conversations, not two
+    # jobs per conversation (invariant 1).
+    _post_jobs(job["alias"], _machine_kind(), pending)
 
     if event == "sessionend":
         _slot_clear(slot, session_id)
@@ -1427,7 +1647,30 @@ def process(payload: dict[str, Any]) -> dict[str, Any] | None:
     return job
 
 
+def _map_fixture(path: str) -> int:
+    """Test-only adapter: ``nerve.py --map <fixture.json>`` prints raw facets or ``null``.
+
+    Not an env flag and not ``NERVE_*`` (invariant 2); production hooks never
+    pass argv. Exits 0 even on a bad path so a harness can never wedge.
+    """
+    out = "null"
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            facets = _map_event(_event_name(payload), payload)
+            out = json.dumps(facets, ensure_ascii=False) if facets is not None else "null"
+    except Exception:
+        out = "null"
+    try:
+        sys.stdout.write(out + "\n")
+    except Exception:
+        pass
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) >= 3 and sys.argv[1] == "--map":
+        return _map_fixture(sys.argv[2])
     try:
         raw = sys.stdin.read()
     except Exception:

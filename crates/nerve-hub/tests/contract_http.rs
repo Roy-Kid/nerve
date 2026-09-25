@@ -70,22 +70,22 @@
 use std::net::{Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 
+use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, Request, StatusCode};
-use axum::Router;
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::macros::datetime;
 use tower::ServiceExt;
 
 use nerve_hub::clock::FakeClock;
-use nerve_hub::http::{router, HubState};
+use nerve_hub::http::{HubState, router};
 use nerve_hub::state::{JobStore, PidProbe, PidState};
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-/// Wire instant every fixture is anchored to (same value `verify_loop.sh` uses).
+/// Wire instant every fixture is anchored to (same value `./scripts/nerve.sh --verify-loop` uses).
 const T0: &str = "2026-07-19T00:00:00Z";
 
 /// The alias injected into `JobStore::new` — "this machine" for the hub.
@@ -395,7 +395,7 @@ async fn test_action_result_miss_returns_the_404_literal() {
     let reply = call(&hub(), post("/v1/actions/result?producerId=missing", &body)).await;
 
     assert_eq!(reply.status, StatusCode::NOT_FOUND);
-    // `IngestServer.swift:198` — literal, matched by `verify_loop.sh`.
+    // `IngestServer.swift:198` — literal, matched by `./scripts/nerve.sh --verify-loop`.
     assert_eq!(
         reply.json(),
         json!({ "error": "pending action not found or producer mismatch" })
@@ -641,7 +641,7 @@ async fn test_snapshot_single_job_object_with_alias_is_swallowed_as_an_envelope(
 
 #[tokio::test]
 async fn test_snapshot_with_an_alias_and_no_jobs_applies_nothing() {
-    // `verify_loop.sh:74` posts exactly this body.
+    // `./scripts/nerve.sh --verify-loop` posts exactly this body.
     let body = json!({ "alias": "__not_configured__", "jobs": [] }).to_string();
 
     let reply = call(&hub(), post("/v1/snapshot", &body)).await;
@@ -704,7 +704,7 @@ async fn test_snapshot_without_any_alias_is_rejected() {
 #[tokio::test]
 async fn test_any_non_empty_alias_is_accepted() {
     // Open ingest: no allow-list, no rename, not even for the sentinel string
-    // `verify_loop.sh` expected to be rejected (zombie assertion, fixed in T8).
+    // `./scripts/nerve.sh --verify-loop` expected to be rejected (zombie assertion, fixed in T8).
     let hub = hub();
     let body = json!({
         "alias": "__not_configured__",

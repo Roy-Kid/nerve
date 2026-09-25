@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use axum::{middleware, Json, Router};
-use serde_json::{json, Value};
+use axum::{Json, Router, middleware};
+use serde_json::{Value, json};
 
 use crate::hook::SlotMap;
 use crate::lifecycle::SurfaceRoster;

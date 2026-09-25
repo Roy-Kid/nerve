@@ -210,6 +210,11 @@ pub struct JobContext {
 }
 
 /// Hook metadata — pid is the agent process when reported.
+///
+/// Deliberately narrow: a surface that needs more should widen this additively
+/// (unknown keys are already ignored). `model` / `agent_type` / `slot` ride on
+/// every snapshot from `hook::build` and used to be dropped here, which is why
+/// no surface could show them.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobExtensions {
@@ -219,6 +224,15 @@ pub struct JobExtensions {
     /// the hub kept it (`crates/nerve-hub/src/state/store.rs` STICKY_EXTENSIONS).
     #[serde(default)]
     pub last_prompt: Option<String>,
+    /// Model the producer reported, e.g. `claude-fable-5-1`.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Agent type for a subagent-driven turn, e.g. `Explore`.
+    #[serde(default)]
+    pub agent_type: Option<String>,
+    /// UI slot key — a new session in the same slot supersedes this one.
+    #[serde(default)]
+    pub slot: Option<String>,
 }
 
 /// Where a surface should send the human back to.

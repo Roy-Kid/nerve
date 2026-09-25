@@ -95,11 +95,7 @@ pub fn render(spec: &IconSpec) -> Vec<u8> {
 }
 
 fn alpha_for(spec: &IconSpec) -> f32 {
-    if spec.offline {
-        OFFLINE_ALPHA
-    } else {
-        1.0
-    }
+    if spec.offline { OFFLINE_ALPHA } else { 1.0 }
 }
 
 fn draw_bands(pixmap: &mut Pixmap, size: u32, spec: &IconSpec) {

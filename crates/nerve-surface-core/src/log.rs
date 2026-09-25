@@ -5,7 +5,7 @@
 
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 /// Install the global subscriber. `component` names the file (`nerve-tmux.log`).
 pub fn init(component: &str) {

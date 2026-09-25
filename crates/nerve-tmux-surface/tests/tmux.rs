@@ -67,7 +67,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use nerve_surface_core::instance::LockStore;
-use nerve_tmux_surface::tmux::{SegmentWriter, TmuxError, TmuxRunner, TmuxWriter, STATUS_OPTION};
+use nerve_tmux_surface::tmux::{STATUS_OPTION, SegmentWriter, TmuxError, TmuxRunner, TmuxWriter};
 
 /// The segment a live frame produces — spaces and style markers included.
 const SEGMENT: &str = "#[fg=red]1!#[default] #[fg=blue]2>#[default]";

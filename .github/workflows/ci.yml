@@ -8,7 +8,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 env:
@@ -17,17 +17,20 @@ env:
 jobs:
   unix:
     name: macOS
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
           targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 26
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
 
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -53,13 +56,13 @@ jobs:
 
   windows:
     name: Windows
-    runs-on: windows-2022
+    runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.2
 
       # nerve-tmux-surface is unix-only by design (tmux has no Windows port),
       # so the Windows job names the portable crates rather than `--workspace`.
@@ -80,7 +83,7 @@ jobs:
 
       - name: test Windows installer helpers
         shell: powershell
-        run: ./scripts/tests/nerve-windows.ps1
+        run: ./scripts/test-windows-install.ps1
 
       - name: stage the Windows download
         shell: powershell
@@ -90,7 +93,7 @@ jobs:
           Copy-Item scripts/nerve.ps1 package/scripts/
           Copy-Item fixtures/demo_snapshot.json package/fixtures/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: nerve-windows-x64
           path: package/

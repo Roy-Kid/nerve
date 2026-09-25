@@ -4,6 +4,26 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+// Screenshots the live VS Code surface for the site. Both prerequisites are
+// started by the demo flow; this script only drives Chrome DevTools Protocol,
+// so a missing hub or dev host fails loudly rather than half-capturing.
+function usage() {
+  console.log(`Usage: node scripts/capture-vscode-surface.mjs [-h|--help]
+
+Capture the VS Code surface screenshot into index/public/surface-vscode.png.
+
+Prerequisites:
+  - nerve-hub answering on http://127.0.0.1:17890
+    (./scripts/nerve.sh --demo seeds it)
+  - VS Code Extension Development Host with remote debugging on :9333
+    (./scripts/nerve.sh --demo-surfaces launches it)`);
+}
+
+if (process.argv.includes('-h') || process.argv.includes('--help')) {
+  usage();
+  process.exit(0);
+}
+
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const fixturePath = fileURLToPath(
   new URL('../fixtures/surface_demo_snapshot.json', import.meta.url),

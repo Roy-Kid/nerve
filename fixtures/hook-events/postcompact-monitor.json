@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PostCompact",
+  "background_tasks": [
+    {
+      "type": "monitor"
+    }
+  ]
+}

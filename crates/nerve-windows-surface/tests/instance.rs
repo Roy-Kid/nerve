@@ -2,7 +2,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
 
-use nerve_windows_surface::platform::instance::{claim, Claim, LOCK_PORT};
+use nerve_windows_surface::platform::instance::{Claim, LOCK_PORT, claim};
 
 /// A port nothing else in this suite will take.
 fn free_port() -> u16 {

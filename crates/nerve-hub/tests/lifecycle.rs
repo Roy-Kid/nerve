@@ -76,20 +76,20 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::macros::datetime;
-use tokio::time::{advance, timeout, Instant};
+use tokio::time::{Instant, advance, timeout};
 use tower::ServiceExt;
 
+use nerve_hub::HubRuntime;
 use nerve_hub::clock::FakeClock;
 use nerve_hub::state::{JobStore, PidProbe, PidState};
-use nerve_hub::HubRuntime;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -189,15 +189,8 @@ async fn post_snapshot(runtime: &HubRuntime, id: &str) {
 /// auto-advance while the question is being asked.
 fn is_pending<F: Future>(future: F) -> bool {
     let mut future = Box::pin(future);
-    let waker = Waker::from(Arc::new(NoopWake));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     matches!(future.as_mut().poll(&mut context), Poll::Pending)
-}
-
-struct NoopWake;
-
-impl Wake for NoopWake {
-    fn wake(self: Arc<Self>) {}
 }
 
 /// Wait for the exit signal and report how much **virtual** time it took.

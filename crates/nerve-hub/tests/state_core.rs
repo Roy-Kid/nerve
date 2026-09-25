@@ -59,7 +59,7 @@
 //! Semantics the signatures do not carry (ported from `SubjectStore.swift`):
 //!
 //! * `apply_snapshot` returns the number of jobs **seen**, not stored — ended
-//!   and legacy-noise rows still count (`verify_loop.sh` expects `applied:5`).
+//!   and legacy-noise rows still count (`./scripts/nerve.sh --verify-loop` expects `applied:5`).
 //! * `jobs_json` is a **bare array**; every element is the job's wire JSON plus
 //!   a hub-maintained `"timeline"` array (always present, newest first, ≤ 40,
 //!   entries `{id, jobId, kind, title, timestamp}` — `id` opaque, no uuid dep).
@@ -87,16 +87,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::macros::datetime;
 
 use nerve_hub::clock::FakeClock;
 use nerve_hub::model::{ActionState, Event, Job};
-use nerve_hub::state::{JobStore, PidProbe, PidState, MAX_SEEN_EVENTS, SEEN_EVENT_EVICT_BATCH};
+use nerve_hub::state::{JobStore, MAX_SEEN_EVENTS, PidProbe, PidState, SEEN_EVENT_EVICT_BATCH};
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-/// Wire instant every fixture is anchored to (same value `verify_loop.sh` uses).
+/// Wire instant every fixture is anchored to (same value `./scripts/nerve.sh --verify-loop` uses).
 const T0: &str = "2026-07-19T00:00:00Z";
 
 /// The alias injected into `JobStore::new` — "this machine" for reaper rules.
@@ -378,7 +378,7 @@ fn test_apply_snapshot_counts_every_job_including_ended_and_legacy() {
         job_fixture("a1:child", json!({ "extensions": { "parentJobId": "a1" } })),
     ]);
 
-    // `verify_loop.sh` asserts `"applied":5` for a batch whose 5th job is ended.
+    // `./scripts/nerve.sh --verify-loop` asserts `"applied":5` for a batch whose 5th job is ended.
     assert_eq!(applied, 3);
     assert_eq!(array(&fixture.store.jobs_json()).len(), 1);
 }
@@ -550,9 +550,11 @@ fn test_repeated_event_id_is_ignored() {
         "attention.changed",
         patch.clone()
     )));
-    assert!(!fixture
-        .store
-        .apply_event(event_fixture("ev1", "a1", "attention.changed", patch)));
+    assert!(
+        !fixture
+            .store
+            .apply_event(event_fixture("ev1", "a1", "attention.changed", patch))
+    );
 }
 
 #[test]
@@ -686,9 +688,11 @@ fn test_heartbeat_events_stay_out_of_the_timeline() {
     ));
 
     // A heartbeat still counts as applied — it just leaves no trace.
-    assert!(fixture
-        .store
-        .apply_event(event_fixture("ev2", "a1", "heartbeat", json!({}))));
+    assert!(
+        fixture
+            .store
+            .apply_event(event_fixture("ev2", "a1", "heartbeat", json!({})))
+    );
 
     let timeline = timeline_of(&fixture.store.jobs_json(), "a1");
     assert_eq!(timeline.len(), 1);
@@ -877,9 +881,11 @@ fn test_pending_queue_keeps_only_the_newest_two_hundred() {
         .apply_snapshot(vec![job_with_open_action("a1")]);
 
     for n in 0..205 {
-        assert!(fixture
-            .store
-            .enqueue_pending(&format!("p{n}"), "a1", "open"));
+        assert!(
+            fixture
+                .store
+                .enqueue_pending(&format!("p{n}"), "a1", "open")
+        );
     }
 
     let pending = fixture.store.pending_json(None);
@@ -887,9 +893,11 @@ fn test_pending_queue_keeps_only_the_newest_two_hundred() {
     assert_eq!(list.len(), 200);
     // Newest first; the five oldest fell off.
     assert_eq!(text(&list[0], "/id"), "p204");
-    assert!(!list
-        .iter()
-        .any(|request| request.get("id").and_then(Value::as_str) == Some("p0")));
+    assert!(
+        !list
+            .iter()
+            .any(|request| request.get("id").and_then(Value::as_str) == Some("p0"))
+    );
 }
 
 #[test]
@@ -932,9 +940,11 @@ fn test_complete_pending_returns_false_for_unknown_id() {
         .store
         .apply_snapshot(vec![job_with_open_action("a1")]);
 
-    assert!(!fixture
-        .store
-        .complete_pending("nope", ActionState::Succeeded, Some("x"), None));
+    assert!(
+        !fixture
+            .store
+            .complete_pending("nope", ActionState::Succeeded, Some("x"), None)
+    );
 }
 
 #[test]
@@ -1011,7 +1021,9 @@ fn test_clear_forgets_seen_event_ids() {
         .store
         .apply_snapshot(vec![job_fixture("a1", json!({}))]);
 
-    assert!(fixture
-        .store
-        .apply_event(event_fixture("ev1", "a1", "attention.changed", patch)));
+    assert!(
+        fixture
+            .store
+            .apply_event(event_fixture("ev1", "a1", "attention.changed", patch))
+    );
 }

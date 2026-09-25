@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "PermissionDenied",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "ls"
+  }
+}

@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use tokio::sync::{broadcast, Notify};
+use tokio::sync::{Notify, broadcast};
 
 use crate::lifecycle::SurfaceRoster;
 use crate::state::JobStore;

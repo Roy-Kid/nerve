@@ -8,12 +8,12 @@
 
 use std::net::SocketAddr;
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 
 /// The largest body the hub will read (`IngestServer.swift:100`).

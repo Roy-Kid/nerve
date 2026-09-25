@@ -1,5 +1,5 @@
 # Commit-tier CI parity (mol:ship commit). Push/merge tiers run the full
-# suites (cargo test --workspace, npm test && npm run build, verify_loop.sh).
+# suites (cargo test --workspace, npm test && npm run build, ./scripts/nerve.sh --verify-loop).
 repos:
   - repo: local
     hooks:

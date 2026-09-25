@@ -185,10 +185,10 @@ impl ProcessSpawner for DetachedSpawner {
     fn spawn(&mut self, program: &Path, args: &[&str]) -> Result<(), SpawnError> {
         // A hub we started and that has since exited would otherwise sit in the
         // process table until this surface exits.
-        if let Some(started) = self.started.as_mut() {
-            if matches!(started.try_wait(), Ok(Some(_))) {
-                self.started = None;
-            }
+        if let Some(started) = self.started.as_mut()
+            && matches!(started.try_wait(), Ok(Some(_)))
+        {
+            self.started = None;
         }
 
         let child = Command::new(program)

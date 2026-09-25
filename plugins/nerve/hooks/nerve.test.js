@@ -241,3 +241,126 @@ for (const notification_type of ["agent_needs_input", "elicitation_dialog", "per
     assert.equal(mapEvent("userpromptsubmit", { prompt: "Continue" }).attention.level, "none");
   });
 }
+
+// ── Phase 2/3 parity: the strings and shapes all three mappers must agree on ─
+
+const { localActions } = require("./nerve.js");
+
+test("permissiondenied is the same ask as permissionrequest", () => {
+  const a = mapEvent("permissiondenied", { tool_name: "Bash", tool_input: { command: "ls" } });
+  const b = mapEvent("permissionrequest", { tool_name: "Bash", tool_input: { command: "ls" } });
+  assert.equal(a.current.type, "waiting");
+  assert.equal(a.attention.level, "required");
+  assert.equal(a.attention.reason, "approval");
+  assert.equal(a.attention.title, "Approval needed in agent");
+  assert.equal(a.attention.summary, 'Bash: {"command":"ls"}');
+  assert.deepEqual(a, b);
+});
+
+test("stopcancelled and elicitation both ask for the human", () => {
+  for (const event of ["stopcancelled", "elicitation"]) {
+    const f = mapEvent(event, {});
+    assert.equal(f.current.type, "idle", event);
+    assert.equal(f.attention.level, "suggested", event);
+    assert.equal(f.attention.reason, "input", event);
+    assert.equal(f.attention.title, "Your turn in agent", event);
+  }
+});
+
+test("postcompact keeps working on its own copy", () => {
+  assert.equal(mapEvent("postcompact", {}).current.summary, "Context compacted — continuing");
+  assert.equal(mapEvent("precompact", {}).current.summary, "Compacting context");
+});
+
+test("posttoolusefailure titles the tool; stopfailure says turn", () => {
+  assert.equal(mapEvent("posttoolusefailure", { tool_name: "Bash" }).attention.title, "Bash failed");
+  assert.equal(mapEvent("stopfailure", { error: "boom" }).attention.title, "Turn failed");
+  assert.equal(mapEvent("stopfailure", { error: "boom" }).current.summary, "boom");
+});
+
+test("all four subagent tools report background on posttooluse", () => {
+  for (const tool of ["spawn_subagent", "get_command_or_subagent_output", "Task", "Agent"]) {
+    const f = mapEvent("posttooluse", {
+      tool_name: tool,
+      tool_response: { status: "async_launched", description: "explore" },
+    });
+    assert.equal(f.current.type, "subagent", tool);
+    assert.equal(f.current.summary, "Background: explore", tool);
+  }
+});
+
+test("background summary lists every task and labels the mix", () => {
+  const mixed = mapEvent("stop", {
+    background_tasks: [
+      { type: "shell", description: "npm test" },
+      { type: "monitor" },
+    ],
+  });
+  assert.equal(mixed.current.name, "mixed");
+  assert.equal(mixed.current.summary, "2 background task(s): npm test, monitor");
+
+  const only = mapEvent("stop", { background_tasks: [{ type: "monitor" }] });
+  assert.equal(only.current.name, "monitor");
+  assert.equal(only.current.summary, "1 background task(s): monitor");
+});
+
+test("task and teammate events are info, never attention", () => {
+  const created = mapEvent("taskcreated", { title: "write tests" });
+  assert.equal(created.current.type, "info");
+  assert.equal(created.current.name, "write tests");
+  assert.equal(created.current.summary, "Task created: write tests");
+  assert.equal(created.attention.level, "none");
+
+  const idle = mapEvent("teammateidle", { agent_type: "Explore" });
+  assert.equal(idle.current.summary, "Teammate idle: Explore");
+  assert.equal(idle.attention.level, "none");
+
+  assert.equal(mapEvent("cwdchanged", {}).current.summary, "Workspace changed");
+  assert.equal(mapEvent("elicitationresult", { title: "Answered" }).current.summary, "Answered");
+});
+
+test("silent-noop events never paint a facet", () => {
+  for (const event of [
+    "setup", "userpromptexpansion", "posttoolbatch", "messagedisplay",
+    "instructionsloaded", "configchange", "directoryadded", "filechanged",
+  ]) {
+    assert.equal(mapEvent(event, {}), null, event);
+  }
+});
+
+// ── job body: actions, location, extensions ─────────────────────────────────
+
+test("actions fall back to Focus when only a focusHint exists", () => {
+  const withUrl = localActions({ openURL: "file:///tmp/p", focusHint: "x" });
+  assert.equal(withUrl[0].id, "open");
+  assert.equal(withUrl[0].kind, "open");
+  assert.equal(withUrl[0].title, "Open");
+
+  const hintOnly = localActions({ focusHint: "x" });
+  assert.equal(hintOnly[0].id, "open");
+  assert.equal(hintOnly[0].kind, "focus");
+  assert.equal(hintOnly[0].title, "Focus");
+
+  const neither = localActions({});
+  assert.equal(neither.length, 1);
+  assert.equal(neither[0].kind, "copy_summary");
+});
+
+test("open_logs rides along only when a logPath is present", () => {
+  const withLog = localActions({ openURL: "file:///tmp/p", logPath: "/tmp/t.jsonl" });
+  assert.deepEqual(withLog.map((a) => a.kind), ["open", "copy_summary", "open_logs"]);
+
+  const without = localActions({ openURL: "file:///tmp/p" });
+  assert.deepEqual(without.map((a) => a.kind), ["open", "copy_summary"]);
+});
+
+test("the focus breadcrumb names the hosting terminal", () => {
+  const prev = process.env.TERM_SESSION_ID;
+  process.env.TERM_SESSION_ID = "abc";
+  try {
+    assert.ok(buildLocation({}, "/tmp/p").focusHint.includes(" · Terminal · "));
+  } finally {
+    if (prev === undefined) delete process.env.TERM_SESSION_ID;
+    else process.env.TERM_SESSION_ID = prev;
+  }
+});

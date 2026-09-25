@@ -98,16 +98,16 @@ use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use time::macros::datetime;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 use tower::ServiceExt;
 
+use nerve_hub::HubRuntime;
 use nerve_hub::clock::FakeClock;
 use nerve_hub::state::{JobStore, PidProbe, PidState};
-use nerve_hub::HubRuntime;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 

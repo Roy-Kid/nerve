@@ -17,7 +17,7 @@
 //! declared rather than hand-matched, and the decoder already knows about
 //! multi-byte sequences and malformed escapes.
 
-use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 
 /// Which OS's rules a path string is written in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

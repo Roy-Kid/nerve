@@ -1,0 +1,18 @@
+{
+  "lifecycle": "ended",
+  "current": {
+    "type": "idle",
+    "name": null,
+    "summary": "Session ended (superseded)"
+  },
+  "attention": {
+    "level": "none",
+    "reason": null,
+    "title": null,
+    "summary": null
+  },
+  "health": "ok",
+  "outcome": "cancelled",
+  "ended": true,
+  "end_reason": "superseded"
+}

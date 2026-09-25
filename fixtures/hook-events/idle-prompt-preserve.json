@@ -1,0 +1,5 @@
+{
+  "hook_event_name": "Notification",
+  "notification_type": "idle_prompt",
+  "title": "Waiting for 1 background agent to finish"
+}

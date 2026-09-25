@@ -17,10 +17,10 @@ pub const MISSING: &str = "-";
 /// Borrowed from the job: every row asks for this on every repaint, and the
 /// answer is always a field the job already holds.
 pub fn activity_text(job: &JobView) -> &str {
-    if job.attention.level >= AttentionLevel::Suggested {
-        if let Some(title) = job.attention.title.as_deref().filter(|s| !s.is_empty()) {
-            return title;
-        }
+    if job.attention.level >= AttentionLevel::Suggested
+        && let Some(title) = job.attention.title.as_deref().filter(|s| !s.is_empty())
+    {
+        return title;
     }
     if let Some(current) = &job.current {
         if let Some(summary) = current.summary.as_deref().filter(|s| !s.is_empty()) {

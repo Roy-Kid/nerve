@@ -39,10 +39,10 @@ impl ProcTable {
     pub fn current() -> Self {
         CACHE.with(|cache| {
             let mut slot = cache.borrow_mut();
-            if let Some((at, table)) = slot.as_ref() {
-                if at.elapsed() < TTL {
-                    return table.clone();
-                }
+            if let Some((at, table)) = slot.as_ref()
+                && at.elapsed() < TTL
+            {
+                return table.clone();
             }
             let table = snapshot();
             *slot = Some((Instant::now(), table.clone()));

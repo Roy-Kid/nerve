@@ -93,7 +93,7 @@ use time::macros::datetime;
 
 use nerve_surface_core::frame::{AttentionLevel, Frame, Health, JobView, Lifecycle, Outcome};
 
-use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
+use nerve_surface_core::testkit::{SIX_STATE_FRAME, frame, job};
 
 // ── The published frame shape ───────────────────────────────────────────────
 

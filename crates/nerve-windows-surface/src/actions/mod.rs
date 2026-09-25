@@ -14,7 +14,7 @@ pub mod shell;
 
 use clipboard::Clipboard;
 use nerve_surface_core::frame::JobView;
-use open::{plan, OpenPlan};
+use open::{OpenPlan, plan};
 use shell::ShellOpener;
 
 /// What happened, in words the surface can show.

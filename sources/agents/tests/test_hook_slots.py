@@ -29,6 +29,7 @@ CLAUDE = {
     "TaskCreated",
     "TaskCompleted",
     "Stop",
+    "StopCancelled",
     "StopFailure",
     "TeammateIdle",
     "InstructionsLoaded",
@@ -49,12 +50,22 @@ CODEX = {
     "UserPromptSubmit",
     "PreToolUse",
     "PermissionRequest",
+    "PermissionDenied",
     "PostToolUse",
+    "PostToolUseFailure",
     "PreCompact",
     "PostCompact",
     "Stop",
+    "StopCancelled",
+    "StopFailure",
     "SubagentStart",
     "SubagentStop",
+    "TaskCreated",
+    "TaskCompleted",
+    "TeammateIdle",
+    "CwdChanged",
+    "Elicitation",
+    "ElicitationResult",
 }
 
 GROK = {
@@ -73,6 +84,12 @@ GROK = {
     "SubagentStop",
     "PreCompact",
     "PostCompact",
+    "TaskCreated",
+    "TaskCompleted",
+    "TeammateIdle",
+    "CwdChanged",
+    "Elicitation",
+    "ElicitationResult",
 }
 
 

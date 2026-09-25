@@ -20,7 +20,7 @@ pub struct Facets {
     pub current_summary: Option<String>,
     pub attention_level: &'static str,
     pub attention_reason: Option<&'static str>,
-    pub attention_title: Option<&'static str>,
+    pub attention_title: Option<String>,
     pub attention_summary: Option<String>,
     pub health: &'static str,
     pub outcome: Option<&'static str>,
@@ -92,11 +92,77 @@ pub fn map_event(payload: &Value) -> Option<Facets> {
         }
         "notification" => Some(notification(payload)),
         "stop" => stop(payload),
-        "stopcancelled" => Some(your_turn("Return to the agent to continue".into())),
+        "stopcancelled" | "elicitation" => {
+            Some(your_turn("Return to the agent to continue".into()))
+        }
         "precompact" => Some(precompact(payload)),
-        "postcompact" => Some(precompact(payload)),
+        "postcompact" => Some(postcompact(payload)),
+        "cwdchanged" => Some(Facets::active(
+            "info",
+            Some("Workspace changed".into()),
+            None,
+        )),
+        "elicitationresult" => Some(elicitation_result(payload)),
+        "taskcreated" | "taskcompleted" => Some(task_note(&event, payload)),
+        "teammateidle" => Some(teammate_idle(payload)),
+        // Registered but deliberately silent: a facet here would invent status
+        // from events that carry none (CLAUDE.md invariant 3). Listed so the
+        // intent is testable rather than implied by the catch-all.
+        e if SILENT_NOOP.contains(&e) => None,
         _ => None,
     }
+}
+
+/// Events the hosts register that must never paint a facet. Fire-and-drop.
+const SILENT_NOOP: &[&str] = &[
+    "setup",
+    "userpromptexpansion",
+    "posttoolbatch",
+    "messagedisplay",
+    "instructionsloaded",
+    "configchange",
+    "directoryadded",
+    "filechanged",
+];
+
+fn elicitation_result(payload: &Value) -> Facets {
+    let text = get_text(payload, &["summary", "title"]).unwrap_or_default();
+    let summary = if text.is_empty() {
+        "Elicitation result".into()
+    } else {
+        truncate(&text, 120)
+    };
+    Facets::active("info", Some(summary), None)
+}
+
+/// Task list chatter: show the structured title, never classify it.
+fn task_note(event: &str, payload: &Value) -> Facets {
+    let label = if event == "taskcompleted" {
+        "Task completed"
+    } else {
+        "Task created"
+    };
+    let name = get_text(payload, &["title", "name"]);
+    let text = get_text(payload, &["title", "name", "description"]).unwrap_or_default();
+    let summary = if text.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label}: {text}")
+    };
+    Facets::active("info", Some(summary), name)
+}
+
+/// A teammate going idle is not a human Ask.
+fn teammate_idle(payload: &Value) -> Facets {
+    let keys = ["name", "agent_type", "agentType", "description"];
+    let name = get_text(payload, &keys);
+    let text = name.clone().unwrap_or_default();
+    let summary = if text.is_empty() {
+        "Teammate idle".into()
+    } else {
+        format!("Teammate idle: {text}")
+    };
+    Facets::active("info", Some(summary), name)
 }
 
 fn session_end(payload: &Value) -> Facets {
@@ -202,19 +268,18 @@ fn subagent_stop(payload: &Value) -> Facets {
 fn failure(event: &str, payload: &Value) -> Facets {
     let tool = get_str(payload, &["tool_name", "toolName"]).unwrap_or("tool");
     let mut summary = format!("Failed: {tool}");
-    if event == "stopfailure" {
-        if let Some(err) = get_text(payload, &["error"]) {
-            let t = truncate(&err, 120);
-            if !t.is_empty() {
-                summary = t;
-            }
+    if event == "stopfailure"
+        && let Some(err) = get_text(payload, &["error"])
+    {
+        let t = truncate(&err, 120);
+        if !t.is_empty() {
+            summary = t;
         }
     }
     let title = if event == "stopfailure" {
-        "Turn failed"
+        "Turn failed".to_string()
     } else {
-        // Keep a 'static title; the tool name is in summary.
-        "Tool failed"
+        format!("{tool} failed")
     };
     Facets {
         lifecycle: "active",
@@ -247,7 +312,7 @@ fn permission(payload: &Value) -> Facets {
         current_summary: Some(format!("Permission: {tool}")),
         attention_level: "required",
         attention_reason: Some("approval"),
-        attention_title: Some("Approval needed in agent"),
+        attention_title: Some("Approval needed in agent".into()),
         attention_summary: Some(truncate(&format!("{tool}: {dumped}"), 140)),
         health: "ok",
         outcome: None,
@@ -281,7 +346,7 @@ fn notification(payload: &Value) -> Facets {
             current_summary: Some(summary.clone()),
             attention_level: "required",
             attention_reason: Some("approval"),
-            attention_title: Some("Approval needed in agent"),
+            attention_title: Some("Approval needed in agent".into()),
             attention_summary: Some(if summary.is_empty() {
                 "Return to the agent to approve".into()
             } else {
@@ -370,6 +435,18 @@ fn precompact(payload: &Value) -> Facets {
     Facets::active("thinking", Some("Compacting context".into()), None)
 }
 
+fn postcompact(payload: &Value) -> Facets {
+    let bg = background_tasks(payload);
+    if !bg.is_empty() {
+        return background_work(bg);
+    }
+    Facets::active(
+        "thinking",
+        Some("Context compacted — continuing".into()),
+        None,
+    )
+}
+
 fn your_turn(attention_summary: String) -> Facets {
     Facets {
         lifecycle: "active",
@@ -378,7 +455,7 @@ fn your_turn(attention_summary: String) -> Facets {
         current_summary: Some("Your turn — continue in the agent UI".into()),
         attention_level: "suggested",
         attention_reason: Some("input"),
-        attention_title: Some("Your turn in agent"),
+        attention_title: Some("Your turn in agent".into()),
         attention_summary: Some(attention_summary),
         health: "ok",
         outcome: None,
@@ -397,36 +474,54 @@ fn monitor_wait(summary: String, name: &str) -> Facets {
     f
 }
 
+/// Compact kind label for the row: one work kind, or `mixed` when they differ.
+fn bg_kind_label(kinds: &[&'static str]) -> &'static str {
+    let mut uniq = kinds.to_vec();
+    uniq.sort_unstable();
+    uniq.dedup();
+    match uniq.as_slice() {
+        [] => "subagent",
+        [only] => match *only {
+            // `only` is `&&str`; the arm coerces one deref down to `&str`.
+            "monitor" | "shell" => only,
+            _ => "subagent",
+        },
+        _ => "mixed",
+    }
+}
+
 fn background_work(tasks: &[Value]) -> Facets {
     let n = tasks.len();
-    let first = tasks.first();
-    let mut label = "subagent".to_string();
-    let mut desc: Option<&str> = None;
-    if let Some(Value::Object(obj)) = first {
-        if let Some(Value::String(t)) = obj.get("type").or_else(|| obj.get("kind")) {
-            if !t.is_empty() {
-                label = t.clone();
-            }
-        }
-        desc = ["description", "name", "agent_type", "agentType"]
+    let kinds: Vec<&'static str> = tasks.iter().map(task_work_kind).collect();
+    let name = bg_kind_label(&kinds);
+    // List every task, not just the first: one summary is all a row has.
+    let descs: Vec<String> = tasks
+        .iter()
+        .filter_map(|t| t.as_object())
+        .filter_map(|obj| {
+            [
+                "description",
+                "name",
+                "agent_type",
+                "agentType",
+                "type",
+                "kind",
+            ]
             .iter()
-            .find_map(|k| obj.get(*k).and_then(Value::as_str));
-    }
+            .find_map(|k| obj.get(*k).and_then(Value::as_str))
+        })
+        .filter(|d| !d.is_empty())
+        .map(|d| truncate(d, 40))
+        .filter(|d| !d.is_empty())
+        .collect();
     let mut summary = format!("{n} background task(s)");
-    if let Some(desc) = desc {
-        summary = format!("{summary}: {}", truncate(desc, 100));
+    if !descs.is_empty() {
+        summary = format!("{summary}: {}", truncate(&descs.join(", "), 120));
     }
-    let kinds: Vec<&str> = tasks.iter().map(task_work_kind).collect();
-    let only_monitor = !kinds.is_empty() && kinds.iter().all(|k| *k == "monitor");
-    let has_shell = kinds.contains(&"shell");
-    let has_sub = kinds.contains(&"subagent");
-    if only_monitor {
-        return monitor_wait(summary, &label);
+    if !kinds.is_empty() && kinds.iter().all(|k| *k == "monitor") {
+        return monitor_wait(summary, name);
     }
-    if has_shell && !has_sub {
-        return running_bg(summary, &label);
-    }
-    running_bg(summary, &label)
+    running_bg(summary, name)
 }
 
 fn task_work_kind(task: &Value) -> &'static str {
@@ -556,11 +651,13 @@ mod tests {
 
     #[test]
     fn session_end_observe_stop_does_not_paint_your_turn() {
-        assert!(map_event(&json!({
-            "hook_event_name": "Stop",
-            "reason": "channel_closed"
-        }))
-        .is_none());
+        assert!(
+            map_event(&json!({
+                "hook_event_name": "Stop",
+                "reason": "channel_closed"
+            }))
+            .is_none()
+        );
     }
 
     #[test]
@@ -594,7 +691,170 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(f.attention_reason, Some("approval"));
-        assert_eq!(f.attention_title, Some("Approval needed in agent"));
+        assert_eq!(
+            f.attention_title.as_deref(),
+            Some("Approval needed in agent")
+        );
+    }
+
+    #[test]
+    fn permission_denied_is_the_same_ask() {
+        let f = map_event(&json!({
+            "hook_event_name": "PermissionDenied",
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"}
+        }))
+        .unwrap();
+        assert_eq!(f.current_type, "waiting");
+        assert_eq!(f.attention_level, "required");
+        assert_eq!(f.attention_reason, Some("approval"));
+        assert_eq!(
+            f.attention_title.as_deref(),
+            Some("Approval needed in agent")
+        );
+    }
+
+    #[test]
+    fn stopcancelled_is_your_turn() {
+        let f = map_event(&json!({"hook_event_name": "StopCancelled"})).unwrap();
+        assert_eq!(f.current_type, "idle");
+        assert_eq!(f.attention_level, "suggested");
+        assert_eq!(f.attention_reason, Some("input"));
+        assert_eq!(f.attention_title.as_deref(), Some("Your turn in agent"));
+    }
+
+    #[test]
+    fn postcompact_without_background_keeps_working_on_new_copy() {
+        let f = map_event(&json!({"hook_event_name": "PostCompact"})).unwrap();
+        assert_eq!(f.current_type, "thinking");
+        assert_eq!(
+            f.current_summary.as_deref(),
+            Some("Context compacted — continuing")
+        );
+        assert_eq!(f.attention_level, "none");
+    }
+
+    #[test]
+    fn precompact_without_background_still_says_compacting() {
+        let f = map_event(&json!({"hook_event_name": "PreCompact"})).unwrap();
+        assert_eq!(f.current_summary.as_deref(), Some("Compacting context"));
+    }
+
+    #[test]
+    fn posttoolusefailure_title_names_the_tool() {
+        let f = map_event(&json!({
+            "hook_event_name": "PostToolUseFailure",
+            "tool_name": "Bash"
+        }))
+        .unwrap();
+        assert_eq!(f.attention_title.as_deref(), Some("Bash failed"));
+        assert_eq!(f.health, "degraded");
+    }
+
+    #[test]
+    fn stopfailure_title_stays_turn_failed() {
+        let f = map_event(&json!({
+            "hook_event_name": "StopFailure",
+            "error": "boom"
+        }))
+        .unwrap();
+        assert_eq!(f.attention_title.as_deref(), Some("Turn failed"));
+        assert_eq!(f.current_summary.as_deref(), Some("boom"));
+    }
+
+    #[test]
+    fn posttooluse_treats_all_four_subagent_tools_as_background() {
+        for tool in [
+            "spawn_subagent",
+            "get_command_or_subagent_output",
+            "Task",
+            "Agent",
+        ] {
+            let f = map_event(&json!({
+                "hook_event_name": "PostToolUse",
+                "tool_name": tool,
+                "tool_response": {"status": "async_launched", "description": "explore"}
+            }))
+            .unwrap();
+            assert_eq!(f.current_type, "subagent", "{tool}");
+            assert_eq!(
+                f.current_summary.as_deref(),
+                Some("Background: explore"),
+                "{tool}"
+            );
+        }
+    }
+
+    #[test]
+    fn cwdchanged_is_info_not_attention() {
+        let f = map_event(&json!({"hook_event_name": "CwdChanged"})).unwrap();
+        assert_eq!(f.current_type, "info");
+        assert_eq!(f.current_summary.as_deref(), Some("Workspace changed"));
+        assert_eq!(f.attention_level, "none");
+    }
+
+    #[test]
+    fn elicitation_is_your_turn_and_result_is_info() {
+        let ask = map_event(&json!({"hook_event_name": "Elicitation"})).unwrap();
+        assert_eq!(ask.current_type, "idle");
+        assert_eq!(ask.attention_level, "suggested");
+
+        let done = map_event(&json!({
+            "hook_event_name": "ElicitationResult",
+            "title": "Answered"
+        }))
+        .unwrap();
+        assert_eq!(done.current_type, "info");
+        assert_eq!(done.current_summary.as_deref(), Some("Answered"));
+        assert_eq!(done.attention_level, "none");
+    }
+
+    #[test]
+    fn task_and_teammate_events_are_info_never_attention() {
+        let created = map_event(&json!({
+            "hook_event_name": "TaskCreated",
+            "title": "write tests"
+        }))
+        .unwrap();
+        assert_eq!(created.current_type, "info");
+        assert_eq!(created.current_name.as_deref(), Some("write tests"));
+        assert_eq!(
+            created.current_summary.as_deref(),
+            Some("Task created: write tests")
+        );
+        assert_eq!(created.attention_level, "none");
+
+        let idle = map_event(&json!({
+            "hook_event_name": "TeammateIdle",
+            "agent_type": "Explore"
+        }))
+        .unwrap();
+        assert_eq!(idle.current_type, "info");
+        assert_eq!(idle.current_name.as_deref(), Some("Explore"));
+        assert_eq!(
+            idle.current_summary.as_deref(),
+            Some("Teammate idle: Explore")
+        );
+        assert_eq!(idle.attention_level, "none");
+    }
+
+    #[test]
+    fn silent_noop_events_never_paint_a_facet() {
+        for event in [
+            "setup",
+            "userpromptexpansion",
+            "posttoolbatch",
+            "messagedisplay",
+            "instructionsloaded",
+            "configchange",
+            "directoryadded",
+            "filechanged",
+        ] {
+            assert!(
+                map_event(&json!({"hook_event_name": event})).is_none(),
+                "{event} must stay silent"
+            );
+        }
     }
 
     #[test]

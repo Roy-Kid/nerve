@@ -97,6 +97,11 @@ function versionMs() {
 let _alias;
 function machineAlias() {
   if (_alias) return _alias;
+  const cached = identityLoad();
+  if (cached && cached.alias) {
+    _alias = String(cached.alias);
+    return _alias;
+  }
   if (process.platform === "darwin") {
     try {
       const out = spawnSync("/usr/sbin/scutil", ["--get", "LocalHostName"], {
@@ -168,16 +173,30 @@ function monitorWait(summary, name) {
   };
 }
 
+// Compact kind label for the row: one work kind, or "mixed" when they differ.
+function bgKindLabel(kinds) {
+  const uniq = [...kinds];
+  if (!uniq.length) return "subagent";
+  if (uniq.length > 1) return "mixed";
+  return uniq[0] === "monitor" || uniq[0] === "shell" ? uniq[0] : "subagent";
+}
+
 function backgroundWork(tasks) {
   const n = tasks.length;
-  const first = tasks[0] && typeof tasks[0] === "object" ? tasks[0] : {};
-  const label = String(first.type || first.kind || "subagent");
-  const desc = first.description || first.name || first.agent_type || first.agentType;
-  let summary = `${n} background task(s)`;
-  if (desc) summary = `${summary}: ${truncate(String(desc), 100)}`;
   const kinds = new Set(tasks.map(taskKind));
-  if (kinds.size && [...kinds].every((k) => k === "monitor")) return monitorWait(summary, label || "monitor");
-  return runningBg(summary, label);
+  const name = bgKindLabel(kinds);
+  // List every task, not just the first: one summary is all a row has.
+  const descs = tasks
+    .map((t) => (t && typeof t === "object"
+      ? String(t.description || t.name || t.agent_type || t.agentType || t.type || t.kind || "")
+      : ""))
+    .filter(Boolean)
+    .map((d) => truncate(d, 40))
+    .filter(Boolean);
+  let summary = `${n} background task(s)`;
+  if (descs.length) summary = `${summary}: ${truncate(descs.join(", "), 120)}`;
+  if (kinds.size && [...kinds].every((k) => k === "monitor")) return monitorWait(summary, name);
+  return runningBg(summary, name);
 }
 
 function classifyToast(text) {
@@ -286,7 +305,7 @@ function mapEvent(event, payload) {
       health: "degraded",
     };
   }
-  if (event === "permissionrequest") {
+  if (event === "permissionrequest" || event === "permissiondenied") {
     const tool = String(get(payload, ["tool_name", "toolName"], "tool"));
     const dumped = JSON.stringify(get(payload, ["tool_input", "toolInput"], {}));
     return {
@@ -320,7 +339,7 @@ function mapEvent(event, payload) {
   if (event === "stop") {
     return stopFacets(payload);
   }
-  if (event === "stopcancelled") {
+  if (event === "stopcancelled" || event === "elicitation") {
     return yourTurn("Return to the agent to continue");
   }
   if (event === "precompact") {
@@ -332,14 +351,60 @@ function mapEvent(event, payload) {
     const bg = bgTasks(payload);
     return bg.length ? backgroundWork(bg) : { lifecycle: "active", current: { type: "thinking", summary: "Context compacted — continuing" }, attention: { level: "none" }, health: "ok" };
   }
+  if (event === "cwdchanged") {
+    return { lifecycle: "active", current: { type: "info", summary: "Workspace changed" }, attention: { level: "none" }, health: "ok" };
+  }
+  if (event === "elicitationresult") {
+    const text = truncate(get(payload, ["summary", "title"], "") || "", 120);
+    return { lifecycle: "active", current: { type: "info", summary: text || "Elicitation result" }, attention: { level: "none" }, health: "ok" };
+  }
+  if (event === "taskcreated" || event === "taskcompleted") {
+    const label = event === "taskcompleted" ? "Task completed" : "Task created";
+    const name = get(payload, ["title", "name"]);
+    const text = get(payload, ["title", "name", "description"], "") || "";
+    const facets = { lifecycle: "active", current: { type: "info", summary: text ? `${label}: ${text}` : label }, attention: { level: "none" }, health: "ok" };
+    if (name) facets.current.name = String(name);
+    return facets;
+  }
+  if (event === "teammateidle") {
+    const name = get(payload, ["name", "agent_type", "agentType", "description"]);
+    const facets = { lifecycle: "active", current: { type: "info", summary: name ? `Teammate idle: ${name}` : "Teammate idle" }, attention: { level: "none" }, health: "ok" };
+    if (name) facets.current.name = String(name);
+    return facets;
+  }
   return null;
 }
+
+// Events the hosts register that must never paint a facet. Fire-and-drop —
+// a facet here would invent status from events that carry none (invariant 3).
+const SILENT_NOOP = new Set([
+  "setup", "userpromptexpansion", "posttoolbatch", "messagedisplay",
+  "instructionsloaded", "configchange", "directoryadded", "filechanged",
+]);
 
 function detectIde() {
   const term = (process.env.TERM_PROGRAM || "").toLowerCase();
   if (process.env.CURSOR_TRACE_ID || process.env.CURSOR_AGENT || term.includes("cursor")) return "cursor";
   if (process.env.VSCODE_INJECTION || process.env.VSCODE_PID || process.env.VSCODE_GIT_IPC_HANDLE || term === "vscode" || term === "vscode-insiders") return "vscode";
   return null;
+}
+
+// Short human label for the hosting terminal/tab when known. Same map as
+// `nerve.py` `_terminal_label()` — the focus breadcrumb should say where the
+// session lives, not the literal "session".
+const TERMINAL_LABELS = [
+  ["ITERM_SESSION_ID", "iTerm"],
+  ["TERM_SESSION_ID", "Terminal"],
+  ["WEZTERM_PANE", "WezTerm"],
+  ["KITTY_WINDOW_ID", "Kitty"],
+  ["TMUX_PANE", "tmux"],
+];
+
+function terminalLabel() {
+  for (const [key, label] of TERMINAL_LABELS) {
+    if (process.env[key]) return label;
+  }
+  return process.env.TERM_PROGRAM || null;
 }
 
 // Wire paths. A cwd is written in this machine's rules, and the hub and every
@@ -381,13 +446,52 @@ function ideFilePath(cwd) {
 
 function buildLocation(payload, cwd) {
   const project = path.basename(cwd || "") || "unknown";
-  let focusHint = `Claude Code · ${project} · session`;
+  const host = terminalLabel() || "session";
+  let focusHint = `Claude Code · ${project} · ${host}`;
   if (cwd) focusHint += ` · ${cwd}`;
   const scheme = detectIde();
   const openURL =
     scheme && pathStyle(cwd) ? `${scheme}://file${ideFilePath(cwd)}` : fileUri(cwd);
   const loc = { openURL, focusHint, logPath: get(payload, ["transcript_path", "transcriptPath"]) };
   return Object.fromEntries(Object.entries(loc).filter(([, v]) => v != null && v !== ""));
+}
+
+// Display-only actions: Open/Focus first, then Copy, then Open logs.
+// Never approve/submit — Nerve does not reverse-control (invariant 6).
+function localActions(location) {
+  const actions = [];
+  const hasUrl = Boolean(location && location.openURL);
+  const hasHint = Boolean(location && location.focusHint);
+  if (hasUrl || hasHint) {
+    actions.push({
+      id: "open",
+      title: hasUrl ? "Open" : "Focus",
+      kind: hasUrl ? "open" : "focus",
+      state: "available",
+      destructive: false,
+      confirmationRequired: false,
+    });
+  }
+  actions.push({
+    id: "copy",
+    title: "Copy",
+    kind: "copy_summary",
+    state: "available",
+    destructive: false,
+    confirmationRequired: false,
+  });
+  // macOS ActionService already reveals `location.logPath` on this action id.
+  if (location && location.logPath) {
+    actions.push({
+      id: "open_logs",
+      title: "Open logs",
+      kind: "open_logs",
+      state: "available",
+      destructive: false,
+      confirmationRequired: false,
+    });
+  }
+  return actions;
 }
 
 function buildJob(payload, session, facets) {
@@ -432,16 +536,16 @@ function buildJob(payload, session, facets) {
     context: { project, workspace: cwd, labels: ["claude", "session"] },
     location,
     capabilities: [],
-    actions: [
-      { id: "open", title: "Open", kind: "open", state: "available", destructive: false, confirmationRequired: false },
-      { id: "copy", title: "Copy", kind: "copy_summary", state: "available", destructive: false, confirmationRequired: false },
-    ],
+    actions: localActions(location),
     createdAt: now,
     startedAt: now,
     updatedAt: now,
     version: versionMs(),
     extensions: Object.fromEntries(Object.entries(extensions).filter(([, v]) => v != null && v !== "")),
   };
+  // current.startedAt is present on every non-ended job (decision 7) — the hub
+  // already does this, and a missing stamp is three silent schemas.
+  if (!facets.ended && job.current && !job.current.startedAt) job.current.startedAt = now;
   if (facets.outcome) job.outcome = facets.outcome;
   if (facets.ended) {
     job.endedAt = now;
@@ -488,7 +592,13 @@ let _agentPidResolved = false;
 function agentPid() {
   if (_agentPidResolved) return _agentPid;
   _agentPidResolved = true;
+  const cached = identityLoad();
+  if (cached && cached.pid !== undefined) {
+    _agentPid = cached.pid > 1 ? cached.pid : null;
+    return _agentPid;
+  }
   _agentPid = process.platform === "win32" ? windowsAgentPid() : posixAgentPid();
+  identitySave(machineAlias(), _agentPid);
   return _agentPid;
 }
 
@@ -528,10 +638,63 @@ function posixAgentPid() {
   return last > 1 ? last : null;
 }
 
+let _stateDir;
 function stateDir() {
+  // mkdir once per process: slotRead/Write/Clear each used to pay it.
+  if (_stateDir) return _stateDir;
   const d = path.join(os.tmpdir(), "nerve-hook");
   try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); } catch (_) {}
+  _stateDir = d;
   return d;
+}
+
+// ── Identity cache ─────────────────────────────────────────────────────────
+//
+// One process per hook event means the in-process memo for `machineAlias()`
+// (a `scutil` spawn) and `agentPid()` (up to six `ps` spawns) dies with the
+// process. They are keyed by the *terminal token*, which is free to compute
+// (a handful of env lookups) — the full `slotId` hash is not, because it folds
+// the alias and pid in. First event per UI slot pays the climb; every later one
+// reads a small JSON file. SessionStart invalidates so a renamed machine or a
+// restarted host is picked up on the next conversation.
+const IDENTITY_TTL_MS = 24 * 60 * 60 * 1000;
+
+function terminalToken() {
+  for (const key of SLOT_ENV_KEYS) {
+    const value = process.env[key];
+    if (value) return `${key}:${value}`;
+  }
+  return "default";
+}
+
+function identityPath() {
+  const token = terminalToken();
+  return path.join(stateDir(), `identity-${token.replace(/[^\w.-]/g, "_")}.json`);
+}
+
+function identityLoad() {
+  try {
+    const data = JSON.parse(fs.readFileSync(identityPath(), "utf8"));
+    if (!data || typeof data !== "object") return null;
+    const ts = Date.parse(data.ts || "");
+    if (!Number.isFinite(ts) || Date.now() - ts > IDENTITY_TTL_MS) return null;
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function identitySave(alias, pid) {
+  try {
+    fs.writeFileSync(
+      identityPath(),
+      JSON.stringify({ alias, pid: pid ?? null, ts: new Date().toISOString() }),
+    );
+  } catch (_) {}
+}
+
+function identityInvalidate() {
+  try { fs.unlinkSync(identityPath()); } catch (_) {}
 }
 
 function slotRead(id) {
@@ -566,8 +729,12 @@ function slotClear(id, session) {
 // `port` is for tests only: production never passes it, because the ingest
 // address is fixed (CLAUDE.md invariant 2) and a test must never bind 17890 —
 // that port belongs to the hub a developer is actually running.
-function postSnapshot(alias, kind, job, port = INGEST_PORT) {
-  const body = Buffer.from(JSON.stringify({ alias, machineKind: kind, jobs: [job] }));
+// Accepts one job or several — a SessionStart that supersedes a ghost closes
+// the old conversation and opens the new one in one round trip. The envelope
+// was always `{ jobs: [...] }`; `JobStore::apply_snapshot` already takes a Vec.
+function postSnapshot(alias, kind, jobs, port = INGEST_PORT) {
+  const list = Array.isArray(jobs) ? jobs : [jobs];
+  const body = Buffer.from(JSON.stringify({ alias, machineKind: kind, jobs: list }));
   return new Promise((resolve) => {
     let done = false;
     const finish = () => {
@@ -591,20 +758,9 @@ function postSnapshot(alias, kind, job, port = INGEST_PORT) {
           },
         },
         (response) => {
-          try {
-            const fs = require("fs");
-            const os = require("os");
-            const path = require("path");
-            const dir = path.join(os.homedir(), "Library/Logs/Nerve");
-            fs.mkdirSync(dir, { recursive: true });
-            fs.appendFileSync(
-              path.join(dir, "nerve-hook.log"),
-              `${new Date().toISOString()} claude POST ${response.statusCode} ${job && job.id ? job.id : ""}\n`,
-            );
-          } catch (_) {
-            /* fail-open */
-          }
-          // Drain so the socket can close; the body is of no interest.
+          // Drain so the socket can close; the body is of no interest. No
+          // synchronous log write on this path — it used to block exit on a
+          // file nothing reads (surfaces never touch `nerve-hook.log`).
           response.resume();
           response.on("end", finish);
           response.on("error", finish);
@@ -627,6 +783,8 @@ function postSnapshot(alias, kind, job, port = INGEST_PORT) {
 async function processEvent(payload) {
   const event = eventName(payload);
   if (!event) return null;
+  // Silent-noop events exit before alias / slot / ps / HTTP / disk (Phase 4).
+  if (SILENT_NOOP.has(event)) return null;
   const allowed = new Set([
     "sessionstart", "setup", "sessionend", "userpromptsubmit", "userpromptexpansion",
     "pretooluse", "posttooluse", "posttoolusefailure", "posttoolbatch",
@@ -641,7 +799,11 @@ async function processEvent(payload) {
   const facets = mapEvent(event, payload);
   if (!facets) return null;
   const session = sessionId(payload);
+  // A new conversation is the moment a stale identity is most wrong (renamed
+  // machine, restarted host) — drop the cache so the climb runs once here.
+  if (event === "sessionstart") identityInvalidate();
   const slot = slotId(payload);
+  const pending = [];
   if (event === "sessionstart") {
     const prev = slotRead(slot);
     if (prev && prev !== session) {
@@ -649,20 +811,41 @@ async function processEvent(payload) {
       ended.end_reason = "superseded";
       const ghost = buildJob(payload, prev, ended);
       ghost.extensions.endReason = "superseded";
-      if (String(ghost.id).split(":").length - 1 < 2) {
-        await postSnapshot(ghost.alias, machineKind(), ghost);
-      }
+      if (String(ghost.id).split(":").length - 1 < 2) pending.push(ghost);
     }
   }
   const job = buildJob(payload, session, facets);
   if (String(job.id).split(":").length - 1 >= 2) return null;
-  await postSnapshot(job.alias, machineKind(), job);
+  pending.push(job);
+  // One POST carries the ghost and the new row: two conversations, not two
+  // jobs per conversation (invariant 1).
+  await postSnapshot(job.alias, machineKind(), pending);
   if (event === "sessionend") slotClear(slot, session);
   else slotWrite(slot, session);
   return job;
 }
 
+/**
+ * Test-only adapter: `node nerve.js --map <fixture.json>` prints raw facets or
+ * `null`. Not an env flag and not `NERVE_*` (invariant 2); production hooks
+ * never pass argv. Exits 0 even on a bad path so a harness can never wedge.
+ */
+function mapFixture(path) {
+  let out = "null";
+  try {
+    const payload = JSON.parse(fs.readFileSync(path, "utf8"));
+    if (payload && typeof payload === "object") {
+      out = JSON.stringify(mapEvent(eventName(payload), payload) ?? null);
+    }
+  } catch (_) {
+    out = "null";
+  }
+  try { process.stdout.write(out + "\n"); } catch (_) {}
+  return 0;
+}
+
 async function main() {
+  if (process.argv[2] === "--map" && process.argv[3]) return mapFixture(process.argv[3]);
   let raw = "";
   try { raw = fs.readFileSync(0, "utf8"); } catch (_) { return 0; }
   if (!raw.trim()) return 0;
@@ -679,5 +862,6 @@ if (require.main === module) {
 
 module.exports = {
   processEvent, mapEvent, eventName, sessionId,
-  fileUri, pathStyle, buildLocation, postSnapshot,
+  fileUri, pathStyle, buildLocation, postSnapshot, mapFixture,
+  agentPid, slotId, machineAlias, machineKind, localActions,
 };

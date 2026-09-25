@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Task",
+  "tool_response": {
+    "status": "async_launched",
+    "description": "explore"
+  }
+}

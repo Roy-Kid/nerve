@@ -16,5 +16,5 @@ mod ingest;
 mod routes;
 mod stream;
 
-pub use routes::{router, HubState};
-pub use stream::{stream_router, StreamState};
+pub use routes::{HubState, router};
+pub use stream::{StreamState, stream_router};

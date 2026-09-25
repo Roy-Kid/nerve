@@ -88,7 +88,7 @@ struct ExpandableSubjectRow: View {
                             .font(.caption.weight(.medium))
                             .foregroundStyle(RibbonPalette.color(for: subject.status, scheme: colorScheme, map: settings.statusColors))
                             .lineLimit(1)
-                            .fixedSize()
+                            .frame(width: 76, alignment: .leading)
 
                         PanelChrome.symbol("chevron.right", weight: .semibold)
                             .foregroundStyle(.quaternary)
@@ -101,9 +101,20 @@ struct ExpandableSubjectRow: View {
                 .buttonStyle(.plain)
                 if subject.status == .attention,
                    let action = subject.actions.first(where: { ActionService.isOpenKind($0.kind) }) {
-                    Button(action.title) { onAction(action.id) }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
+                    PanelIconButton(
+                        systemName: "arrow.up.forward.app",
+                        help: ActionService.focusActionTitle(for: subject),
+                        accessibilityLabel: ActionService.focusActionTitle(for: subject),
+                        enabled: action.state == .available
+                    ) {
+                        onAction(action.id)
+                    }
+                } else {
+                    // Keep the trailing action column stable so status and disclosure
+                    // stay aligned even when only some jobs need attention.
+                    Color.clear
+                        .frame(width: PanelChrome.hit, height: PanelChrome.hit)
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.leading, 12 + indent)

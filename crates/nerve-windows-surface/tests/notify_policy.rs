@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use nerve_surface_core::frame::{AttentionLevel, JobView};
-use nerve_windows_surface::notify::policy::{AskPolicy, Settings, DEDUPE};
+use nerve_windows_surface::notify::policy::{AskPolicy, DEDUPE, Settings};
 use serde_json::json;
 
 fn job(id: &str, level: &str, reason: &str) -> JobView {
@@ -75,9 +75,11 @@ fn the_same_ask_in_the_next_frame_is_silent() {
     let now = Instant::now();
 
     assert_eq!(policy.evaluate(&jobs, on(), now).len(), 1);
-    assert!(policy
-        .evaluate(&jobs, on(), now + Duration::from_secs(1))
-        .is_empty());
+    assert!(
+        policy
+            .evaluate(&jobs, on(), now + Duration::from_secs(1))
+            .is_empty()
+    );
 }
 
 #[test]
@@ -147,9 +149,11 @@ fn the_floor_holds_back_quieter_asks() {
         floor: AttentionLevel::Required,
         ..on()
     };
-    assert!(policy
-        .evaluate(&[job("a", "suggested", "input")], settings, Instant::now())
-        .is_empty());
+    assert!(
+        policy
+            .evaluate(&[job("a", "suggested", "input")], settings, Instant::now())
+            .is_empty()
+    );
 }
 
 #[test]

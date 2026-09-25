@@ -2,6 +2,19 @@ import NerveHubClient
 import SwiftUI
 import TetherPluginKit
 
+/// `NervePalette` hexes as SwiftUI colours. One place to convert, so the six
+/// values stay pin-able from `NerveHubClientTests` without importing SwiftUI.
+extension Color {
+  init(nerveHex hex: UInt32) {
+    self.init(
+      .sRGB,
+      red: Double((hex >> 16) & 0xFF) / 255.0,
+      green: Double((hex >> 8) & 0xFF) / 255.0,
+      blue: Double(hex & 0xFF) / 255.0
+    )
+  }
+}
+
 @MainActor
 @Observable
 final class NerveWorkspace: PluginWorkspace {
@@ -34,6 +47,7 @@ final class NerveWorkspace: PluginWorkspace {
 struct NerveJobList: View {
   @Bindable var session: HubSession
   var hostLabel: String
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -60,7 +74,7 @@ struct NerveJobList: View {
   private var statusBar: some View {
     HStack(spacing: 8) {
       Circle()
-        .fill(session.connected ? Color.green.opacity(0.85) : Color.secondary.opacity(0.5))
+        .fill(session.connected ? Color(nerveHex: NervePalette.success) : Color.secondary.opacity(0.5))
         .frame(width: 7, height: 7)
       Text(session.connected ? "Live" : "Offline")
       Spacer(minLength: 8)
@@ -93,25 +107,58 @@ struct NerveJobList: View {
   private func jobRow(_ job: NerveJob) -> some View {
     HStack(alignment: .center, spacing: 10) {
       Circle()
-        .fill(color(for: job))
+        .fill(Color(nerveHex: NervePalette.hex(for: job.status)))
         .frame(width: 8, height: 8)
         .frame(width: 18, height: 18)
       VStack(alignment: .leading, spacing: 2) {
-        Text(job.name.isEmpty ? job.id : job.name)
-          .font(.body.weight(.medium))
-          .lineLimit(1)
+        HStack(spacing: 6) {
+          Text(job.name.isEmpty ? job.id : job.name)
+            .font(.body.weight(.medium))
+            .lineLimit(1)
+          // Same words as the macOS menu-bar row (`Subject.statusLabel`).
+          Text(job.statusLabel)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color(nerveHex: NervePalette.hex(for: job.status)))
+            .padding(.horizontal, job.status == .success ? 6 : 0)
+            .padding(.vertical, job.status == .success ? 2 : 0)
+            .background {
+              if job.status == .success {
+                Capsule().fill(Color(nerveHex: NervePalette.success).opacity(0.18))
+              }
+            }
+        }
         if !job.progress.isEmpty {
           Text(job.progress)
             .font(.callout)
-            .foregroundStyle(job.isAsk ? Color.orange : Color.secondary)
+            .foregroundStyle(job.isAsk ? Color(nerveHex: NervePalette.attention) : Color.secondary)
             .lineLimit(2)
         }
       }
       Spacer(minLength: 8)
-      Text(job.alias)
-        .font(.caption)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
+      VStack(alignment: .trailing, spacing: 2) {
+        if let caption = job.metadataCaption {
+          Text(caption)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
+        // Display-only: open the workspace / IDE, never reverse-control.
+        if let raw = job.openURL, let url = URL(string: raw) {
+          Button {
+            openURL(url)
+          } label: {
+            Label(job.focusHint == nil ? "Open" : "Open", systemImage: "arrow.up.forward.app")
+              .labelStyle(.iconOnly)
+          }
+          .buttonStyle(.borderless)
+          .help(job.focusHint ?? "Open workspace")
+        } else if let hint = job.focusHint {
+          Text(hint)
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
@@ -130,24 +177,11 @@ struct NerveJobList: View {
     }
     return matches.isEmpty ? jobs : matches
   }
-
-  private func color(for job: NerveJob) -> Color {
-    if job.isAsk { return .orange }
-    switch job.lifecycle {
-    case "ended": return .green
-    case "active":
-      switch job.currentType.lowercased() {
-      case "waiting": return .orange
-      case "idle", "starting", "booting": return .secondary
-      default: return .blue
-      }
-    default: return .secondary
-    }
-  }
 }
 
 struct NerveInspector: View {
   @Bindable var session: HubSession
+  @Environment(\.openURL) private var openURL
 
   var body: some View {
     Form {
@@ -162,10 +196,37 @@ struct NerveInspector: View {
       if !session.jobs.isEmpty {
         Section("Now") {
           ForEach(session.jobs) { job in
-            VStack(alignment: .leading, spacing: 2) {
-              Text(job.name.isEmpty ? job.id : job.name)
+            VStack(alignment: .leading, spacing: 4) {
+              HStack(spacing: 6) {
+                Text(job.name.isEmpty ? job.id : job.name)
+                Text(job.statusLabel)
+                  .font(.caption.weight(.medium))
+                  .foregroundStyle(Color(nerveHex: NervePalette.hex(for: job.status)))
+              }
               if !job.progress.isEmpty {
                 Text(job.progress).foregroundStyle(.secondary)
+              }
+              // The Prompt panel reads one field and never falls back to the
+              // activity summary — same rule as macOS and the tmux sidebar.
+              if let prompt = job.lastPrompt, !prompt.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                  Text("Prompt")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                  Text(prompt)
+                    .font(.caption)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.top, 2)
+              }
+              if let caption = job.metadataCaption {
+                Text(caption).font(.caption2).foregroundStyle(.tertiary)
+              }
+              if let raw = job.openURL, let url = URL(string: raw) {
+                Button("Open workspace") { openURL(url) }
+                  .font(.caption)
               }
             }
           }

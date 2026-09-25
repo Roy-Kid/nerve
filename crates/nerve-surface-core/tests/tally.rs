@@ -43,7 +43,7 @@ use serde_json::json;
 use nerve_surface_core::status::StatusClass;
 use nerve_surface_core::tally::Tally;
 
-use nerve_surface_core::testkit::{frame, job, SIX_STATE_FRAME};
+use nerve_surface_core::testkit::{SIX_STATE_FRAME, frame, job};
 
 // ── Basics ──────────────────────────────────────────────────────────────────
 

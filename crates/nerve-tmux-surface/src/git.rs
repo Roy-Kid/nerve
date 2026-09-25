@@ -144,10 +144,10 @@ fn parse_branch_header(header: &str, snapshot: &mut GitSnapshot) {
 fn field_count(inside: &str, label: &str) -> u32 {
     let mut tokens = inside.split(|c: char| c == ',' || c.is_whitespace());
     while let Some(token) = tokens.next() {
-        if token == label {
-            if let Some(n) = tokens.next().and_then(|n| n.parse().ok()) {
-                return n;
-            }
+        if token == label
+            && let Some(n) = tokens.next().and_then(|n| n.parse().ok())
+        {
+            return n;
         }
     }
     0

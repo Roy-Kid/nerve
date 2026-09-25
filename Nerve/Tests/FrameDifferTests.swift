@@ -2,7 +2,7 @@
 //  FrameDifferTests.swift
 //  Nerve — unit harness (NOT part of the app target)
 //
-//  Run with: `bash scripts/test_swift_units.sh`
+//  Run with: `./scripts/nerve.sh --test-swift`
 //  Compiled by swiftc together with `Nerve/Nerve/Models/*.swift` and
 //  `Nerve/Nerve/Services/Hub/{HubFrame,FrameDiffer}.swift` into one throwaway
 //  executable. The repo has no XCTest / swift-testing target on purpose

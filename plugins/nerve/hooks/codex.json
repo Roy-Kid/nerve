@@ -6,11 +6,21 @@
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "PreToolUse": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PermissionDenied": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "PostToolUse": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "PreCompact": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "PostCompact": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "StopCancelled": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
     "SubagentStart": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
-    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }]
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "TaskCreated": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "TaskCompleted": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "TeammateIdle": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "CwdChanged": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "Elicitation": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }],
+    "ElicitationResult": [{ "hooks": [{ "type": "command", "command": "python3 ${PLUGIN_ROOT}/hooks/nerve.py", "commandWindows": "py -3 ${PLUGIN_ROOT}/hooks/nerve.py", "timeout": 5, "async": true }] }]
   }
 }

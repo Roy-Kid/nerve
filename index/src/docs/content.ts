@@ -281,7 +281,15 @@ codex plugin add nerve@nerve`,
           ['PermissionRequest / permission_prompt', 'attention.reason=approval', 'Attention'],
           ['PreCompact', 'thinking (or remaining bg tasks)', 'Running / Monitor'],
           ['PostCompact + bg tasks', 'subagent · monitor', 'Running / Monitor'],
-          ['PostCompact no bg', 'idle · attention.reason=input', 'Attention'],
+          ['PostCompact no bg', 'thinking · “Context compacted — continuing”', 'Running'],
+          ['PermissionDenied', 'waiting · attention.reason=approval (same as PermissionRequest)', 'Attention'],
+          ['StopCancelled / Elicitation', 'idle · attention.reason=input · “Your turn in agent”', 'Attention'],
+          ['CwdChanged', 'info · “Workspace changed” (workspace/location refresh)', 'Running'],
+          ['ElicitationResult', 'info (structured summary/title)', 'Running'],
+          ['TaskCreated / TaskCompleted', 'info · current.name = task title', 'Running'],
+          ['TeammateIdle', 'info · a teammate idling is not a human Ask', 'Running'],
+          ['PostToolUseFailure', 'informational · reason=failure · title “{tool} failed” · health=degraded', 'Problem'],
+          ['StopFailure', 'informational · reason=failure · title “Turn failed” · health=degraded', 'Problem'],
           ['SessionEnd', 'ended + endReason (+ success|cancelled)', 'Leaves panel'],
           ['SessionStart (new id, same UI slot)', 'previous id → ended (superseded)', 'Old row leaves'],
           ['Other Notification (no type)', 'active + info', 'Running'],
@@ -294,8 +302,10 @@ codex plugin add nerve@nerve`,
           'No environment variables. Ingest URL is fixed: http://127.0.0.1:17890/v1/hook.',
           'Slot memory lives in the hub (producer + workspace), not a temp file, so /new without SessionEnd still closes the previous session_id.',
           'UserPromptSubmit also sends extensions.lastPrompt (+ lastPromptAt), trimmed to 400 characters. Only that one hook run sees the prompt, so the hub carries it forward onto later snapshots — every surface shows it: the tmux sidebar’s Prompt panel, the Prompt block in an expanded macOS row, and the VS Code tree tooltip.',
-          'Local actions: Open / Focus (location) first, then Copy. Rows leave via SessionEnd, slot supersede, or PID reap — no Dismiss / Approve / submit_input.',
+          'Local actions: Open / Focus (location) first, then Copy, then Open logs (when location.logPath is present). Rows leave via SessionEnd, slot supersede, or PID reap — no Dismiss / Approve / submit_input.',
           'location.openURL + focusHint on every snapshot so the panel can jump back to the agent UI.',
+          'extensions carries sessionId, slot, pid, model, agentType, hookEvent, endReason, and (on UserPromptSubmit) lastPrompt / lastPromptAt. Empty strings are dropped along with nulls.',
+          'current.startedAt is present on every non-ended job; only an ended job omits it.',
           'Alias = free-form machine label (prefer Bonjour LocalHostName on macOS).',
           'Status is never inferred from free-text — only event name + structured fields.',
         ],
@@ -664,11 +674,11 @@ npm run watch`,
         type: 'code',
         lang: 'powershell',
         code: `# from the extracted Windows download (no Rust required)
-.\\scripts\\nerve.ps1 -Install -Run
+./scripts/nerve.ps1 -Install -Run
 
 # from a checkout (requires Rust and the MSVC build tools)
-.\\scripts\\nerve.ps1 -Install
-.\\scripts\\nerve.ps1 -Run
+./scripts/nerve.ps1 -Install
+./scripts/nerve.ps1 -Run
 
 # or just the binaries
 cargo install nerve-hub nerve-windows-surface`,
@@ -749,6 +759,14 @@ cargo install nerve-hub nerve-windows-surface`,
         type: 'p',
         text: 'Six hues, five of them rainbow: red problem, orange attention, blue running, purple monitor, green success — plus gray idle. Automatic waits are gray; orange is reserved for human attention. A normal Stop makes an open session green (Turn complete), without claiming the whole task is done. A background shell or subagent still executing is Running blue; only a monitor holding the stream is purple. Open sessions stay while lifecycle is active; SessionEnd removes the row. Your turn is Attention — continue in the agent UI. SessionStart is Ready/Inactive.',
       },
+      {
+        type: 'p',
+        text: 'Rows also carry a status word next to the colour, refined by attention.reason: “Approval needed” (approval / permission / auth), “Input needed” (input / elicitation), “Review needed” (review), “Decision needed” (decision), “Needs attention” otherwise. An open session whose turn just finished reads “Turn complete”; an ended one reads “Completed”. attention.title overrides the row text whenever attention.level ≥ suggested.',
+      },
+      {
+        type: 'p',
+        text: 'Tether paints the same words and the same six hexes (Problem #FF3B30, Attention #FF9F0A, Running #0A84FF, Monitor #BF5AF2, Success #30D158, Inactive/Waiting #8E8E93) as the macOS menu-bar app.',
+      },
       { type: 'h2', text: 'Main-session lifecycle' },
       {
         type: 'table',
@@ -769,7 +787,7 @@ cargo install nerve-hub nerve-windows-surface`,
         type: 'ul',
         items: [
           'Snapshots carry location.openURL (IDE deep link when hosted in Cursor/VS Code, else workspace file://) and location.focusHint (producer · project · host · path).',
-          'Panel primary action is Open / Focus — jumps to the agent workspace. Copy is secondary. No Approve / Type here.',
+          'Panel primary action is Open / Focus — jumps to the agent workspace. Copy is secondary; Open logs reveals location.logPath. No Approve / Type here.',
           'Notification click selects the job, expands it in the panel, and runs Open/Focus.',
           'Attention copy is honest and calm: “Your turn” / “A review is waiting” / “Approval needed in agent” — return to the agent UI to continue. No CRITICAL / stacked exclamation marks.',
           'Default interrupt channel is Ask reasons (input, review, decision, approval, …) at attention.level ≥ suggested. System waits only colour the ribbon. Suggested Ask banners stay silent even when Play sounds is on.',
@@ -1037,7 +1055,15 @@ codex plugin add nerve@nerve`,
           ['PermissionRequest / permission_prompt', 'attention.reason=approval', '需要你'],
           ['PreCompact', 'thinking（或仍在的后台任务）', '运行中 / 监视中'],
           ['PostCompact + 后台任务', 'subagent · monitor', '运行中 / 监视中'],
-          ['PostCompact 无后台', 'idle · attention.reason=input', '需要你'],
+          ['PostCompact 无后台', 'thinking · “Context compacted — continuing”', '运行中'],
+          ['PermissionDenied', 'waiting · attention.reason=approval（与 PermissionRequest 相同）', '需要你'],
+          ['StopCancelled / Elicitation', 'idle · attention.reason=input · “Your turn in agent”', '需要你'],
+          ['CwdChanged', 'info · “Workspace changed”（刷新 workspace/location）', '运行中'],
+          ['ElicitationResult', 'info（结构化 summary/title）', '运行中'],
+          ['TaskCreated / TaskCompleted', 'info · current.name = 任务标题', '运行中'],
+          ['TeammateIdle', 'info · 队友闲置不是人类 Ask', '运行中'],
+          ['PostToolUseFailure', 'informational · reason=failure · 标题 “{tool} failed” · health=degraded', 'Problem'],
+          ['StopFailure', 'informational · reason=failure · 标题 “Turn failed” · health=degraded', 'Problem'],
           ['SessionEnd', 'ended + endReason (+ success|cancelled)', '离开面板'],
           ['SessionStart（同一 UI slot 下的新 id）', '之前的 id → ended (superseded)', '旧行离开'],
           ['其他 Notification（没有 type）', 'active + info', '运行中'],
@@ -1050,8 +1076,10 @@ codex plugin add nerve@nerve`,
           '无环境变量。接入 URL 固定为 http://127.0.0.1:17890/v1/hook。',
           'Slot 记在 hub 里（producer + workspace），不是临时文件，因此没有 SessionEnd 的 /new 仍然能关闭之前的 session_id。',
           'UserPromptSubmit 还会发送 extensions.lastPrompt（以及 lastPromptAt），截断为 400 个字符。只有这次钩子运行能看到该提示，因此 hub 会把它延续到后续快照中——每个 surface 都会显示它：tmux 侧边栏的 Prompt 面板、macOS 展开行里的 Prompt 块，以及 VS Code 树的 tooltip。',
-          '本地操作：先是 Open / Focus，然后是 Copy。行通过 SessionEnd、slot supersede 或 PID reap 离开——没有 Dismiss / Approve / submit_input。',
+          '本地操作：先是 Open / Focus，然后是 Copy，然后是 Open logs（当 location.logPath 存在时）。行通过 SessionEnd、slot supersede 或 PID reap 离开——没有 Dismiss / Approve / submit_input。',
           '每个快照都有 location.openURL + focusHint，因此面板可以跳回 agent UI。',
+          'extensions 携带 sessionId、slot、pid、model、agentType、hookEvent、endReason，以及（UserPromptSubmit 时）lastPrompt / lastPromptAt。空字符串与 null 一样会被丢弃。',
+          'current.startedAt 在每个未结束的 job 上都存在；只有已结束的 job 才省略它。',
           'Alias = 自由形式的机器标签（在 macOS 上优先使用 Bonjour LocalHostName）。',
           '状态永远不会从自由文本推断——只使用事件名和结构化字段。',
         ],
@@ -1404,8 +1432,8 @@ const zhWindowsPage: DocPage = {
       type: 'code',
       lang: 'powershell',
       code: `# 从仓库
-.\\scripts\\nerve.ps1 -Install
-.\\scripts\\nerve.ps1 -Run
+./scripts/nerve.ps1 -Install
+./scripts/nerve.ps1 -Run
 
 # 或者只要二进制
 cargo install nerve-hub nerve-windows-surface`,
@@ -1487,6 +1515,14 @@ const zhStatusPage: DocPage = {
       type: 'p',
       text: '六种颜色，其中五种是彩虹：红 Problem、橙 Attention、蓝 Running、紫 Monitor、绿 Success——加上灰 Inactive。等待系统显示灰色；橙色表示需要你处理。普通 Stop 后显示绿色“本轮结束”，不代表整个任务已完成。后台 shell / subagent 仍在执行是蓝色 Running；只有盯着 stream 的 monitor 是紫色。lifecycle 为 active 时，打开的会话留在面板中；SessionEnd 时立刻移除。轮到你时是 Attention——请在 agent UI 中继续。SessionStart 是 Ready/Inactive。',
     },
+    {
+      type: 'p',
+      text: '行上色块旁还有状态词，按 attention.reason 细分：“Approval needed”（approval / permission / auth）、“Input needed”（input / elicitation）、“Review needed”（review）、“Decision needed”（decision）、其余为“Needs attention”。刚结束一轮的打开会话显示“Turn complete”；已结束的显示“Completed”。只要 attention.level ≥ suggested，attention.title 就会覆盖行文本。',
+    },
+    {
+      type: 'p',
+      text: 'Tether 使用与 macOS 菜单栏应用相同的文案和六组 hex（Problem #FF3B30、Attention #FF9F0A、Running #0A84FF、Monitor #BF5AF2、Success #30D158、Inactive/Waiting #8E8E93）。',
+    },
     { type: 'h2', text: '主会话生命周期' },
     {
       type: 'table',
@@ -1507,7 +1543,7 @@ const zhStatusPage: DocPage = {
       type: 'ul',
       items: [
         '快照会携带 location.openURL（宿主为 Cursor/VS Code 时是 IDE deep link，否则是工作区 file://）以及 location.focusHint（producer · project · host · path）。',
-        '面板的主操作是 Open / Focus——跳转到 agent 工作区。Copy 是次要操作。没有 Approve / Type here。',
+        '面板的主操作是 Open / Focus——跳转到 agent 工作区。Copy 是次要操作；Open logs 会打开 location.logPath。没有 Approve / Type here。',
         '点击通知会选中任务、在面板中展开它，并执行 Open/Focus。',
         'Attention 文案冷静如实：“Your turn” / “A review is waiting” / “Approval needed in agent”——返回 agent UI 继续。不用 CRITICAL 或叠感叹号。',
         '默认打断通道是 Ask reason（input、review、decision、approval 等）且 attention.level ≥ suggested。系统等待只上色。Suggested Ask 横幅即使开了 Play sounds 也保持静音。',

@@ -16,6 +16,10 @@ const INGEST_HOST = "127.0.0.1";
 const INGEST_PORT = 17890;
 const INGEST_TIMEOUT_MS = 1500;
 
+// Same algorithm as nerve.js, so a Grok row can supersede ghosts and be
+// PID-reaped exactly like a Claude one. Required, not copied — one climb.
+const { agentPid, slotId } = require("./nerve.js");
+
 function note(message) {
   try {
     const dir = path.join(os.homedir(), "Library/Logs/Nerve");
@@ -36,11 +40,26 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("error", finish);
 process.stdin.on("end", () => {
-  const body = Buffer.concat(chunks);
-  if (!body.length) {
+  const raw = Buffer.concat(chunks);
+  if (!raw.length) {
     note("empty stdin");
     finish();
     return;
+  }
+  // Inject slot + pid at the top level so `hook::build` can pick them up and
+  // publish `extensions.slot` / `extensions.pid`. Fail-open: a body we cannot
+  // parse is forwarded unchanged rather than dropped.
+  let body = raw;
+  try {
+    const payload = JSON.parse(raw.toString("utf8"));
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+      const pid = agentPid();
+      if (pid) payload.agentPid = pid;
+      payload.slotId = slotId(payload);
+      body = Buffer.from(JSON.stringify(payload));
+    }
+  } catch (_) {
+    body = raw;
   }
   let request;
   try {
