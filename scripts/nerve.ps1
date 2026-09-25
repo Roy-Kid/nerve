@@ -1,15 +1,19 @@
 <#
 .SYNOPSIS
-    Nerve dev launcher for Windows — the counterpart to scripts/nerve.sh.
+    Nerve dev launcher for Windows - the counterpart to scripts/nerve.sh.
 
 .DESCRIPTION
     Explicit flags only, like the bash one: nothing here runs unless it was
     asked for by name. Written for Windows PowerShell 5.1, which every
-    Windows 10 and 11 ships — requiring pwsh 7 would mean a second install
+    Windows 10 and 11 ships - requiring pwsh 7 would mean a second install
     before the first run.
 
     scripts/nerve.sh stays the launcher on macOS and Linux; it is bash,
     xcodebuild and tmux, none of which apply here.
+
+    Keep this file ASCII. Windows PowerShell 5.1 reads a no-BOM script in
+    the ANSI code page, and a UTF-8 em dash includes a byte that parser
+    treats as a quote, so the script fails before it runs.
 #>
 [CmdletBinding()]
 param(
@@ -36,8 +40,8 @@ $Aumid = 'Nerve.Surface'
 $Ingest = 'http://127.0.0.1:17890'
 $BinariesReady = $false
 
-# The portable crates. nerve-tmux-surface is unix-only by design — tmux has no
-# Windows port — so it is never named here.
+# The portable crates. nerve-tmux-surface is unix-only by design - tmux has no
+# Windows port - so it is never named here.
 $Crates = @('-p', 'nerve-platform', '-p', 'nerve-hub',
             '-p', 'nerve-surface-core', '-p', 'nerve-windows-surface')
 
@@ -161,7 +165,7 @@ function Install-Nerve {
     Write-Host "Installed to $InstallDir"
     Write-Host "Shortcut: $link"
     Write-Host ''
-    Write-Host 'Windows 11 hides new tray icons in the overflow by default —'
+    Write-Host 'Windows 11 hides new tray icons in the overflow by default -'
     Write-Host 'drag it out of the chevron to keep it visible.'
 }
 
@@ -204,7 +208,7 @@ function Invoke-VerifyLoop {
         $jobs = @($jobs)
         if ($jobs.Count -lt 1) { throw 'the hub accepted a snapshot and listed no jobs' }
 
-        # An unknown route must be a 404, not a body — the same thing the
+        # An unknown route must be a 404, not a body - the same thing the
         # surface's own transport test asserts.
         try {
             Invoke-RestMethod -Uri "$Ingest/v1/nope" -TimeoutSec 2 | Out-Null
@@ -215,7 +219,7 @@ function Invoke-VerifyLoop {
             if ($code -ne 404) { throw "unknown route answered $code" }
         }
 
-        Write-Host "ALL OK — $($jobs.Count) job(s) through the loop"
+        Write-Host "ALL OK - $($jobs.Count) job(s) through the loop"
     } finally {
         Stop-Process -Id $hub.Id -Force -ErrorAction SilentlyContinue
     }
@@ -255,7 +259,7 @@ function Invoke-VerifySurface {
         if ($health.watchers -ne 1) { throw 'the second instance opened an extra stream' }
 
         Stop-Process -Id $surface.Id -Force
-        Write-Host 'ALL OK — surface attaches, and a second instance stands down'
+        Write-Host 'ALL OK - surface attaches, and a second instance stands down'
     } finally {
         foreach ($process in @($second, $surface)) {
             if ($null -ne $process -and -not $process.HasExited) {

@@ -20,6 +20,24 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      # Fail here, before the Windows job spends a release compile on a
+      # script Windows PowerShell 5.1 cannot parse.
+      - name: Windows scripts stay ASCII
+        run: |
+          python3 - <<'PY'
+          import pathlib, sys
+          bad = []
+          for path in sorted(pathlib.Path("scripts").glob("*.ps1")):
+              data = path.read_bytes()
+              if any(byte > 127 for byte in data):
+                  bad.append(str(path))
+          if bad:
+              sys.exit(
+                  "PowerShell 5.1 reads a no-BOM script as the ANSI code page. "
+                  "A UTF-8 em dash then parses as a quote. Non-ASCII: "
+                  + ", ".join(bad)
+              )
+          PY
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
